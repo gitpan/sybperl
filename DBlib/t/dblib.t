@@ -1,5 +1,7 @@
 #!./perl
-
+# $Id: dblib.t,v 1.1 1999/05/14 17:33:24 mpeppler Exp $
+#
+# from
 #	@(#)dblib.t	1.20	11/23/98
 
 print "1..22\n";

@@ -1,3 +1,5 @@
+	$Id: README,v 1.1 1999/05/14 18:00:45 mpeppler Exp $
+from
 	@(#)README	1.1	8/7/95
 	
 This is the sybperl 1.0xx compatibility package for Perl 5.

@@ -1,6 +1,6 @@
+# $Id: Makefile,v 1.1 1999/05/14 18:11:46 mpeppler Exp $
+# from
 #	@(#)Makefile	1.2	8/7/95
-#  The stuff below shoudl be OK if you've unpacked the extension in the
-# correct place (ie $(PERLSRC)/ext).
 #
 
 POD2MAN = pod2man

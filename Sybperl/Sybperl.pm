@@ -1,5 +1,8 @@
 # -*-Perl-*-
-# @(#)Sybperl.pm	1.27	03/26/98
+# $Id: Sybperl.pm,v 1.28 1999/05/14 18:10:09 mpeppler Exp $
+#
+# From
+# 	@(#)Sybperl.pm	1.27	03/26/98
 #
 # Copyright (c) 1994-1995
 #   Michael Peppler
@@ -7,6 +10,39 @@
 #   You may copy this under the terms of the GNU General Public License,
 #   or the Artistic License, copies of which should have accompanied
 #   your Perl kit.
+
+package Sybase::Sybperl;
+
+=head1 NAME
+
+Sybase::Sybperl - sybperl 1.0xx emulation module
+
+=head1 SYNOPSYS
+
+    require 'sybperl.pl';
+
+    $dbproc = dblogin($user, $pwd, $server);
+    dbcmd($dbproc, "select * from sysusers");
+    dbsqlexec($dbproc);
+    dbresults($dbproc);
+    while(@data = dbnextrow($dbproc)) {
+        print "@data\n";
+    }
+
+=head1 DESCRIPTION
+
+The Sybase::Sybperl module is provided to ease porting old perl4/sybperl 1.x
+programs to perl5. It is not recommended that this module be used for
+any new project. See L<Sybase::DBlib> or L<Sybase::CTlib> for alternatives.
+
+The old sybperl 1.0xx manpage is in the pod/sybperl-1.0xx.man in the
+sybperl source distribution.
+
+=head1 AUTHOR
+
+Michael Peppler F<E<lt>mpeppler@peppler.orgE<gt>>.
+
+=cut
 
 package Sybase::Sybperl::Attribs;
 

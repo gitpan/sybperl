@@ -1,4 +1,5 @@
-#	@(#)Makefile.PL	1.7	03/26/99
+# $Id: Makefile.PL,v 1.1 1999/05/14 17:21:31 mpeppler Exp $
+# from	@(#)Makefile.PL	1.7	03/26/99
 
 require 5.002;
 use ExtUtils::MakeMaker;

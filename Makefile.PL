@@ -1,5 +1,5 @@
 # -*-Perl-*-
-#	@(#)Makefile.PL	1.23	03/26/99
+#	$Id: Makefile.PL,v 1.2 1999/05/14 18:21:27 mpeppler Exp $
 require 5.002;
 use ExtUtils::MakeMaker;
 use Config;
@@ -42,7 +42,7 @@ MSG_EOF
 WriteMakefile('DISTNAME' => "sybperl",
 	      'NAME' => Sybase, 
 	      'VERSION' => $$sattr{VERSION},
-	      'dist' => {'TARFLAGS' => "cvfF", 'COMPRESS' => "gzip"},
+	      'dist' => {'TARFLAGS' => "cvf", 'COMPRESS' => "gzip"},
 	      'LINKTYPE' => $linktype,
 	      'XSPROTOARG' => '-prototypes',
 	      ($] >= 5.005 ?

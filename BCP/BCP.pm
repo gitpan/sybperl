@@ -1,6 +1,7 @@
-#	@(#)BCP.pm	1.15	03/05/98
-
-# Copyright (c) 1996-1997
+# $Id: BCP.pm,v 1.1 1999/05/14 17:21:03 mpeppler Exp $
+# from	@(#)BCP.pm	1.15	03/05/98
+#
+# Copyright (c) 1996-1999
 #   Michael Peppler
 #
 #   You may copy this under the terms of the GNU General Public License,
@@ -266,8 +267,8 @@ plain bcp.
 
 =head1 AUTHOR
 
-Michael Peppler F<E<lt>mpeppler@mbay.netE<gt>>. Contact the sybperl mailing
-list C<mailto:sybperl-l@trln.lib.unc.edu> if you have any questions.
+Michael Peppler F<E<lt>mpeppler@peppler.orgE<gt>>. Contact the sybperl mailing
+list C<mailto:sybperl-l@listproc.net> if you have any questions.
 
 =cut
 

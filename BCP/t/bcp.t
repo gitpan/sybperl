@@ -1,5 +1,7 @@
 #!./perl
-
+# $Id: bcp.t,v 1.1 1999/05/14 17:22:56 mpeppler Exp $
+#
+# From:
 #	@(#)bcp.t	1.2	03/22/96
 
 ######################### We start with some black magic to print on failure.

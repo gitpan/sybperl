@@ -1,5 +1,7 @@
 #!./perl
-
+# $Id: money.t,v 1.1 1999/05/14 17:33:48 mpeppler Exp $
+#
+# from
 #	@(#)money.t	1.2	3/4/96
 
 print "1..13\n";

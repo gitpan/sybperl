@@ -1,4 +1,6 @@
 /* -*-C-*-
+ *
+ * $Id: CTlib.xs,v 1.39 1999/05/14 17:48:32 mpeppler Exp $
  *	@(#)CTlib.xs	1.37	03/26/99
  */
 
@@ -1688,7 +1690,7 @@ initialize()
     if((sv = perl_get_sv("Sybase::CTlib::Version", TRUE|GV_ADDMULTI)))
     {
 	char buff[256];
-	sprintf(buff, "This is sybperl, version %s\n\nSybase::CTlib version 1.37 03/26/99\n\nCopyright (c) 1995-1998 Michael Peppler\nPortions Copyright (c) 1995 Sybase, Inc.\n\n",
+	sprintf(buff, "This is sybperl, version %s\n\nSybase::CTlib $Revision: 1.39 $ $Date: 1999/05/14 17:48:32 $\n\nCopyright (c) 1995-1999 Michael Peppler\nPortions Copyright (c) 1995 Sybase, Inc.\n\n",
 		SYBPLVER);
 	sv_setnv(sv, atof(SYBPLVER));
 	sv_setpv(sv, buff);
@@ -5401,6 +5403,7 @@ ct_connect(package="Sybase::CTlib", user=NULL, pwd=NULL, server=NULL, appname=NU
 		{ "CS_SEC_CHALLENGE", CS_SEC_CHALLENGE, CS_INT_TYPE},
 		{ "CS_SEC_ENCRYPTION", CS_SEC_ENCRYPTION, CS_INT_TYPE},
 		{ "CS_SEC_NEGOTIATE", CS_SEC_NEGOTIATE, CS_INT_TYPE},
+		{ "CS_TDS_VERSION", CS_TDS_VERSION, CS_INT_TYPE},
 		{ "CS_SYB_LANG", CS_SYB_LANG, -1 },
 		{ "CS_SYB_CHARSET", CS_SYB_CHARSET, -1 },
 		{ "", 0, 0}
@@ -5619,9 +5622,12 @@ CODE:
 	close_option = CS_FORCE_CLOSE;
 	ct_close(refCon->connection, close_option);
 	ct_con_drop(refCon->connection);
+#if 0
+	/* don't drop the locale now - we only have ONE! */
 	if((cs_loc_drop(context, info->locale)) != CS_SUCCEED) {
 	    warn("cs_loc_drop(context, locale) failed");
 	}
+#endif
 
 	/* only destroy the extra attributes hash if this is the
 	   last handle for this connection */
@@ -6157,7 +6163,7 @@ ct_config(action, property, param, type=CS_CHAR_TYPE)
 	int	type
 CODE:
 {
-    char buff[256];
+    char buff[1024];
     CS_INT outlen, *outptr = NULL;
     CS_INT int_param;
     CS_RETCODE retcode;
@@ -6172,7 +6178,7 @@ CODE:
 	}
 	else {
 	    param_ptr = buff;
-	    param_len = 255;
+	    param_len = 1023;
 	}
 	retcode = ct_config(context, action, property, param_ptr, param_len,
 			    NULL);

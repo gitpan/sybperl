@@ -7,12 +7,14 @@ BCP/t/bcp.t
 CHANGES
 CONFIG
 CTlib/CTlib.pm
+CTlib/CTlib.pod
 CTlib/CTlib.xs
 CTlib/Makefile.PL
 CTlib/README
 CTlib/t/ctlib.t
 CTlib/t/cursor.t
 DBlib/DBlib.pm
+DBlib/DBlib.pod
 DBlib/DBlib.xs
 DBlib/Makefile.PL
 DBlib/README
@@ -67,5 +69,5 @@ pod/Makefile
 pod/README
 pod/sybperl-1.0xx.man
 pod/sybperl.pod
-
+sqlda.h.min
 

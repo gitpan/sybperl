@@ -1,6 +1,6 @@
 #!/usr/local/bin/perl
 #
-#	@(#)Version	1.3	2/29/96
+#	$Id: Version,v 1.1 1999/05/14 17:15:59 mpeppler Exp $
 #
 # Execute this script in the Sybperl source directory (after building
 # sybperl...) to find out the exact version that you have

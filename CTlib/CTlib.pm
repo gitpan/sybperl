@@ -1,4 +1,5 @@
 # -*-Perl-*-
+# $Id: CTlib.pm,v 1.28 1999/04/16 16:54:01 mpeppler Exp $
 # @(#)CTlib.pm	1.27	03/26/99
 
 # Copyright (c) 1995-1997

@@ -1,4 +1,7 @@
 # -*-Perl-*-
+# $Id: ctlib.t,v 1.1 1999/05/14 17:24:03 mpeppler Exp $
+#
+# From
 # @(#)ctlib.t	1.17	03/05/98
 #
 # Small test script for Sybase::CTlib

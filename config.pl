@@ -1,5 +1,5 @@
 # -*-Perl-*-
-#	@(#)config.pl	1.8	10/03/97;
+#	$Id: config.pl,v 1.1 1999/05/14 17:16:50 mpeppler Exp $
 #
 # Extract relevant info from the CONFIG and patchlevel.h files.
 

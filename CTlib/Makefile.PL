@@ -1,4 +1,5 @@
 # -*-Perl-*-
+# $Id: Makefile.PL,v 1.19 1999/04/16 16:54:30 mpeppler Exp $
 # @(#)Makefile.PL	1.19	03/26/99
 
 

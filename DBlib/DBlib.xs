@@ -1,9 +1,12 @@
 /* -*-C-*-
+ * $Id: DBlib.xs,v 1.48 1999/05/14 17:31:42 mpeppler Exp $
+ *
+ * From
  *	@(#)DBlib.xs	1.47	03/26/99
  */	
 
 
-/* Copyright (c) 1991-1998
+/* Copyright (c) 1991-1999
    Michael Peppler
 
    You may copy this under the terms of the GNU General Public License,
@@ -930,7 +933,7 @@ initialize()
 	if((sv = perl_get_sv("Sybase::DBlib::Version", TRUE|GV_ADDMULTI)))
 	{
 	    char buff[256];
-	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib version 1.47 03/26/99\n\nCopyright (c) 1991-1998 Michael Peppler\n\n",
+	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib $Revision: 1.48 $ $Date: 1999/05/14 17:31:42 $ \n\nCopyright (c) 1991-1999 Michael Peppler\n\n",
 		    SYBPLVER);
 	    sv_setnv(sv, atof(SYBPLVER));
 	    sv_setpv(sv, buff);

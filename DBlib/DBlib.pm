@@ -1,7 +1,10 @@
 # -*-Perl-*-
-# @(#)DBlib.pm	1.35	03/26/99
+# $Id: DBlib.pm,v 1.36 1999/05/14 17:28:30 mpeppler Exp $
+#
+# From:
+# 	@(#)DBlib.pm	1.35	03/26/99
 
-# Copyright (c) 1991-1997
+# Copyright (c) 1991-1999
 #   Michael Peppler
 #
 #   You may copy this under the terms of the GNU General Public License,

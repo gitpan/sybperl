@@ -1,5 +1,7 @@
 #!./perl
-
+# $Id: cursor.t,v 1.1 1999/05/14 17:24:20 mpeppler Exp $
+#
+# From
 #	@(#)cursor.t	1.5	05/20/97
 
 ######################### We start with some black magic to print on failure.

@@ -28,7 +28,7 @@ SYBASE=/opt/sybase
 # Linux needs -linsck
 # See the Sybase OpenClient Supplement for your OS/Hardware
 # combination.
-EXTRA_LIBS=-ltli
+EXTRA_LIBS=-linsck
 
 # Library directory. Under Windows/NT, if you are using the Borland
 # compilers, then uncomment the line below:
