@@ -1,0 +1,11 @@
+I had started rewriting dbschema to work with the new System 10
+features, but that was several months ago, and I don't currently have
+a System 10 server running here.
+This version of dbschema probably works on a 4.9.2 server, but there
+may be problems against a 10.x server (the new
+numeric/identity/decimal datatypes and the referential integrity
+constraints, among others).
+
+The previous version of dbschema is available in dbschema.old
+
+Michael

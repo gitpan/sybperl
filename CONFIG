@@ -1,0 +1,40 @@
+#
+# Configuration file for Sybperl
+#
+# DBlibrary version. Set to 1000 (or higher) if you have System 10
+# Set to 0 if you do not want DBlib or if DBlib is not available
+# (Linux, for example)
+DBLIBVS=1000
+
+# CTlib version. Set to 0 if CTlibrary is not available on your
+# system, or if you don't want to build the CTlib module
+# Note that the CTlib module is still under construction, though the
+# core API should be stable now.
+# Set to 100 if you have System 10.
+CTLIBVS=100
+
+# Where is the Sybase directory on your system (include files &
+# libraries are expected to be found at SYBASE/include & SYBASE/lib
+SYBASE=/usr/local/sybase10.0.2
+
+# Additional libraries.
+# Some systems require -lnsl or -lBSD.
+# See the Sybase OpenClient Supplement for your OS/Hardware
+# combination.
+EXTRA_LIBS=
+
+# Additional #defines.
+# With Perl 5.001 there is a bug when returning an array that is
+# entirely populated with 'undef' values (as would be the case when
+# fetching a row where all the values are NULL. By defining UNDEF_BUG
+# you enable a (crude) work around.
+EXTRA_DEFS=-DUNDEF_BUG
+
+# LINKTYPE
+# If you wish to link Sybase::DBlib statically into perl
+# uncomment the line below, run the make normally, then cd into
+# Sybase/DBlib and run 'make perl'.
+#LINKTYPE=static
+
+# Sybperl version - shouldn't need to change this.
+VERSION=2b3

@@ -1,0 +1,147 @@
+		     @(#)README	1.16	9/21/95
+
+			   sybperl 2 beta 3
+	
+	  This is sybperl, the Sybase extensions for Perl5.
+
+       Copyright (c) 1991,1992,1993,1994,1995  Michael Peppler
+			 All rights reserved.
+			 
+  This program is free software; you can redistribute it and/or modify
+  it under the same terms as Perl itself.
+
+  You should have received a copy of the Perl license along with Perl;
+  see the file README in Perl distribution.
+ 
+  You should have received a copy of the GNU General Public License
+  along with Perl; see the file Copying.  If not, write to the Free
+  Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
+
+  You should have received a copy of the Artistic License along with
+  Perl; see the file Artistic.
+
+---------------------------------------------------------------------
+
+This version requires Perl5.001. The 'official' unofficial patches 1a
+through 1m are recommended.
+
+There are three modules in this distribution: Sybase::DBlib,
+Sybase::Sybperl and Sybase::CTlib.
+
+Sybase::DBlib implements the Perl 5 version of the DB-library
+API. This differs slightly from the Perl 4 version.
+The Sybase::Sybperl module implements the sybperl 1.0xx API, and is
+built on top of Sybase::DBlib.
+
+All of the sybperl 1.0xx API has been implemented, and there are some
+extras (such as the two-phase commit routines).
+
+Sybase::CTlib implements a limited subset of the Client Library API,
+and should still be considered 'test' software.
+
+---------------------------------------------------------------------
+
+Installation:
+
+Normally, the following steps should be sufficient, assuming that
+Perl 5.001 or later is installed at your site :
+
+   1) Unpack the package somewhere convenient.
+      You can either add the Sybase modules to the Perl 5.001 source
+      tree, or unpack it someplace else, provided that 5.001 has been
+      installed at your site. Building Sybperl outside of the Perl
+      source tree is recomended. If you don't want to install Perl 5.001
+      as a production version right now, you can still install it in
+      some other place, and access that version by setting your PATH
+      variable accordingly (I have a production version Perl5.001m
+      under /usr/local/{bin,lib} and a debug version of Perl5.001m
+      under /f2/{bin, lib} and change my path when I need to test
+      things with debugging turned on).
+      
+   2) Edit CONFIG
+      This should be fairly straightforward.
+      
+      NOTE: I have discovered what I think is a bug in Perl 5.001m
+      which shows up when logically testing an array where all the
+      elements are 'undef'. This bug can show up when you retrieve
+      rows using dbsqlexec() or ct_fetch() using a while loop: if you
+      retrieve a row where all the column values are NULL then the
+      while loop exits. The short-term workaround (which I admit is
+      pretty crude) consist in adding an additional non-null element
+      to the results array when all the column values are NULL. This
+      workaround is enabled by defining UNDEF_BUG (which is enabled by
+      default in the CONFIG file).
+      This bug does NOT show up if you retrieve the columns using
+      associative arrays instead of normal arrays.
+
+   3) Type: perl Makefile.PL
+      If you are building against a vanilla Perl5.001 release you will
+      get the following warning:
+	  'dist is not a known MakeMaker parameter name.
+      This can safely be ignored.
+      
+   4) Type: make
+      Again, if you are building against a vanilla Perl5.001 release
+      you will get a couple of redefinition warnings:
+	  Subroutine mkbootstrap redefined at Makefile.PL line 4
+	  Subroutine mksymlists redefined at Makefile.PL line 4
+      This can be ignored.
+      If you are building using static linking, you need to cd to
+      DBlib and type 'make perl' to build the perl binary with DBlib.a
+      included. You may need to run ranlib on libperl.a or DBlib.a.
+
+   6) Edit PWD
+      Enter the user id and password that you want to use to run the
+      tests. It's probably a good idea to reset this file to its
+      original state once you're done, unless you really don't have
+      any security concerns!
+      
+   6) Type: make test
+      If you have built sybperl with LINKTYPE=static, make test will
+      not work. You have to run the 'static.test' shell script
+      instead.
+      
+   7) If everything went OK, type: make install
+      Note that the man page does not get installed automatically. To
+      install the documentation, cd to the pod directory, and read the
+      README file there.
+
+
+
+NOTE: If you are building against OpenClient 10.x under SunOS or
+      Solaris you need to make sure that the dynamic linker (ld.so)
+      can find libsybdb.so. This can be done by linking it to /usr/lib
+      (for example) or setting LD_LIBRARY_PATH to point to
+      $SYBASE/lib.
+
+
+The regression tests are still under construction, but they test most
+of the basic functions, and should work cleanly.
+
+There are quite a few small example scripts in eg/ which illustrate
+the use of both the DBlib and CTlib modules.
+
+Documentation (in the pod/ directory) has grown to something which I
+hope is better, though I agree that it could still be improved quite a
+bit.
+
+There is a mailing list for discussing sybperl related questions
+(sybperl-list@itf.ch). Send a message to sybperl-list-request@itf.ch
+with the word 'subscribe' in the body to subscribe to the list.
+
+
+
+Reporting Bugs:
+===============
+
+I have set up a bug tracking database at ITF, to which bugs can be
+submitted via e-mail. If you have a comment, bug report or feature
+request you would like to make please use the template in the SPR file
+in this directory.
+
+
+Comments, criticism, et.al. VERY welcome!
+
+Michael Peppler - mpeppler@itf.ch	Phone: +4122 818 3021
+ITF Management SA			Fax:   +4122 312 1325
+

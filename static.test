@@ -1,0 +1,16 @@
+#!/bin/sh
+#	@(#)static.test	1.1	9/20/95
+#
+# This script runs the test scripts for you if you have built sybperl
+# with static linking.
+cd DBlib
+if [ -x perl ]; then
+   ./perl -I../blib t/dblib.t
+   cd ../Sybperl
+   ../DBlib/perl -I../blib t/sybperl.t
+   ../DBlib/perl -I../blib t/dbmoney.t
+fi
+cd ../CTlib
+if [ -x perl ]; then
+   ./perl -I../blib t/ctlib.t
+fi

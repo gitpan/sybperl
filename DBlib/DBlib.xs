@@ -1,0 +1,4539 @@
+/* -*-C-*-
+ * @(#)DBlib.xs	1.19	9/20/95
+ */
+
+/* Copyright (c) 1991-1995
+   Michael Peppler
+
+   You may copy this under the terms of the GNU General Public License,
+   or the Artistic License, copies of which should have accompanied
+   your Perl kit. */
+ 
+#include "EXTERN.h"
+#include "perl.h"
+#include "XSUB.h"
+
+#include <sybfront.h>
+#include <sybdb.h>
+#include <syberror.h>
+
+#if !defined(DBLIBVS)
+#define DBLIBVS		400
+#endif
+
+#if !defined(DBSETLCHARSET)
+#define DBSETLCHARSET(a,c)	not_here("DBSETLCHARSET")
+#endif
+#if !defined(DBSETLNATLANG)
+#define DBSETLNATLANG(a,c)	not_here("DBSETLNATLANG")
+#endif
+#if !defined(DBGETTIME)
+#define DBGETTIME()		not_here("DBGETTIME")
+#endif
+
+#if DBLIBVS < 1000
+#define dbsetversion(s)		not_here("dbsetversion")
+#if DBLIBVS < 461
+#define new_mnytochar(a, b, c)  not_here("new_mnytochar")
+#define new_mny4tochar(a,b,c)   not_here("new_mny4tochar")
+#define bcp_getl(a)		not_here("bcp_getl")
+#define dbsettime(t)		not_here("dbsettime")
+#define dbsetlogintime(t)	not_here("dbsetlogintime")
+#define dbmnymaxpos(a,b)	not_here("dbmnymaxpos")
+#define dbmnymaxneg(a,b)	not_here("dbmnymaxneg")
+#define dbmnyndigit(a,b,c,d)	not_here("dbmnyndigit")
+#define dbmnyscale(a,b,c,d)	not_here("dbmnyscale")
+#define dbmnyinit(a,b,c,d)	not_here("dbmnyinit")
+#define dbmnydown(a,b,c,d)	not_here("dbmonydown")
+#define dbmnyinc(a,b) 		not_here("dbmnyinc")
+#define dbmnydec(a,b)		not_here("dbmnydec")
+#define dbmnyzero(a,b)		not_here("dbmnyzero")
+#define dbmnycmp(a,b,c)		not_here("dbmnycmp")
+#define dbmnysub(a,b,c,d)	not_here("dbmnysub")
+#define dbmnymul(a,b,c,d)	not_here("dbmnymul")
+#define dbmnyminus(a,b,c)	not_here("dbmnyminus")
+#define dbmnydivide(a,b,c,d)	not_here("dbmnydivide")
+#define dbmnyadd(a,b,c,d)	not_here("dbmnyadd")
+#define dbmny4zero(a,b)		not_here("dbmny4zero")
+#define dbmny4cmp(a,b,c)	not_here("dbmny4cmp")
+#define dbmny4sub(a,b,c,d)	not_here("dbmny4sub")
+#define dbmny4mul(a,b,c,d)	not_here("dbmny4mul")
+#define dbmny4minus(a,b,c)	not_here("dbmny4minus")
+#define dbmny4divide(a,b,c,d)	not_here("dbmny4divide")
+#define dbmny4add(a,b,c,d)	not_here("dbmny4add")
+#if !defined(DBMONEY4)
+#define DBMONEY4		DBMONEY
+#define SYBMONEY4		SYBMONEY /* don't know if this is necessary */
+#endif /* !defined(DBMONEY4) */
+#if DBLIBVS < 420
+#define dbrecftos(s)		not_here("dbrecftos")
+#define dbsafestr(a,b,c,d,e,f)	not_here("dbsafestr")
+#ifndef DBDOUBLE
+#define DBDOUBLE	1
+#endif
+#ifndef DBSINGLE
+#define DBSINGLE	0
+#endif
+#ifndef DBBOTH
+#define DBBOTH	2
+#endif
+#endif /* DBLIBVS < 420 */
+#endif /* DBLIBVS < 461 */
+#endif /* DBLIBVS < 1000 */
+
+typedef enum hash_key_id
+{
+    HV_dbproc,
+    HV_compute_id,
+    HV_dbstatus,
+    HV_nullundef,
+    HV_keepnum,
+    HV_bin0x,
+    HV_rpcinfo
+} hash_key_id;
+
+static char *hash_keys[] = { "dbproc", "ComputeID", "DBstatus",
+			     "dbNullIsUndef", "dbKeepNumeric", "dbBin0x",
+			     "rpcInfo"};
+
+struct RpcInfo
+{
+    int type;
+    union {
+	DBINT i;
+	DBFLT8 f;
+	DBCHAR *c;
+    } u;
+    int size;
+    void *value;
+    struct RpcInfo *next;
+};
+
+static LOGINREC *login;
+
+
+/* Call back stuff has been borrowed from DB_File.xs */
+typedef struct
+{
+    SV *	sub ;
+} CallBackInfo ;
+
+static CallBackInfo err_callback 	= { 0 } ;
+static CallBackInfo msg_callback 	= { 0 } ;
+
+/* A couple of simplifyed calls for our own use... */
+
+static SV **my_hv_fetch(hv, id, flag)
+    HV *hv;
+    hash_key_id id;
+    int flag;
+{
+    return hv_fetch(hv, hash_keys[id], strlen(hash_keys[id]), flag);
+}
+
+static SV **my_hv_store(hv, id, sv, flag)
+    HV *hv;
+    hash_key_id id;
+    SV *sv;
+    int flag;
+{
+    return hv_store(hv, hash_keys[id], strlen(hash_keys[id]), sv, flag);
+}
+
+static DBPROCESS *getDBPROC(dbp)
+    SV *dbp;
+{
+    HV *hv;
+    SV **svp;
+    DBPROCESS *dbproc;
+    
+    if(!SvROK(dbp))
+	croak("dbproc parameter is not a reference");
+    hv = (HV *)SvRV(dbp);
+    if(!(svp = my_hv_fetch(hv, HV_dbproc, FALSE)))
+	croak("no dbproc key in hash");
+    dbproc = (void *)SvIV(*svp);
+
+    return dbproc;
+}
+    
+
+static int err_handler(db, severity, dberr, oserr, dberrstr, oserrstr)
+    DBPROCESS *db;
+    int severity;
+    int dberr;
+    int oserr;
+    char *dberrstr;
+    char *oserrstr;
+{
+    if(err_callback.sub)	/* a perl error handler has been installed */
+    {
+	dSP;
+	SV *rv;
+	SV *sv;
+	HV *hv;
+	int retval, count;
+
+	ENTER;
+	SAVETMPS;
+	PUSHMARK(sp);
+	
+	if(db && !DBDEAD(db))
+	{
+	    hv = (HV*)sv_2mortal((SV*)newHV());
+	    sv = newSViv((IV)db);
+	    my_hv_store(hv, HV_dbproc, sv, 0);
+	    rv = newRV((SV*)hv);
+	
+	    XPUSHs(sv_2mortal(rv));
+	}
+	else
+	    XPUSHs(&sv_undef);
+	    
+	XPUSHs(sv_2mortal (newSViv (severity)));
+	XPUSHs(sv_2mortal (newSViv (dberr)));
+	XPUSHs(sv_2mortal (newSViv (oserr)));
+	if (dberrstr && *dberrstr)
+	    XPUSHs(sv_2mortal (newSVpv (dberrstr, 0)));
+	else
+	    XPUSHs(&sv_undef);
+	if (oserrstr && *oserrstr)
+	    XPUSHs(sv_2mortal (newSVpv (oserrstr, 0)));
+	else
+	    XPUSHs(&sv_undef);
+
+	PUTBACK;
+	if((count = perl_call_sv(err_callback.sub, G_SCALAR)) != 1)
+	    croak("An error handler can't return a LIST.");
+	SPAGAIN;
+	retval = POPi;
+	
+	PUTBACK;
+	FREETMPS;
+	LEAVE;
+	
+	return retval;
+    }
+    
+    if ((db == NULL) || (DBDEAD(db)))
+	return(INT_EXIT);
+    else 
+    {
+	fprintf(stderr,"DB-Library error:\n\t%s\n", dberrstr);
+	
+	if (oserr != DBNOERR)
+	    fprintf(stderr,"Operating-system error:\n\t%s\n", oserrstr);
+	
+	return(INT_CANCEL);
+    }
+}
+
+static int msg_handler(db, msgno, msgstate, severity, msgtext, srvname, procname, line)
+    DBPROCESS *db;
+    DBINT msgno;
+    int msgstate;
+    int severity;
+    char *msgtext;
+    char *srvname;
+    char *procname;
+    DBUSMALLINT line;
+{
+
+    if(msg_callback.sub)	/* a perl error handler has been installed */
+    {
+	dSP;
+	SV * rv;
+	SV * sv;
+	HV * hv;
+	int retval, count;
+
+	ENTER;
+	SAVETMPS;
+	PUSHMARK(sp);
+
+	if(db && !DBDEAD(db))
+	{
+	    hv = (HV*)sv_2mortal((SV*)newHV());
+	    sv = newSViv((IV)db);
+	    my_hv_store(hv, HV_dbproc, sv, 0);
+	    rv = newRV((SV*)hv);
+	
+	    XPUSHs(sv_2mortal(rv));
+	}
+	else
+	    XPUSHs(&sv_undef);
+
+	XPUSHs(sv_2mortal (newSViv (msgno)));
+	XPUSHs(sv_2mortal (newSViv (msgstate)));
+	XPUSHs(sv_2mortal (newSViv (severity)));
+	if (msgtext && *msgtext)
+	    XPUSHs(sv_2mortal (newSVpv (msgtext, 0)));
+	else
+	    XPUSHs(&sv_undef);
+	if (srvname && *srvname)
+	    XPUSHs(sv_2mortal (newSVpv (srvname, 0)));
+	else
+	    XPUSHs(&sv_undef);
+	if (procname && *procname)
+	    XPUSHs(sv_2mortal (newSVpv (procname, 0)));
+	else
+	    XPUSHs(&sv_undef);
+	XPUSHs(sv_2mortal (newSViv (line)));
+
+	PUTBACK;
+	if((count = perl_call_sv(msg_callback.sub, G_SCALAR)) != 1)
+	    croak("A msg handler cannot return a LIST");
+	SPAGAIN;
+	retval = POPi;
+	
+	PUTBACK;
+	FREETMPS;
+	LEAVE;
+	
+	return retval;
+    }
+    
+    /* Don't print any message if severity == 0 */
+    if(!severity)
+	return 0;
+
+    fprintf (stderr,"Msg %ld, Level %d, State %d\n", 
+	     msgno, severity, msgstate);
+    if ((int)strlen(srvname) > 0)
+	fprintf (stderr,"Server '%s', ", srvname);
+    if ((int)strlen(procname) > 0)
+	fprintf (stderr,"Procedure '%s', ", procname);
+    if (line > 0)
+	fprintf (stderr,"Line %d", line);
+    
+    fprintf(stderr,"\n\t%s\n", msgtext);
+    
+    return(0);
+}
+
+static void
+initialize()
+{
+    if(!login)
+    {
+	SV *sv;
+	
+	if(dbinit() == FAIL)
+	    croak("Can't initialize dblibrary...");
+	dberrhandle(err_handler);
+	dbmsghandle(msg_handler);
+	login = dblogin();
+
+	if((sv = perl_get_sv("0", FALSE)))
+	{
+	    char scriptname[256];
+	    char *p;
+	    strcpy(scriptname, SvPV(sv, na));
+	    if((p = strrchr(scriptname, '/')))
+		++p;
+	    else
+		p = scriptname;
+
+	    /* The script name must not be longer than MAXNAME or DBSETLAPP */
+	    /* fails */
+	    if((int)strlen(p) > MAXNAME)
+		p[MAXNAME] = 0;
+	    
+	    DBSETLAPP(login, p);
+	}
+	/* This is deprecated: use Sybase::DBlib::Version instead */
+	if((sv = perl_get_sv("main::SybperlVer", TRUE)))
+	    sv_setpv(sv, SYBPLVER);
+	if((sv = perl_get_sv("Sybase::DBlib::Version", TRUE)))
+	    sv_setpv(sv, SYBPLVER);
+    }
+}
+    
+#if DBLIBVS >= 461
+
+/* This is taken straight from sybperl 1.0xx.
+   These routines were contributed by Jeff Wong. */
+
+/* The following routines originate from the OpenClient R4.6.1 reference  */
+/* manual, pages 2-165 to 2-168 both inclusive.  It has been subsequently */
+/* modified (slightly) to suit local conditions.                          */
+
+#define PRECISION 4
+
+static void new_mny4tochar(dbproc, mny4ptr, buf_ptr)
+DBPROCESS *dbproc;
+DBMONEY4  *mny4ptr;
+DBCHAR    *buf_ptr;
+{
+   DBMONEY local_mny;
+   DBCHAR  value;
+   char    temp_buf[40];
+
+   int     bytes_written = 0;
+   int     i             = 0;
+   DBBOOL  negative      = (DBBOOL)FALSE;
+   DBBOOL  zero          = (DBBOOL)FALSE;
+
+   if (dbconvert(dbproc, SYBMONEY4, (BYTE*)mny4ptr, (DBINT)-1,
+                 SYBMONEY, (BYTE*)&local_mny, (DBINT)-1) == -1)
+   {
+      croak("dbconvert() failed in routine new_mny4tochar()");
+   }
+
+   if (dbmnyinit(dbproc, &local_mny, 4 - PRECISION, &negative) == FAIL)
+   {
+      croak("dbmnyinit() failed in routine new_mny4tochar()");
+   }
+
+   while (zero == FALSE)
+   {
+      if (dbmnyndigit(dbproc, &local_mny, &value, &zero) == FAIL)
+      {
+         croak("dbmnyndigit() failed in routine new_mny4tochar()");
+      }
+
+      temp_buf[bytes_written++] = value;
+
+      if (zero == FALSE)
+      {
+         if (bytes_written == PRECISION)
+         {
+            temp_buf[bytes_written++] = '.';
+         }
+      }
+   }
+
+   while (bytes_written < PRECISION)
+   {
+      temp_buf[bytes_written++] = '0';
+   }
+
+   if (bytes_written == PRECISION)
+   {
+      temp_buf[bytes_written++] = '.';
+      temp_buf[bytes_written++] = '0';
+   }
+
+   if (negative == TRUE)
+   {
+      buf_ptr[i++] = '-';
+   }
+
+   while (bytes_written--)
+   {
+      buf_ptr[i++] = temp_buf[bytes_written];
+   }
+
+   buf_ptr[i] = '\0';
+
+   return;
+}
+
+static void new_mnytochar(dbproc, mnyptr, buf_ptr)
+DBPROCESS *dbproc;
+DBMONEY   *mnyptr;
+DBCHAR    *buf_ptr;
+{
+   DBMONEY local_mny;
+   DBCHAR  value;
+   char    temp_buf[40];
+
+   int     bytes_written = 0;
+   int     i             = 0;
+   DBBOOL  negative      = (DBBOOL)FALSE;
+   DBBOOL  zero          = (DBBOOL)FALSE;
+
+   if (dbmnycopy(dbproc, mnyptr, &local_mny) == FAIL)
+   {
+      croak("dbmnycopy() failed in routine new_mnytochar()");
+   }
+
+   if (dbmnyinit(dbproc, &local_mny, 4 - PRECISION, &negative) == FAIL)
+   {
+      croak("dbmnyinit() failed in routine new_mnytochar()");
+   }
+
+   while (zero == FALSE)
+   {
+      if (dbmnyndigit(dbproc, &local_mny, &value, &zero) == FAIL)
+      {
+         croak("dbmnyndigit() failed in routine new_mnytochar()");
+      }
+
+      temp_buf[bytes_written++] = value;
+
+      if (zero == FALSE)
+      {
+         if (bytes_written == PRECISION)
+         {
+            temp_buf[bytes_written++] = '.';
+         }
+      }
+   }
+
+   while (bytes_written < PRECISION)
+   {
+      temp_buf[bytes_written++] = '0';
+   }
+
+   if (bytes_written == PRECISION)
+   {
+      temp_buf[bytes_written++] = '.';
+      temp_buf[bytes_written++] = '0';
+   }
+
+   if (negative == TRUE)
+   {
+      buf_ptr[i++] = '-';
+   }
+
+   while (bytes_written--)
+   {
+      buf_ptr[i++] = temp_buf[bytes_written];
+   }
+
+   buf_ptr[i] = '\0';
+
+   return;
+}
+
+#endif  /* DBLIBVS >= 461 */
+
+static int
+not_here(s)
+char *s;
+{
+    croak("Sybase::DBlib::%s not implemented on this architecture", s);
+    return -1;
+}
+
+static double
+constant(name, arg)
+char *name;
+int arg;
+{
+    errno = 0;
+    switch (*name) {
+    case 'A':
+	break;
+    case 'B':
+	if (strEQ(name, "BCPBATCH"))
+#ifdef BCPBATCH
+	    return BCPBATCH;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "BCPERRFILE"))
+#ifdef BCPERRFILE
+	    return BCPERRFILE;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "BCPFIRST"))
+#ifdef BCPFIRST
+	    return BCPFIRST;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "BCPLAST"))
+#ifdef BCPLAST
+	    return BCPLAST;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "BCPMAXERRS"))
+#ifdef BCPMAXERRS
+	    return BCPMAXERRS;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "BCPNAMELEN"))
+#ifdef BCPNAMELEN
+	    return BCPNAMELEN;
+#else
+	    goto not_there;
+#endif
+	break;
+    case 'C':
+	break;
+    case 'D':
+	if (strEQ(name, "DBARITHABORT"))
+#ifdef DBARITHABORT
+	    return DBARITHABORT;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "DBARITHIGNORE"))
+#ifdef DBARITHIGNORE
+	    return DBARITHIGNORE;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "DBBOTH"))
+#ifdef DBBOTH
+	    return DBBOTH;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "DBLIBVS"))
+#ifdef DBLIBVS
+	    return DBLIBVS;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "DBBUFFER"))
+#ifdef DBBUFFER
+	    return DBBUFFER;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "DBBUFSIZE"))
+#ifdef DBBUFSIZE
+	    return DBBUFSIZE;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "DBDATEFORMAT"))
+#ifdef DBDATEFORMAT
+	    return DBDATEFORMAT;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "DBDOUBLE"))
+#ifdef DBDOUBLE
+	    return DBDOUBLE;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "DBNATLANG"))
+#ifdef DBNATLANG
+	    return DBNATLANG;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "DBNOAUTOFREE"))
+#ifdef DBNOAUTOFREE
+	    return DBNOAUTOFREE;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "DBNOCOUNT"))
+#ifdef DBNOCOUNT
+	    return DBNOCOUNT;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "DBNOEXEC"))
+#ifdef DBNOEXEC
+	    return DBNOEXEC;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "DBNUMOPTIONS"))
+#ifdef DBNUMOPTIONS
+	    return DBNUMOPTIONS;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "DBOFFSET"))
+#ifdef DBOFFSET
+	    return DBOFFSET;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "DBPARSEONLY"))
+#ifdef DBPARSEONLY
+	    return DBPARSEONLY;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "DBROWCOUNT"))
+#ifdef DBROWCOUNT
+	    return DBROWCOUNT;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "DBRPCNORETURN"))
+#ifdef DBRPCNORETURN
+	    return DBRPCNORETURN;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "DBRPCRETURN"))
+#ifdef DBRPCRETURN
+	    return DBRPCRETURN;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "DBRPCRECOMPILE"))
+#ifdef DBRPCRECOMPILE
+	    return DBRPCRECOMPILE;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "DBSHOWPLAN"))
+#ifdef DBSHOWPLAN
+	    return DBSHOWPLAN;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "DBSINGLE"))
+#ifdef DBSINGLE
+	    return DBSINGLE;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "DBSTAT"))
+#ifdef DBSTAT
+	    return DBSTAT;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "DBSTORPROCID"))
+#ifdef DBSTORPROCID
+	    return DBSTORPROCID;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "DBTEXTLIMIT"))
+#ifdef DBTEXTLIMIT
+	    return DBTEXTLIMIT;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "DBTEXTSIZE"))
+#ifdef DBTEXTSIZE
+	    return DBTEXTSIZE;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "DBTXPLEN"))
+#ifdef DBTXPLEN
+	    return DBTXPLEN;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "DBTXTSLEN"))
+#ifdef DBTXTSLEN
+	    return DBTXTSLEN;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "DB_IN"))
+#ifdef DB_IN
+	    return DB_IN;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "DB_OUT"))
+#ifdef DB_OUT
+	    return DB_OUT;
+#else
+	    goto not_there;
+#endif
+	break;
+    case 'E':
+	if (strEQ(name, "ERREXIT"))
+#ifdef ERREXIT
+	    return ERREXIT;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "EXCEPTION"))
+#ifdef EXCEPTION
+	    return EXCEPTION;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "EXCLIPBOARD"))
+#ifdef EXCLIPBOARD
+	    return EXCLIPBOARD;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "EXCOMM"))
+#ifdef EXCOMM
+	    return EXCOMM;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "EXCONSISTENCY"))
+#ifdef EXCONSISTENCY
+	    return EXCONSISTENCY;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "EXCONVERSION"))
+#ifdef EXCONVERSION
+	    return EXCONVERSION;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "EXDBLIB"))
+#ifdef EXDBLIB
+	    return EXDBLIB;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "EXECDONE"))
+#ifdef EXECDONE
+	    return EXECDONE;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "EXFATAL"))
+#ifdef EXFATAL
+	    return EXFATAL;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "EXFORMS"))
+#ifdef EXFORMS
+	    return EXFORMS;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "EXINFO"))
+#ifdef EXINFO
+	    return EXINFO;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "EXLOOKUP"))
+#ifdef EXLOOKUP
+	    return EXLOOKUP;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "EXNONFATAL"))
+#ifdef EXNONFATAL
+	    return EXNONFATAL;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "EXPROGRAM"))
+#ifdef EXPROGRAM
+	    return EXPROGRAM;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "EXRESOURCE"))
+#ifdef EXRESOURCE
+	    return EXRESOURCE;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "EXSCREENIO"))
+#ifdef EXSCREENIO
+	    return EXSCREENIO;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "EXSERVER"))
+#ifdef EXSERVER
+	    return EXSERVER;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "EXSIGNAL"))
+#ifdef EXSIGNAL
+	    return EXSIGNAL;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "EXTIME"))
+#ifdef EXTIME
+	    return EXTIME;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "EXUSER"))
+#ifdef EXUSER
+	    return EXUSER;
+#else
+	    goto not_there;
+#endif
+	break;
+    case 'F':
+	if (strEQ(name, "FAIL"))
+#ifdef FAIL
+	    return FAIL;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "FALSE"))
+#ifdef FALSE
+	    return FALSE;
+#else
+	    goto not_there;
+#endif
+	break;
+    case 'G':
+	break;
+    case 'H':
+	break;
+    case 'I':
+	if (strEQ(name, "IN"))
+#ifdef IN
+	    return IN;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "INT_CANCEL"))
+#ifdef INT_CANCEL
+	    return INT_CANCEL;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "INT_CONTINUE"))
+#ifdef INT_CONTINUE
+	    return INT_CONTINUE;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "INT_EXIT"))
+#ifdef INT_EXIT
+	    return INT_EXIT;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "INT_TIMEOUT"))
+#ifdef INT_TIMEOUT
+	    return INT_TIMEOUT;
+#else
+	    goto not_there;
+#endif
+	break;
+    case 'J':
+	break;
+    case 'K':
+	break;
+    case 'L':
+	break;
+    case 'M':
+	if (strEQ(name, "MAXBIND"))
+#ifdef MAXBIND
+	    return MAXBIND;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "MAXNAME"))
+#ifdef MAXNAME
+	    return MAXNAME;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "MAXOPTTEXT"))
+#ifdef MAXOPTTEXT
+	    return MAXOPTTEXT;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "MAXSECLEVEL"))
+#ifdef MAXSECLEVEL
+	    return MAXSECLEVEL;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "MINSECLEVEL"))
+#ifdef MINSECLEVEL
+	    return MINSECLEVEL;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "MORE_ROWS"))
+#ifdef MORE_ROWS
+	    return MORE_ROWS;
+#else
+	    goto not_there;
+#endif
+	break;
+    case 'N':
+	if (strEQ(name, "NOSUCHOPTION"))
+#ifdef NOSUCHOPTION
+	    return NOSUCHOPTION;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "NO_MORE_PARAMS"))
+#ifdef NO_MORE_PARAMS
+	    return NO_MORE_PARAMS;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "NO_MORE_RESULTS"))
+#ifdef NO_MORE_RESULTS
+	    return NO_MORE_RESULTS;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "NO_MORE_ROWS"))
+#ifdef NO_MORE_ROWS
+	    return NO_MORE_ROWS;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "NULL"))
+#ifdef NULL
+	    return (double)((int)NULL);	/* The cast is there to make NeXT cc happy */
+#else
+	    goto not_there;
+#endif
+	break;
+    case 'O':
+	if (strEQ(name, "OFF"))
+#ifdef OFF
+	    return OFF;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "OFF_COMPUTE"))
+#ifdef OFF_COMPUTE
+	    return OFF_COMPUTE;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "OFF_EXEC"))
+#ifdef OFF_EXEC
+	    return OFF_EXEC;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "OFF_FROM"))
+#ifdef OFF_FROM
+	    return OFF_FROM;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "OFF_ORDER"))
+#ifdef OFF_ORDER
+	    return OFF_ORDER;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "OFF_PARAM"))
+#ifdef OFF_PARAM
+	    return OFF_PARAM;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "OFF_PROCEDURE"))
+#ifdef OFF_PROCEDURE
+	    return OFF_PROCEDURE;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "OFF_SELECT"))
+#ifdef OFF_SELECT
+	    return OFF_SELECT;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "OFF_STATEMENT"))
+#ifdef OFF_STATEMENT
+	    return OFF_STATEMENT;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "OFF_TABLE"))
+#ifdef OFF_TABLE
+	    return OFF_TABLE;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "ON"))
+#ifdef ON
+	    return ON;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "OUT"))
+#ifdef OUT
+	    return OUT;
+#else
+	    goto not_there;
+#endif
+	break;
+    case 'P':
+	break;
+    case 'Q':
+	break;
+    case 'R':
+	if (strEQ(name, "REG_ROW"))
+#ifdef REG_ROW
+	    return REG_ROW;
+#else
+	    goto not_there;
+#endif
+	break;
+    case 'S':
+	if (strEQ(name, "STATNULL"))
+#ifdef STATNULL
+	    return STATNULL;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "STDEXIT"))
+#ifdef STDEXIT
+	    return STDEXIT;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SUCCEED"))
+#ifdef SUCCEED
+	    return SUCCEED;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBBINARY"))
+#ifdef SYBBINARY
+	    return SYBBINARY;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBBIT"))
+#ifdef SYBBIT
+	    return SYBBIT;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBCHAR"))
+#ifdef SYBCHAR
+	    return SYBCHAR;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBDATETIME"))
+#ifdef SYBDATETIME
+	    return SYBDATETIME;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBDATETIME4"))
+#ifdef SYBDATETIME4
+	    return SYBDATETIME4;
+#else
+	    goto not_there;
+#endif
+	if(strnEQ(name, "SYBE", 4))
+	{
+	    if (strEQ(name, "SYBEAAMT"))
+#ifdef SYBEAAMT
+		return SYBEAAMT;
+#else
+	    goto not_there;
+#endif
+		if (strEQ(name, "SYBEABMT"))
+#ifdef SYBEABMT
+		    return SYBEABMT;
+#else
+		goto not_there;
+#endif
+		if (strEQ(name, "SYBEABNC"))
+#ifdef SYBEABNC
+		    return SYBEABNC;
+#else
+		goto not_there;
+#endif
+		if (strEQ(name, "SYBEABNP"))
+#ifdef SYBEABNP
+		    return SYBEABNP;
+#else
+		goto not_there;
+#endif
+		if (strEQ(name, "SYBEABNV"))
+#ifdef SYBEABNV
+		    return SYBEABNV;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEACNV"))
+#ifdef SYBEACNV
+	    return SYBEACNV;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEADST"))
+#ifdef SYBEADST
+	    return SYBEADST;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEAICF"))
+#ifdef SYBEAICF
+	    return SYBEAICF;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEALTT"))
+#ifdef SYBEALTT
+	    return SYBEALTT;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEAOLF"))
+#ifdef SYBEAOLF
+	    return SYBEAOLF;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEAPCT"))
+#ifdef SYBEAPCT
+	    return SYBEAPCT;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEAPUT"))
+#ifdef SYBEAPUT
+	    return SYBEAPUT;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEARDI"))
+#ifdef SYBEARDI
+	    return SYBEARDI;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEARDL"))
+#ifdef SYBEARDL
+	    return SYBEARDL;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEASEC"))
+#ifdef SYBEASEC
+	    return SYBEASEC;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEASNL"))
+#ifdef SYBEASNL
+	    return SYBEASNL;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEASTF"))
+#ifdef SYBEASTF
+	    return SYBEASTF;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEASTL"))
+#ifdef SYBEASTL
+	    return SYBEASTL;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEASUL"))
+#ifdef SYBEASUL
+	    return SYBEASUL;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEAUTN"))
+#ifdef SYBEAUTN
+	    return SYBEAUTN;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEBADPK"))
+#ifdef SYBEBADPK
+	    return SYBEBADPK;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEBBCI"))
+#ifdef SYBEBBCI
+	    return SYBEBBCI;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEBCBC"))
+#ifdef SYBEBCBC
+	    return SYBEBCBC;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEBCFO"))
+#ifdef SYBEBCFO
+	    return SYBEBCFO;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEBCIS"))
+#ifdef SYBEBCIS
+	    return SYBEBCIS;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEBCIT"))
+#ifdef SYBEBCIT
+	    return SYBEBCIT;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEBCNL"))
+#ifdef SYBEBCNL
+	    return SYBEBCNL;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEBCNN"))
+#ifdef SYBEBCNN
+	    return SYBEBCNN;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEBCNT"))
+#ifdef SYBEBCNT
+	    return SYBEBCNT;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEBCOR"))
+#ifdef SYBEBCOR
+	    return SYBEBCOR;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEBCPB"))
+#ifdef SYBEBCPB
+	    return SYBEBCPB;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEBCPI"))
+#ifdef SYBEBCPI
+	    return SYBEBCPI;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEBCPN"))
+#ifdef SYBEBCPN
+	    return SYBEBCPN;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEBCRE"))
+#ifdef SYBEBCRE
+	    return SYBEBCRE;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEBCRO"))
+#ifdef SYBEBCRO
+	    return SYBEBCRO;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEBCSA"))
+#ifdef SYBEBCSA
+	    return SYBEBCSA;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEBCSI"))
+#ifdef SYBEBCSI
+	    return SYBEBCSI;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEBCUC"))
+#ifdef SYBEBCUC
+	    return SYBEBCUC;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEBCUO"))
+#ifdef SYBEBCUO
+	    return SYBEBCUO;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEBCVH"))
+#ifdef SYBEBCVH
+	    return SYBEBCVH;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEBCWE"))
+#ifdef SYBEBCWE
+	    return SYBEBCWE;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEBDIO"))
+#ifdef SYBEBDIO
+	    return SYBEBDIO;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEBEOF"))
+#ifdef SYBEBEOF
+	    return SYBEBEOF;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEBIHC"))
+#ifdef SYBEBIHC
+	    return SYBEBIHC;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEBIVI"))
+#ifdef SYBEBIVI
+	    return SYBEBIVI;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEBNCR"))
+#ifdef SYBEBNCR
+	    return SYBEBNCR;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEBPKS"))
+#ifdef SYBEBPKS
+	    return SYBEBPKS;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEBRFF"))
+#ifdef SYBEBRFF
+	    return SYBEBRFF;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEBTMT"))
+#ifdef SYBEBTMT
+	    return SYBEBTMT;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEBTOK"))
+#ifdef SYBEBTOK
+	    return SYBEBTOK;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEBTYP"))
+#ifdef SYBEBTYP
+	    return SYBEBTYP;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEBUCE"))
+#ifdef SYBEBUCE
+	    return SYBEBUCE;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEBUCF"))
+#ifdef SYBEBUCF
+	    return SYBEBUCF;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEBUDF"))
+#ifdef SYBEBUDF
+	    return SYBEBUDF;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEBUFF"))
+#ifdef SYBEBUFF
+	    return SYBEBUFF;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEBUFL"))
+#ifdef SYBEBUFL
+	    return SYBEBUFL;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEBUOE"))
+#ifdef SYBEBUOE
+	    return SYBEBUOE;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEBUOF"))
+#ifdef SYBEBUOF
+	    return SYBEBUOF;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEBWEF"))
+#ifdef SYBEBWEF
+	    return SYBEBWEF;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEBWFF"))
+#ifdef SYBEBWFF
+	    return SYBEBWFF;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBECDNS"))
+#ifdef SYBECDNS
+	    return SYBECDNS;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBECLOS"))
+#ifdef SYBECLOS
+	    return SYBECLOS;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBECLOSEIN"))
+#ifdef SYBECLOSEIN
+	    return SYBECLOSEIN;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBECLPR"))
+#ifdef SYBECLPR
+	    return SYBECLPR;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBECNOR"))
+#ifdef SYBECNOR
+	    return SYBECNOR;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBECNOV"))
+#ifdef SYBECNOV
+	    return SYBECNOV;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBECOFL"))
+#ifdef SYBECOFL
+	    return SYBECOFL;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBECONN"))
+#ifdef SYBECONN
+	    return SYBECONN;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBECRNC"))
+#ifdef SYBECRNC
+	    return SYBECRNC;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBECSYN"))
+#ifdef SYBECSYN
+	    return SYBECSYN;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBECUFL"))
+#ifdef SYBECUFL
+	    return SYBECUFL;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBECWLL"))
+#ifdef SYBECWLL
+	    return SYBECWLL;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEDBPS"))
+#ifdef SYBEDBPS
+	    return SYBEDBPS;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEDDNE"))
+#ifdef SYBEDDNE
+	    return SYBEDDNE;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEDIVZ"))
+#ifdef SYBEDIVZ
+	    return SYBEDIVZ;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEDNTI"))
+#ifdef SYBEDNTI
+	    return SYBEDNTI;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEDPOR"))
+#ifdef SYBEDPOR
+	    return SYBEDPOR;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEDVOR"))
+#ifdef SYBEDVOR
+	    return SYBEDVOR;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEECAN"))
+#ifdef SYBEECAN
+	    return SYBEECAN;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEECRT"))
+#ifdef SYBEECRT
+	    return SYBEECRT;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEEINI"))
+#ifdef SYBEEINI
+	    return SYBEEINI;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEEQVA"))
+#ifdef SYBEEQVA
+	    return SYBEEQVA;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEESSL"))
+#ifdef SYBEESSL
+	    return SYBEESSL;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEETD"))
+#ifdef SYBEETD
+	    return SYBEETD;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEEUNR"))
+#ifdef SYBEEUNR
+	    return SYBEEUNR;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEEVOP"))
+#ifdef SYBEEVOP
+	    return SYBEEVOP;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEEVST"))
+#ifdef SYBEEVST
+	    return SYBEEVST;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEFCON"))
+#ifdef SYBEFCON
+	    return SYBEFCON;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEFGTL"))
+#ifdef SYBEFGTL
+	    return SYBEFGTL;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEFMODE"))
+#ifdef SYBEFMODE
+	    return SYBEFMODE;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEFSHD"))
+#ifdef SYBEFSHD
+	    return SYBEFSHD;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEGENOS"))
+#ifdef SYBEGENOS
+	    return SYBEGENOS;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEICN"))
+#ifdef SYBEICN
+	    return SYBEICN;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEIDCL"))
+#ifdef SYBEIDCL
+	    return SYBEIDCL;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEIFCL"))
+#ifdef SYBEIFCL
+	    return SYBEIFCL;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEIFNB"))
+#ifdef SYBEIFNB
+	    return SYBEIFNB;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEIICL"))
+#ifdef SYBEIICL
+	    return SYBEIICL;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEIMCL"))
+#ifdef SYBEIMCL
+	    return SYBEIMCL;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEINLN"))
+#ifdef SYBEINLN
+	    return SYBEINLN;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEINTF"))
+#ifdef SYBEINTF
+	    return SYBEINTF;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEIPV"))
+#ifdef SYBEIPV
+	    return SYBEIPV;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEISOI"))
+#ifdef SYBEISOI
+	    return SYBEISOI;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEITIM"))
+#ifdef SYBEITIM
+	    return SYBEITIM;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEKBCI"))
+#ifdef SYBEKBCI
+	    return SYBEKBCI;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEKBCO"))
+#ifdef SYBEKBCO
+	    return SYBEKBCO;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEMEM"))
+#ifdef SYBEMEM
+	    return SYBEMEM;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEMOV"))
+#ifdef SYBEMOV
+	    return SYBEMOV;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEMPLL"))
+#ifdef SYBEMPLL
+	    return SYBEMPLL;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEMVOR"))
+#ifdef SYBEMVOR
+	    return SYBEMVOR;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBENBUF"))
+#ifdef SYBENBUF
+	    return SYBENBUF;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBENBVP"))
+#ifdef SYBENBVP
+	    return SYBENBVP;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBENDC"))
+#ifdef SYBENDC
+	    return SYBENDC;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBENDTP"))
+#ifdef SYBENDTP
+	    return SYBENDTP;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBENEHA"))
+#ifdef SYBENEHA
+	    return SYBENEHA;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBENHAN"))
+#ifdef SYBENHAN
+	    return SYBENHAN;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBENLNL"))
+#ifdef SYBENLNL
+	    return SYBENLNL;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBENMOB"))
+#ifdef SYBENMOB
+	    return SYBENMOB;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBENOEV"))
+#ifdef SYBENOEV
+	    return SYBENOEV;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBENOTI"))
+#ifdef SYBENOTI
+	    return SYBENOTI;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBENPRM"))
+#ifdef SYBENPRM
+	    return SYBENPRM;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBENSIP"))
+#ifdef SYBENSIP
+	    return SYBENSIP;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBENTLL"))
+#ifdef SYBENTLL
+	    return SYBENTLL;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBENTST"))
+#ifdef SYBENTST
+	    return SYBENTST;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBENTTN"))
+#ifdef SYBENTTN
+	    return SYBENTTN;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBENULL"))
+#ifdef SYBENULL
+	    return SYBENULL;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBENULP"))
+#ifdef SYBENULP
+	    return SYBENULP;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBENUM"))
+#ifdef SYBENUM
+	    return SYBENUM;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBENXID"))
+#ifdef SYBENXID
+	    return SYBENXID;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEOOB"))
+#ifdef SYBEOOB
+	    return SYBEOOB;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEOPIN"))
+#ifdef SYBEOPIN
+	    return SYBEOPIN;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEOPNA"))
+#ifdef SYBEOPNA
+	    return SYBEOPNA;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEOPTNO"))
+#ifdef SYBEOPTNO
+	    return SYBEOPTNO;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEOREN"))
+#ifdef SYBEOREN
+	    return SYBEOREN;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEORPF"))
+#ifdef SYBEORPF
+	    return SYBEORPF;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEOSSL"))
+#ifdef SYBEOSSL
+	    return SYBEOSSL;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEPAGE"))
+#ifdef SYBEPAGE
+	    return SYBEPAGE;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEPOLL"))
+#ifdef SYBEPOLL
+	    return SYBEPOLL;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEPRTF"))
+#ifdef SYBEPRTF
+	    return SYBEPRTF;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEPWD"))
+#ifdef SYBEPWD
+	    return SYBEPWD;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBERDCN"))
+#ifdef SYBERDCN
+	    return SYBERDCN;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBERDNR"))
+#ifdef SYBERDNR
+	    return SYBERDNR;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEREAD"))
+#ifdef SYBEREAD
+	    return SYBEREAD;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBERFILE"))
+#ifdef SYBERFILE
+	    return SYBERFILE;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBERPCS"))
+#ifdef SYBERPCS
+	    return SYBERPCS;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBERPIL"))
+#ifdef SYBERPIL
+	    return SYBERPIL;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBERPNA"))
+#ifdef SYBERPNA
+	    return SYBERPNA;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBERPND"))
+#ifdef SYBERPND
+	    return SYBERPND;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBERPUL"))
+#ifdef SYBERPUL
+	    return SYBERPUL;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBERTCC"))
+#ifdef SYBERTCC
+	    return SYBERTCC;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBERTSC"))
+#ifdef SYBERTSC
+	    return SYBERTSC;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBERTYPE"))
+#ifdef SYBERTYPE
+	    return SYBERTYPE;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBERXID"))
+#ifdef SYBERXID
+	    return SYBERXID;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBESEFA"))
+#ifdef SYBESEFA
+	    return SYBESEFA;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBESEOF"))
+#ifdef SYBESEOF
+	    return SYBESEOF;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBESFOV"))
+#ifdef SYBESFOV
+	    return SYBESFOV;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBESLCT"))
+#ifdef SYBESLCT
+	    return SYBESLCT;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBESMSG"))
+#ifdef SYBESMSG
+	    return SYBESMSG;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBESOCK"))
+#ifdef SYBESOCK
+	    return SYBESOCK;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBESPID"))
+#ifdef SYBESPID
+	    return SYBESPID;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBESYNC"))
+#ifdef SYBESYNC
+	    return SYBESYNC;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBETEXS"))
+#ifdef SYBETEXS
+	    return SYBETEXS;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBETIME"))
+#ifdef SYBETIME
+	    return SYBETIME;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBETMCF"))
+#ifdef SYBETMCF
+	    return SYBETMCF;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBETMTD"))
+#ifdef SYBETMTD
+	    return SYBETMTD;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBETPAR"))
+#ifdef SYBETPAR
+	    return SYBETPAR;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBETPTN"))
+#ifdef SYBETPTN
+	    return SYBETPTN;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBETRAC"))
+#ifdef SYBETRAC
+	    return SYBETRAC;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBETRAN"))
+#ifdef SYBETRAN
+	    return SYBETRAN;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBETRAS"))
+#ifdef SYBETRAS
+	    return SYBETRAS;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBETRSN"))
+#ifdef SYBETRSN
+	    return SYBETRSN;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBETSIT"))
+#ifdef SYBETSIT
+	    return SYBETSIT;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBETTS"))
+#ifdef SYBETTS
+	    return SYBETTS;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBETYPE"))
+#ifdef SYBETYPE
+	    return SYBETYPE;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEUACS"))
+#ifdef SYBEUACS
+	    return SYBEUACS;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEUAVE"))
+#ifdef SYBEUAVE
+	    return SYBEUAVE;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEUCPT"))
+#ifdef SYBEUCPT
+	    return SYBEUCPT;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEUCRR"))
+#ifdef SYBEUCRR
+	    return SYBEUCRR;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEUDTY"))
+#ifdef SYBEUDTY
+	    return SYBEUDTY;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEUFDS"))
+#ifdef SYBEUFDS
+	    return SYBEUFDS;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEUFDT"))
+#ifdef SYBEUFDT
+	    return SYBEUFDT;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEUHST"))
+#ifdef SYBEUHST
+	    return SYBEUHST;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEUNAM"))
+#ifdef SYBEUNAM
+	    return SYBEUNAM;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEUNOP"))
+#ifdef SYBEUNOP
+	    return SYBEUNOP;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEUNT"))
+#ifdef SYBEUNT
+	    return SYBEUNT;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEURCI"))
+#ifdef SYBEURCI
+	    return SYBEURCI;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEUREI"))
+#ifdef SYBEUREI
+	    return SYBEUREI;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEUREM"))
+#ifdef SYBEUREM
+	    return SYBEUREM;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEURES"))
+#ifdef SYBEURES
+	    return SYBEURES;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEURMI"))
+#ifdef SYBEURMI
+	    return SYBEURMI;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEUSCT"))
+#ifdef SYBEUSCT
+	    return SYBEUSCT;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEUTDS"))
+#ifdef SYBEUTDS
+	    return SYBEUTDS;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEUVBF"))
+#ifdef SYBEUVBF
+	    return SYBEUVBF;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEUVDT"))
+#ifdef SYBEUVDT
+	    return SYBEUVDT;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEVDPT"))
+#ifdef SYBEVDPT
+	    return SYBEVDPT;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEVMS"))
+#ifdef SYBEVMS
+	    return SYBEVMS;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEVOIDRET"))
+#ifdef SYBEVOIDRET
+	    return SYBEVOIDRET;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEWAID"))
+#ifdef SYBEWAID
+	    return SYBEWAID;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEWRIT"))
+#ifdef SYBEWRIT
+	    return SYBEWRIT;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEXOCI"))
+#ifdef SYBEXOCI
+	    return SYBEXOCI;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEXTDN"))
+#ifdef SYBEXTDN
+	    return SYBEXTDN;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEXTN"))
+#ifdef SYBEXTN
+	    return SYBEXTN;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEXTSN"))
+#ifdef SYBEXTSN
+	    return SYBEXTSN;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBEZTXT"))
+#ifdef SYBEZTXT
+	    return SYBEZTXT;
+#else
+	    goto not_there;
+#endif
+	}
+	if (strEQ(name, "SYBFLT8"))
+#ifdef SYBFLT8
+	    return SYBFLT8;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBIMAGE"))
+#ifdef SYBIMAGE
+	    return SYBIMAGE;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBINT1"))
+#ifdef SYBINT1
+	    return SYBINT1;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBINT2"))
+#ifdef SYBINT2
+	    return SYBINT2;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBINT4"))
+#ifdef SYBINT4
+	    return SYBINT4;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBMONEY"))
+#ifdef SYBMONEY
+	    return SYBMONEY;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBMONEY4"))
+#ifdef SYBMONEY4
+	    return SYBMONEY4;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBREAL"))
+#ifdef SYBREAL
+	    return SYBREAL;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBTEXT"))
+#ifdef SYBTEXT
+	    return SYBTEXT;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBVARBINARY"))
+#ifdef SYBVARBINARY
+	    return SYBVARBINARY;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "SYBVARCHAR"))
+#ifdef SYBVARCHAR
+	    return SYBVARCHAR;
+#else
+	    goto not_there;
+#endif
+	
+	break;
+    case 'T':
+	if (strEQ(name, "TRUE"))
+#ifdef TRUE
+	    return TRUE;
+#else
+	    goto not_there;
+#endif
+	break;
+    case 'U':
+	break;
+    case 'V':
+	break;
+    case 'W':
+	break;
+    case 'X':
+	break;
+    case 'Y':
+	break;
+    case 'Z':
+	break;
+    case '_':
+	break;
+    }
+    errno = EINVAL;
+    return 0;
+
+not_there:
+    errno = ENOENT;
+    return 0;
+}
+
+
+MODULE = Sybase::DBlib		PACKAGE = Sybase::DBlib
+
+BOOT:
+initialize();
+
+
+double
+constant(name,arg)
+	char *		name
+	int		arg
+
+void
+dblogin(package="Sybase::DBlib",user=NULL,pwd=NULL,server=NULL,appname=NULL)
+	char *	package
+	char *	user
+	char *	pwd
+	char *	server
+	char *	appname
+  CODE:
+{
+    DBPROCESS *dbproc;
+    SV *rv;
+    SV *sv;
+    HV *hv;
+    HV *stash;
+    
+    if(user && *user)
+	DBSETLUSER(login, user);
+    else
+	DBSETLUSER(login, NULL);
+	
+    if(pwd && *pwd)
+	DBSETLPWD(login, pwd);
+    else
+	DBSETLPWD(login, NULL);
+    
+    if(server && !*server)
+	server = NULL;
+    if(appname && *appname)
+	DBSETLAPP(login, appname);
+    if(!(dbproc = dbopen(login, server)))
+    {
+	ST(0) = sv_newmortal();
+    }
+    else
+    {
+	sv = newSViv((IV)dbproc);
+	hv = (HV*)sv_2mortal((SV*)newHV());
+	my_hv_store(hv, HV_dbproc, sv, 0);
+	my_hv_store(hv, HV_dbstatus, newSViv(0), 0);
+	my_hv_store(hv, HV_compute_id, newSViv(0), 0);
+	my_hv_store(hv, HV_keepnum, newSViv(1), 0);
+	my_hv_store(hv, HV_nullundef, newSViv(1), 0);
+	rv = newRV((SV*)hv);
+	stash = gv_stashpv(package, TRUE);
+	ST(0) = sv_2mortal(sv_bless(rv, stash));
+    }
+}
+
+void
+dbopen(package="Sybase::DBlib",server=NULL,appname=NULL)
+	char *	package
+	char *	server
+	char *	appname
+  CODE:
+{
+    DBPROCESS *dbproc;
+    SV *rv;
+    SV *sv;
+    HV *hv;
+    HV *stash;
+    
+    if(server && !*server)
+	server = NULL;
+    if(appname && *appname)
+	DBSETLAPP(login, appname);
+    
+    if(!(dbproc = dbopen(login, server)))
+    {
+	ST(0) = sv_newmortal();
+    }
+    else
+    {
+	sv = newSViv((IV)dbproc);
+	hv = (HV*)sv_2mortal((SV*)newHV());
+	my_hv_store(hv, HV_dbproc, sv, 0);
+	my_hv_store(hv, HV_dbstatus, newSViv(0), 0);
+	my_hv_store(hv, HV_compute_id, newSViv(0), 0);
+	my_hv_store(hv, HV_keepnum, newSViv(1), 0);
+	my_hv_store(hv, HV_nullundef, newSViv(1), 0);
+	rv = newRV((SV*)hv);
+	stash = gv_stashpv(package, TRUE);
+	ST(0) = sv_2mortal(sv_bless(rv, stash));
+    }
+}
+
+int
+dbuse(dbp,db)
+	SV *	dbp
+	char *	db
+CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = dbuse(dbproc, db);
+}
+ OUTPUT:
+RETVAL
+
+void
+dbclose(dbp)
+	SV *	dbp
+CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+    HV *hv;
+    BYTE **colPtr;
+
+    if(!dbproc)			/* it's already been closed! */
+	return;
+    
+    colPtr = (BYTE**)dbgetuserdata(dbproc);
+    if(colPtr) /* avoid a potential memory leak */
+	Safefree(colPtr);
+    
+    dbclose(dbproc);
+    hv = (HV *)SvRV(dbp);
+    my_hv_store(hv, HV_dbproc, (SV*)newSViv(0), 0);
+}
+
+int
+dbcmd(dbp,cmd)
+	SV *	dbp
+	char *	cmd
+CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = dbcmd(dbproc, cmd);
+}
+ OUTPUT:
+RETVAL
+
+int
+dbsqlexec(dbp)
+	SV *	dbp
+CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = dbsqlexec(dbproc);
+}
+ OUTPUT:
+RETVAL
+
+int
+dbresults(dbp)
+	SV *	dbp
+CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = dbresults(dbproc);
+}
+ OUTPUT:
+RETVAL
+
+int
+dbcancel(dbp)
+	SV *	dbp
+CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = dbcancel(dbproc);
+}
+ OUTPUT:
+RETVAL
+
+int
+dbcanquery(dbp)
+	SV *	dbp
+CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = dbcanquery(dbproc);
+}
+ OUTPUT:
+RETVAL
+
+void
+dbfreebuf(dbp)
+	SV *	dbp
+CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    dbfreebuf(dbproc);
+}
+
+
+int
+DBCURROW(dbp)
+	SV *	dbp
+CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = DBCURROW(dbproc);
+}
+ OUTPUT:
+RETVAL
+
+int
+DBCURCMD(dbp)
+	SV *	dbp
+CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = DBCURCMD(dbproc);
+}
+ OUTPUT:
+RETVAL
+
+int
+DBMORECMDS(dbp)
+	SV *	dbp
+CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = DBMORECMDS(dbproc);
+}
+ OUTPUT:
+RETVAL
+
+int
+DBCMDROW(dbp)
+	SV *	dbp
+CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = DBCMDROW(dbproc);
+}
+ OUTPUT:
+RETVAL
+
+int
+DBROWS(dbp)
+	SV *	dbp
+CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = DBROWS(dbproc);
+}
+ OUTPUT:
+RETVAL
+
+int
+DBCOUNT(dbp)
+	SV *	dbp
+CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = DBCOUNT(dbproc);
+}
+ OUTPUT:
+RETVAL
+
+int
+dbhasretstat(dbp)
+	SV *	dbp
+CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = dbhasretstat(dbproc);
+}
+ OUTPUT:
+RETVAL
+
+int
+dbretstatus(dbp)
+	SV *	dbp
+CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = dbretstatus(dbproc);
+}
+ OUTPUT:
+RETVAL
+
+int
+dbnumcols(dbp)
+	SV *	dbp
+CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = dbnumcols(dbproc);
+}
+ OUTPUT:
+RETVAL
+
+int
+dbcoltype(dbp, colid)
+	SV *	dbp
+	int	colid
+CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = dbcoltype(dbproc, colid);
+}
+ OUTPUT:
+RETVAL
+
+int
+dbcollen(dbp, colid)
+	SV *	dbp
+	int	colid
+CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = dbcollen(dbproc, colid);
+}
+ OUTPUT:
+RETVAL
+
+char *
+dbcolname(dbp, colid)
+	SV *	dbp
+	int	colid
+CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = dbcolname(dbproc, colid);
+}
+ OUTPUT:
+RETVAL
+
+void
+dbnextrow(dbp,doAssoc=0)
+	SV *	dbp
+	int	doAssoc
+PPCODE:
+{
+    int retval, ComputeId = 0;
+    char buff[260], *p = NULL, *t;
+    BYTE *data;
+    int col, type, numcols = 0;
+    int len;
+    DBFLT8 tmp = 0;
+    char *colname;
+    char cname[64];
+    int is_numeric;
+    int is_null;
+#if DBLIBVS >= 461
+    DBMONEY tv_money;
+#endif
+    int dbKeepNumeric = 0;
+    int dbBin0x = 0;
+    int dbNullIsUndef = 0;
+    DBPROCESS *dbproc = getDBPROC(dbp);
+    HV *hv = NULL;
+    SV **svp;
+#if defined(UNDEF_BUG)
+    int n_null = doAssoc;
+#endif
+
+    
+    hv = (HV *)SvRV(dbp);
+    if((svp = my_hv_fetch(hv, HV_nullundef, FALSE)))
+	dbNullIsUndef = SvIV(*svp);
+    if((svp = my_hv_fetch(hv, HV_keepnum, FALSE)))
+	dbKeepNumeric = SvIV(*svp);
+    if((svp = my_hv_fetch(hv, HV_bin0x, FALSE)))
+	dbBin0x = SvIV(*svp);
+    
+    retval = dbnextrow(dbproc);
+    if(retval == REG_ROW)
+    {
+	numcols = dbnumcols(dbproc);
+    }
+    else if(retval > 0)
+    {
+ 	ComputeId = retval;
+	numcols = dbnumalts(dbproc, retval);
+    }
+    for(col = 1, buff[0] = 0; col <= numcols; ++col)
+    {
+	is_numeric = 0;
+	is_null = 0;
+	colname = NULL;
+	if(!ComputeId)
+	{
+	    type = dbcoltype(dbproc, col);
+	    len = dbdatlen(dbproc,col);
+	    data = (BYTE *)dbdata(dbproc,col);
+	    colname = dbcolname(dbproc, col);
+	    if(!colname || !colname[0])
+	    {
+		sprintf(cname, "Col %d", col);
+		colname = cname;
+	    }
+	}
+	else
+	{
+	    int colid = dbaltcolid(dbproc, ComputeId, col);
+	    type = dbalttype(dbproc, ComputeId, col);
+	    len = dbadlen(dbproc, ComputeId, col);
+	    data = (BYTE *)dbadata(dbproc, ComputeId, col);
+	    if(colid > 0)
+		colname = dbcolname(dbproc, colid);
+	    if(!colname || !colname[0])
+	    {
+		sprintf(cname, "Col %d", col);
+		colname = cname;
+	    }
+	}
+	t = &buff[0];
+	if(!data && !len)
+	    ++is_null;
+	else
+	{
+	    switch(type)
+	    {
+	      case SYBCHAR:
+		strncpy(buff,(char *)data,len);
+		buff[len] = 0;
+		break;
+	      case SYBTEXT:
+	      case SYBIMAGE:
+		New(902, p, len + 1, char);
+		memcpy(p, data, len);
+		p[len] = 0;
+		t = p;
+		break;
+	      case SYBINT1:
+	      case SYBBIT: /* a bit is at least a byte long... */
+		if(dbKeepNumeric)
+		{
+		    tmp = *(DBTINYINT *)data;
+		    ++is_numeric;
+		}
+		else
+		    sprintf(buff,"%u",*(DBTINYINT *)data);
+		break;
+	      case SYBINT2:
+		if(dbKeepNumeric)
+		{
+		    tmp = *(DBSMALLINT *)data;
+		    ++is_numeric;
+		}
+		else
+		    sprintf(buff,"%d",*(DBSMALLINT *)data);
+		break;
+	      case SYBINT4:
+		if(dbKeepNumeric)
+		{
+		    tmp = *(DBINT *)data;
+		    ++is_numeric;
+		}
+		else
+		    sprintf(buff,"%d",*(DBINT *)data);
+		break;
+	      case SYBFLT8:
+		if(dbKeepNumeric)
+		{
+		    tmp = *(DBFLT8 *)data;
+		    ++is_numeric;
+		}
+		else
+		    sprintf(buff,"%.6f",*(DBFLT8 *)data);
+		break;
+#if   DBLIBVS >= 461
+	      case SYBMONEY:
+		dbconvert(dbproc, SYBMONEY, (BYTE *)data, len,
+			  SYBMONEY, (BYTE*)&tv_money, -1);
+		new_mnytochar(dbp, &tv_money, buff);
+		break;
+#else
+	      case SYBMONEY:
+		dbconvert(dbproc, SYBMONEY, data, len,
+			  SYBFLT8, &tmp, -1);
+		if(dbKeepNumeric)
+		    ++is_numeric;
+		else
+		    sprintf(buff,"%.6f",tmp);
+		break;
+#endif
+	      case SYBDATETIME:
+		dbconvert(dbproc, SYBDATETIME, (BYTE *)data, len,
+			  SYBCHAR, (BYTE *)buff, -1);
+		break;
+	      case SYBBINARY:
+		if(dbBin0x)
+		{
+		    strcpy(buff, "0x");
+		    dbconvert(dbproc, type, (BYTE *)data, len,
+			      SYBCHAR, (BYTE *)&buff[2], -1);
+		}
+		else
+		    dbconvert(dbproc, type, (BYTE *)data, len,
+			      SYBCHAR, (BYTE *)buff, -1);
+		break;
+#if DBLIBVS >= 420
+	      case SYBREAL:
+		if(dbKeepNumeric)
+		{
+		    tmp = *(DBREAL *)data;
+		    ++is_numeric;
+		}
+		else
+		    sprintf(buff, "%.6f", (double)*(DBREAL *)data);
+		break;
+	      case SYBDATETIME4:
+		dbconvert(dbproc, SYBDATETIME4, (BYTE *)data, len,
+			  SYBCHAR, (BYTE *)buff, -1);
+		break;
+#if DBLIBVS >= 461
+	      case SYBMONEY4:
+		dbconvert(dbproc, SYBMONEY4, (BYTE *)data, len,
+			  SYBMONEY, (BYTE*)&tv_money, -1);
+		new_mnytochar(dbproc, &tv_money, buff);
+		break;
+#endif
+#endif
+	      default:
+		/* 
+		 * WARNING!
+		 * 
+		 * We convert unknown data types to SYBCHAR 
+		 * without checking to see if the resulting 
+		 * string will fit in the 'buff' variable. 
+		 * This isn't very pretty...
+		 */
+		dbconvert(dbproc, type, (BYTE *)data, len,
+			  SYBCHAR, (BYTE *)buff, -1);
+		break;
+	    }
+	}
+	if(doAssoc)
+	    XPUSHs((SV*)sv_2mortal(newSVpv(colname, 0)));
+	if(type != SYBIMAGE && type != SYBTEXT)
+	    len = 0;	/* newSVpv needs to know the lenght only on binary data */
+	if(is_null)
+	{
+	    if(dbNullIsUndef)
+	    {
+		XPUSHs(&sv_undef);
+		continue; /* whatever follows here (in this iteration) is irrelevant */
+		/* when NULLs are returned as undef */
+	    }
+	    else
+		strcpy(buff,"NULL");
+	}
+#if defined(UNDEF_BUG)
+	++n_null;
+#endif
+	if(is_numeric)
+	    XPUSHs(sv_2mortal(newSVnv(tmp)));
+	else
+	    XPUSHs(sv_2mortal(newSVpv(t, len)));
+	/* 
+	 * If we've allocated some space to retrieve a 
+	 * SYBTEXT field, then free it now.
+	 */
+	if(t == p)
+	{
+	    Safefree(p);
+	    p = NULL;
+	}
+    }
+#if defined(UNDEF_BUG)
+    if(!n_null && numcols > 0)
+	XPUSHs(sv_2mortal(newSVpv("__ALL NULL__", 0)));
+#endif
+    if(hv)			/* just to be on the safe side */
+    {
+	my_hv_store(hv, HV_compute_id, (SV*)newSViv(ComputeId), 0);
+	my_hv_store(hv, HV_dbstatus, (SV*)newSViv(retval), 0);
+    }
+}
+
+void
+dbretdata(dbp,doAssoc=0)
+	SV *	dbp
+	int	doAssoc
+PPCODE:
+{
+    char buff[260], *p = NULL, *t;
+    BYTE *data;
+    int col, type, numcols;
+    int len;
+    DBFLT8 tmp = 0;
+    char *colname;
+    char cname[64];
+    int is_numeric;
+    int is_null;
+#if DBLIBVS >= 461
+    DBMONEY tv_money;
+#endif
+    int dbKeepNumeric = 0;
+    int dbBin0x = 0;
+    int dbNullIsUndef = 0;
+    DBPROCESS *dbproc = getDBPROC(dbp);
+    HV *hv = NULL;
+    SV **svp;
+#if defined(UNDEF_BUG)
+    int n_null = doAssoc;
+#endif
+
+    
+    hv = (HV *)SvRV(dbp);
+    if((svp = my_hv_fetch(hv, HV_nullundef, FALSE)))
+	dbNullIsUndef = SvIV(*svp);
+    if((svp = my_hv_fetch(hv, HV_keepnum, FALSE)))
+	dbKeepNumeric = SvIV(*svp);
+    if((svp = my_hv_fetch(hv, HV_bin0x, FALSE)))
+	dbBin0x = SvIV(*svp);
+    
+    numcols = dbnumrets(dbproc);
+/*    EXTEND(SP, numcols * (doAssoc + 1)); */
+    for(col = 1, buff[0] = 0; col <= numcols; ++col)
+    {
+	is_numeric = 0;
+	is_null = 0;
+	colname = NULL;
+	type = dbrettype(dbproc, col);
+	len = dbretlen(dbproc,col);
+	data = (BYTE *)dbretdata(dbproc,col);
+	colname = dbretname(dbproc, col);
+	if(!colname || !colname[0])
+	{
+	    sprintf(cname, "Par %d", col);
+	    colname = cname;
+	}
+	t = &buff[0];
+	if(!data && !len)
+	    ++is_null;
+	else
+	{
+	    switch(type)
+	    {
+	      case SYBCHAR:
+		strncpy(buff,(char *)data,len);
+		buff[len] = 0;
+		break;
+	      case SYBTEXT:
+	      case SYBIMAGE:
+		New(902, p, len + 1, char);
+		memcpy(p, data, len);
+		p[len] = 0;
+		t = p;
+		break;
+	      case SYBINT1:
+	      case SYBBIT: /* a bit is at least a byte long... */
+		if(dbKeepNumeric)
+		{
+		    tmp = *(DBTINYINT *)data;
+		    ++is_numeric;
+		}
+		else
+		    sprintf(buff,"%u",*(DBTINYINT *)data);
+		break;
+	      case SYBINT2:
+		if(dbKeepNumeric)
+		{
+		    tmp = *(DBSMALLINT *)data;
+		    ++is_numeric;
+		}
+		else
+		    sprintf(buff,"%d",*(DBSMALLINT *)data);
+		break;
+	      case SYBINT4:
+		if(dbKeepNumeric)
+		{
+		    tmp = *(DBINT *)data;
+		    ++is_numeric;
+		}
+		else
+		    sprintf(buff,"%d",*(DBINT *)data);
+		break;
+	      case SYBFLT8:
+		if(dbKeepNumeric)
+		{
+		    tmp = *(DBFLT8 *)data;
+		    ++is_numeric;
+		}
+		else
+		    sprintf(buff,"%.6f",*(DBFLT8 *)data);
+		break;
+#if   DBLIBVS >= 461
+	      case SYBMONEY:
+		dbconvert(dbproc, SYBMONEY, data, len,
+			  SYBMONEY, (BYTE*)&tv_money, -1);
+		new_mnytochar(dbp, &tv_money, buff);
+		break;
+#else
+	      case SYBMONEY:
+		dbconvert(dbproc, SYBMONEY, data, len,
+			  SYBFLT8, &tmp, -1);
+		if(dbKeepNumeric)
+		    ++is_numeric;
+		else
+		    sprintf(buff,"%.6f",tmp);
+		break;
+#endif
+	      case SYBDATETIME:
+		dbconvert(dbproc, SYBDATETIME, data, len,
+			  SYBCHAR, (BYTE *)buff, -1);
+		break;
+	      case SYBBINARY:
+		if(dbBin0x)
+		{
+		    strcpy(buff, "0x");
+		    dbconvert(dbproc, type, data, len,
+			      SYBCHAR, (BYTE *)&buff[2], -1);
+		}
+		else
+		    dbconvert(dbproc, type, data, len,
+			      SYBCHAR, (BYTE *)buff, -1);
+		break;
+#if DBLIBVS >= 420
+	      case SYBREAL:
+		if(dbKeepNumeric)
+		{
+		    tmp = *(DBREAL *)data;
+		    ++is_numeric;
+		}
+		else
+		    sprintf(buff, "%.6f", (double)*(DBREAL *)data);
+		break;
+	      case SYBDATETIME4:
+		dbconvert(dbproc, SYBDATETIME4, (BYTE *)data, len,
+			  SYBCHAR, (BYTE *)buff, -1);
+		break;
+#if DBLIBVS >= 461
+	      case SYBMONEY4:
+		dbconvert(dbproc, SYBMONEY4, (BYTE *)data, len,
+			  SYBMONEY, (BYTE*)&tv_money, -1);
+		new_mnytochar(dbproc, &tv_money, buff);
+		break;
+#endif
+#endif
+	      default:
+		/* 
+		 * WARNING!
+		 * 
+		 * We convert unknown data types to SYBCHAR 
+		 * without checking to see if the resulting 
+		 * string will fit in the 'buff' variable. 
+		 * This isn't very pretty...
+		 */
+		dbconvert(dbproc, type, (BYTE *)data, len,
+			  SYBCHAR, (BYTE *)buff, -1);
+		break;
+	    }
+	}
+	if(doAssoc)
+	    XPUSHs((SV*)sv_2mortal(newSVpv(colname, 0)));
+	if(type != SYBIMAGE && type != SYBTEXT)
+	    len = 0;	/* newSVpv needs to know the lenght only on binary data */
+	if(is_null)
+	{
+	    if(dbNullIsUndef)
+	    {
+		XPUSHs(&sv_undef);
+		continue; /* whatever follows here (in this iteration) is irrelevant */
+		/* when NULLs are returned as undef */
+	    }
+	    else
+		strcpy(buff,"NULL");
+	}
+#if defined(UNDEF_BUG)
+	++n_null;
+#endif
+	if(is_numeric)
+	    XPUSHs(sv_2mortal(newSVnv(tmp)));
+	else
+	    XPUSHs(sv_2mortal(newSVpv(t, len)));
+	/* 
+	 * If we've allocated some space to retrieve a 
+	 * SYBTEXT field, then free it now.
+	 */
+	if(t == p)
+	{
+	    Safefree(p);
+	    p = NULL;
+	}
+    }
+#if defined(UNDEF_BUG)
+    if(!n_null)
+	XPUSHs(sv_2mortal(newSVpv("__ALL NULL__", 0)));
+#endif
+}
+
+void
+dbstrcpy(dbp)
+	SV *	dbp
+CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+    int retval, len;
+    char *buff;
+    
+
+    ST(0) = sv_newmortal();
+    if(dbproc && (len = dbstrlen(dbproc)))
+    {
+	New(902, buff, len+1, char);
+	retval = dbstrcpy(dbproc, 0, -1, buff);
+	sv_setpv(ST(0), buff);
+	Safefree(buff);
+    }
+    else
+	ST(0) = &sv_undef;
+}
+
+void
+dbsafestr(dbp, instr, quote_char=NULL)
+	SV *	dbp
+	char *	instr
+	char *	quote_char
+CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+    int retval, len, quote;
+    char *buff;
+
+    ST(0) = sv_newmortal();
+    
+    if(!quote_char)
+	quote = DBBOTH;
+    else if(*quote_char == '"')
+	quote = DBDOUBLE;
+    else if(*quote_char == '\'')
+	quote = DBSINGLE;
+    else
+    {
+	warn("Sybase::DBlib::dbsafestr invalid quote character used.");
+	quote = -1;
+    }
+    if(quote >= 0 && dbproc && (len = strlen(instr)))
+    {
+	/* twice as much space needed worst case */
+	New (902, buff, len * 2 + 1, char);
+	retval = dbsafestr(dbproc, instr, -1, buff, -1, quote);
+	sv_setpv(ST(0), buff);
+	Safefree(buff);
+    }
+    else
+	ST(0) = &sv_undef;
+}
+
+char *
+dbprtype(dbp, colid)
+	SV *	dbp
+	int	colid
+CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = dbprtype(dbcoltype(dbproc, colid));
+}
+ OUTPUT:
+RETVAL
+
+
+void
+DESTROY(dbp)
+	SV *	dbp
+  CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+    BYTE **colPtr;
+
+    if(!dbproc)			/* it's already been closed! */
+	return;
+    colPtr = (BYTE**)dbgetuserdata(dbproc);
+    if(colPtr) /* avoid a potential memory leak */
+	Safefree(colPtr);
+    
+    dbclose(dbproc);
+}
+
+int
+dbwritetext(dbp, colname, dbp2, colnum, text)
+	SV *	dbp
+	char *	colname
+	SV *	dbp2
+	int	colnum
+	SV *	text
+  CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+    DBPROCESS *dbproc2 = getDBPROC(dbp2);
+    char *ptr;
+    STRLEN len;
+
+    ptr = SvPV(text, len);
+
+    RETVAL = dbwritetext(dbproc, colname, dbtxptr(dbproc2, colnum),
+			 DBTXPLEN, dbtxtimestamp(dbproc2, colnum), 0,
+			 len, (BYTE *)ptr);
+}
+ OUTPUT:
+RETVAL
+
+
+void
+dberrhandle(err_handle)
+	SV *	err_handle
+  CODE:
+{
+    char *name;
+    SV *ret = NULL;
+
+    if(err_callback.sub)
+	ret = newSVsv(err_callback.sub);
+    if(err_handle == &sv_undef)
+	err_callback.sub = NULL;
+    else
+    {
+	if(!SvROK(err_handle))
+	{
+	    name = SvPV(err_handle, na);
+	    if((err_handle = (SV*) perl_get_cv(name, FALSE)))
+		err_callback.sub = err_handle;
+	}
+	else
+	{
+	    if(err_callback.sub == (SV*) NULL)
+		err_callback.sub = newSVsv(err_handle);
+	    else
+		SvSetSV(err_callback.sub, err_handle);
+	}
+    }
+    if(ret)
+	ST(0) = sv_2mortal(newRV(ret));
+    else
+	ST(0) = sv_newmortal();
+}
+
+void
+dbmsghandle(msg_handle)
+	SV *	msg_handle
+  CODE:
+{
+    char *name;
+    SV *ret = NULL;
+
+    if(msg_callback.sub)
+	ret = newSVsv(msg_callback.sub);
+    if(msg_handle == &sv_undef)
+	msg_callback.sub = NULL;
+    else
+    {
+	if(!SvROK(msg_handle))
+	{
+	    name = SvPV(msg_handle, na);
+	    if((msg_handle = (SV*) perl_get_cv(name, FALSE)))
+		msg_callback.sub = msg_handle;
+	}
+	else
+	{
+	    if(msg_callback.sub == (SV*) NULL)
+		msg_callback.sub = newSVsv(msg_handle);
+	    else
+		SvSetSV(msg_callback.sub, msg_handle);
+	}
+    }
+    if(ret)
+	ST(0) = sv_2mortal(newRV(ret));
+    else
+	ST(0) = sv_newmortal();
+}
+
+
+void
+dbsetifile(filename)
+	char *	filename
+
+void
+dbrecftos(fname)
+	char *	fname
+
+void
+dbsetversion(version)
+	int	version
+
+char *
+dbversion()
+
+void
+DBSETLCHARSET(char_set)
+	char *	char_set
+  CODE:
+{
+    DBSETLCHARSET(login, char_set);
+}
+
+void
+DBSETLNATLANG(language)
+	char *	language
+  CODE:
+{
+    DBSETLNATLANG(login, language);
+}
+
+int
+DBGETTIME()
+
+int
+dbsettime(seconds)
+	int	seconds
+
+int
+dbsetlogintime(seconds)
+	int	seconds
+
+void
+dbexit()
+
+void
+BCP_SETL(state)
+	int	state
+  CODE:
+{
+    BCP_SETL(login, state);
+}
+
+int
+bcp_getl()
+  CODE:
+{
+    RETVAL = bcp_getl(login);
+}
+ OUTPUT:
+RETVAL
+
+int
+bcp_init(dbp,tblname,hfile,errfile,dir)
+	SV *	dbp
+	char *	tblname
+	char *	hfile
+	char *	errfile
+	int	dir
+  CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    if(hfile && !*hfile)
+	hfile = NULL;
+    RETVAL = bcp_init(dbproc, tblname, hfile, errfile, dir);
+}
+ OUTPUT:
+RETVAL
+
+int
+bcp_meminit(dbp,numcols)
+	SV *	dbp
+	int	numcols
+  CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+    int j;
+    BYTE **colPtr;
+    BYTE dummy;
+    
+    for(j = 1; j <= numcols; ++j)
+	bcp_bind(dbproc, &dummy, 0, -1, (BYTE *)"", 1, SYBCHAR, j);
+
+    /* make sure we free the pointer in the case where bcp_meminit()
+       is called several times... */
+    if((colPtr = (BYTE**)dbgetuserdata(dbproc)))
+	Safefree(colPtr);
+    New (902, colPtr, numcols, BYTE *);
+    dbsetuserdata(dbproc, (BYTE*)colPtr);
+
+    RETVAL = j;
+}
+ OUTPUT:
+RETVAL
+
+int
+bcp_sendrow(dbp, ...)
+	SV *	dbp
+  CODE:
+{
+    SV *sv;
+    DBPROCESS *dbproc = getDBPROC(dbp);
+    BYTE **colPtr;
+    int j;
+
+    if(!(colPtr = (BYTE**)dbgetuserdata(dbproc)))
+	croak("Sybase::DBlib::bcp_meminit hasn't been called before bcp_sendrow.");
+    
+    for(j = 1; j < items; ++j)
+    {
+	sv = ST(j);
+	if(sv == &sv_undef)	/* it's a null data value */
+	    bcp_collen(dbproc, 0, j);
+	else
+	    bcp_collen(dbproc, -1, j);
+	colPtr[j-1] = (BYTE *)SvPV(sv, na);
+	bcp_colptr(dbproc, colPtr[j-1], j);
+    }
+    RETVAL = bcp_sendrow(dbproc);
+}
+ OUTPUT:
+RETVAL
+
+int
+bcp_batch(dbp)
+	SV *	dbp
+  CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+    
+    RETVAL = bcp_batch(dbproc);
+}
+ OUTPUT:
+RETVAL
+
+int
+bcp_done(dbp)
+	SV *	dbp
+CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+    
+    RETVAL = bcp_done(dbproc);
+}
+ OUTPUT:
+RETVAL
+
+int
+bcp_control(dbp,field,value)
+	SV *	dbp
+	int	field
+	int	value
+  CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = bcp_control(dbproc, field, value);
+}
+ OUTPUT:
+RETVAL
+
+int
+bcp_columns(dbp,colcount)
+	SV *	dbp
+	int	colcount
+  CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = bcp_columns(dbproc, colcount);
+}
+ OUTPUT:
+RETVAL
+
+int
+bcp_colfmt(dbp, host_col, host_type, host_prefixlen, host_collen, host_term, host_termlen, table_col, precision=-1, scale=-1)
+	SV *	dbp
+	int	host_col
+	int	host_type
+	int	host_prefixlen
+	int	host_collen
+	char *	host_term
+	int	host_termlen
+	int	table_col
+	int	precision
+	int	scale
+  CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+#if DBLIBVS >= 1000 
+    DBTYPEINFO typeinfo;
+#endif
+    
+    if(host_term && !*host_term)
+	host_term = NULL;
+#if DBLIBVS >= 1000
+    if(precision != -1 && scale != -1)
+    {
+	typeinfo.precision = precision;
+	typeinfo.scale = scale;
+	RETVAL = bcp_colfmt_ps(dbproc, host_col, host_type, host_prefixlen,
+			host_collen, (BYTE *)host_term, host_termlen,
+			table_col, &typeinfo);
+    }
+    else
+#endif
+    RETVAL = bcp_colfmt(dbproc, host_col, host_type, host_prefixlen,
+			host_collen, (BYTE *)host_term, host_termlen,
+			table_col);
+}
+ OUTPUT:
+RETVAL
+
+int
+bcp_collen(dbp, varlen, table_column)
+	SV *	dbp
+	int	varlen
+	int	table_column
+  CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = bcp_collen(dbproc, varlen, table_column);
+}
+ OUTPUT:
+RETVAL
+
+void
+bcp_exec(dbp)
+	SV *	dbp
+  PPCODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+    DBINT rows;
+    int j;
+
+    j = bcp_exec(dbproc, &rows);
+
+    XPUSHs(sv_2mortal(newSVnv(j)));
+    XPUSHs(sv_2mortal(newSViv(rows)));
+}
+
+int
+bcp_readfmt(dbp, filename)
+	SV *	dbp
+	char *	filename
+  CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = bcp_readfmt(dbproc, filename);
+}
+ OUTPUT:
+RETVAL
+
+int
+bcp_writefmt(dbp, filename)
+	SV *	dbp
+	char *	filename
+  CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = bcp_writefmt(dbproc, filename);
+}
+ OUTPUT:
+RETVAL
+
+void
+dbmny4add(dbp, m1, m2)
+	SV *	dbp
+	char *	m1
+	char *	m2
+  PPCODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+    DBMONEY4 mm1, mm2, mresult;
+    DBCHAR mnybuf[40];
+    int retval;
+
+    if (dbconvert(dbproc, SYBCHAR,
+		  (BYTE *)m1, (DBINT)-1,
+		  SYBMONEY4, (BYTE*)&mm1, (DBINT)-1) == -1)
+	croak("Invalid dbconvert() for DBMONEY $m1 parameter");
+    
+    if (dbconvert(dbproc, SYBCHAR,
+		  (BYTE *)m2, (DBINT)-1,
+		  SYBMONEY4, (BYTE*)&mm2, (DBINT)-1) == -1)
+	croak("Invalid dbconvert() for DBMONEY $m2 parameter");
+
+    retval = dbmny4add(dbproc, &mm1, &mm2, &mresult);
+
+    new_mny4tochar(dbproc, &mresult, mnybuf);
+
+    XPUSHs(sv_2mortal(newSViv(retval)));
+    XPUSHs(sv_2mortal(newSVpv(mnybuf, 0)));
+}
+
+void
+dbmny4divide(dbp, m1, m2)
+	SV *	dbp
+	char *	m1
+	char *	m2
+  PPCODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+    DBMONEY4 mm1, mm2, mresult;
+    DBCHAR mnybuf[40];
+    int retval;
+
+    if (dbconvert(dbproc, SYBCHAR,
+		  (BYTE *)m1, (DBINT)-1,
+		  SYBMONEY4, (BYTE*)&mm1, (DBINT)-1) == -1)
+	croak("Invalid dbconvert() for DBMONEY $m1 parameter");
+    
+    if (dbconvert(dbproc, SYBCHAR,
+		  (BYTE *)m2, (DBINT)-1,
+		  SYBMONEY4, (BYTE*)&mm2, (DBINT)-1) == -1)
+	croak("Invalid dbconvert() for DBMONEY $m2 parameter");
+
+    retval = dbmny4divide(dbproc, &mm1, &mm2, &mresult);
+
+    new_mny4tochar(dbproc, &mresult, mnybuf);
+
+    XPUSHs(sv_2mortal(newSViv(retval)));
+    XPUSHs(sv_2mortal(newSVpv(mnybuf, 0)));
+}
+
+void
+dbmny4minus(dbp, m1)
+	SV *	dbp
+	char *	m1
+  PPCODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+    DBMONEY4 mm1, mresult;
+    DBCHAR mnybuf[40];
+    int retval;
+
+    if (dbconvert(dbproc, SYBCHAR,
+		  (BYTE *)m1, (DBINT)-1,
+		  SYBMONEY4, (BYTE*)&mm1, (DBINT)-1) == -1)
+	croak("Invalid dbconvert() for DBMONEY $m1 parameter");
+    
+
+    retval = dbmny4minus(dbproc, &mm1, &mresult);
+
+    new_mny4tochar(dbproc, &mresult, mnybuf);
+
+    XPUSHs(sv_2mortal(newSViv(retval)));
+    XPUSHs(sv_2mortal(newSVpv(mnybuf, 0)));
+}
+
+void
+dbmny4mul(dbp, m1, m2)
+	SV *	dbp
+	char *	m1
+	char *	m2
+  PPCODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+    DBMONEY4 mm1, mm2, mresult;
+    DBCHAR mnybuf[40];
+    int retval;
+
+    if (dbconvert(dbproc, SYBCHAR,
+		  (BYTE *)m1, (DBINT)-1,
+		  SYBMONEY4, (BYTE*)&mm1, (DBINT)-1) == -1)
+	croak("Invalid dbconvert() for DBMONEY $m1 parameter");
+    
+    if (dbconvert(dbproc, SYBCHAR,
+		  (BYTE *)m2, (DBINT)-1,
+		  SYBMONEY4, (BYTE*)&mm2, (DBINT)-1) == -1)
+	croak("Invalid dbconvert() for DBMONEY $m2 parameter");
+
+    retval = dbmny4mul(dbproc, &mm1, &mm2, &mresult);
+
+    new_mny4tochar(dbproc, &mresult, mnybuf);
+
+    XPUSHs(sv_2mortal(newSViv(retval)));
+    XPUSHs(sv_2mortal(newSVpv(mnybuf, 0)));
+}
+
+void
+dbmny4sub(dbp, m1, m2)
+	SV *	dbp
+	char *	m1
+	char *	m2
+  PPCODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+    DBMONEY4 mm1, mm2, mresult;
+    DBCHAR mnybuf[40];
+    int retval;
+
+    if (dbconvert(dbproc, SYBCHAR,
+		  (BYTE *)m1, (DBINT)-1,
+		  SYBMONEY4, (BYTE*)&mm1, (DBINT)-1) == -1)
+	croak("Invalid dbconvert() for DBMONEY $m1 parameter");
+    
+    if (dbconvert(dbproc, SYBCHAR,
+		  (BYTE *)m2, (DBINT)-1,
+		  SYBMONEY4, (BYTE*)&mm2, (DBINT)-1) == -1)
+	croak("Invalid dbconvert() for DBMONEY $m2 parameter");
+
+    retval = dbmny4sub(dbproc, &mm1, &mm2, &mresult);
+
+    new_mny4tochar(dbproc, &mresult, mnybuf);
+
+    XPUSHs(sv_2mortal(newSViv(retval)));
+    XPUSHs(sv_2mortal(newSVpv(mnybuf, 0)));
+}
+
+void
+dbmny4zero(dbp)
+	SV *	dbp
+  PPCODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+    DBMONEY4 mresult;
+    DBCHAR mnybuf[40];
+    int retval;
+
+    retval = dbmny4zero(dbproc, &mresult);
+
+    new_mny4tochar(dbproc, &mresult, mnybuf);
+
+    XPUSHs(sv_2mortal(newSViv(retval)));
+    XPUSHs(sv_2mortal(newSVpv(mnybuf, 0)));
+}
+
+int
+dbmny4cmp(dbp, m1, m2)
+	SV *	dbp
+	char *	m1
+	char *	m2
+  CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+    DBMONEY4 mm1, mm2;
+
+    if (dbconvert(dbproc, SYBCHAR,
+		  (BYTE *)m1, (DBINT)-1,
+		  SYBMONEY4, (BYTE*)&mm1, (DBINT)-1) == -1)
+	croak("Invalid dbconvert() for DBMONEY $m1 parameter");
+    
+    if (dbconvert(dbproc, SYBCHAR,
+		  (BYTE *)m2, (DBINT)-1,
+		  SYBMONEY4, (BYTE*)&mm2, (DBINT)-1) == -1)
+	croak("Invalid dbconvert() for DBMONEY $m2 parameter");
+
+    RETVAL = dbmny4cmp(dbproc, &mm1, &mm2);
+}
+ OUTPUT:
+RETVAL
+
+
+void
+dbmnyadd(dbp, m1, m2)
+	SV *	dbp
+	char *	m1
+	char *	m2
+  PPCODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+    DBMONEY mm1, mm2, mresult;
+    DBCHAR mnybuf[40];
+    int retval;
+
+    if (dbconvert(dbproc, SYBCHAR,
+		  (BYTE *)m1, (DBINT)-1,
+		  SYBMONEY, (BYTE*)&mm1, (DBINT)-1) == -1)
+	croak("Invalid dbconvert() for DBMONEY $m1 parameter");
+    
+    if (dbconvert(dbproc, SYBCHAR,
+		  (BYTE *)m2, (DBINT)-1,
+		  SYBMONEY, (BYTE*)&mm2, (DBINT)-1) == -1)
+	croak("Invalid dbconvert() for DBMONEY $m2 parameter");
+
+    retval = dbmnyadd(dbproc, &mm1, &mm2, &mresult);
+
+    new_mnytochar(dbproc, &mresult, mnybuf);
+
+    XPUSHs(sv_2mortal(newSViv(retval)));
+    XPUSHs(sv_2mortal(newSVpv(mnybuf, 0)));
+}
+
+void
+dbmnydivide(dbp, m1, m2)
+	SV *	dbp
+	char *	m1
+	char *	m2
+  PPCODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+    DBMONEY mm1, mm2, mresult;
+    DBCHAR mnybuf[40];
+    int retval;
+
+    if (dbconvert(dbproc, SYBCHAR,
+		  (BYTE *)m1, (DBINT)-1,
+		  SYBMONEY, (BYTE*)&mm1, (DBINT)-1) == -1)
+	croak("Invalid dbconvert() for DBMONEY $m1 parameter");
+    
+    if (dbconvert(dbproc, SYBCHAR,
+		  (BYTE *)m2, (DBINT)-1,
+		  SYBMONEY, (BYTE*)&mm2, (DBINT)-1) == -1)
+	croak("Invalid dbconvert() for DBMONEY $m2 parameter");
+
+    retval = dbmnydivide(dbproc, &mm1, &mm2, &mresult);
+
+    new_mnytochar(dbproc, &mresult, mnybuf);
+
+    XPUSHs(sv_2mortal(newSViv(retval)));
+    XPUSHs(sv_2mortal(newSVpv(mnybuf, 0)));
+}
+
+void
+dbmnyminus(dbp, m1)
+	SV *	dbp
+	char *	m1
+  PPCODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+    DBMONEY mm1, mresult;
+    DBCHAR mnybuf[40];
+    int retval;
+
+    if (dbconvert(dbproc, SYBCHAR,
+		  (BYTE *)m1, (DBINT)-1,
+		  SYBMONEY, (BYTE*)&mm1, (DBINT)-1) == -1)
+	croak("Invalid dbconvert() for DBMONEY $m1 parameter");
+    
+    retval = dbmnyminus(dbproc, &mm1, &mresult);
+
+    new_mnytochar(dbproc, &mresult, mnybuf);
+
+    XPUSHs(sv_2mortal(newSViv(retval)));
+    XPUSHs(sv_2mortal(newSVpv(mnybuf, 0)));
+}
+
+void
+dbmnymul(dbp, m1, m2)
+	SV *	dbp
+	char *	m1
+	char *	m2
+  PPCODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+    DBMONEY mm1, mm2, mresult;
+    DBCHAR mnybuf[40];
+    int retval;
+
+    if (dbconvert(dbproc, SYBCHAR,
+		  (BYTE *)m1, (DBINT)-1,
+		  SYBMONEY, (BYTE*)&mm1, (DBINT)-1) == -1)
+	croak("Invalid dbconvert() for DBMONEY $m1 parameter");
+    
+    if (dbconvert(dbproc, SYBCHAR,
+		  (BYTE *)m2, (DBINT)-1,
+		  SYBMONEY, (BYTE*)&mm2, (DBINT)-1) == -1)
+	croak("Invalid dbconvert() for DBMONEY $m2 parameter");
+
+    retval = dbmnymul(dbproc, &mm1, &mm2, &mresult);
+
+    new_mnytochar(dbproc, &mresult, mnybuf);
+
+    XPUSHs(sv_2mortal(newSViv(retval)));
+    XPUSHs(sv_2mortal(newSVpv(mnybuf, 0)));
+}
+
+void
+dbmnysub(dbp, m1, m2)
+	SV *	dbp
+	char *	m1
+	char *	m2
+  PPCODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+    DBMONEY mm1, mm2, mresult;
+    DBCHAR mnybuf[40];
+    int retval;
+
+    if (dbconvert(dbproc, SYBCHAR,
+		  (BYTE *)m1, (DBINT)-1,
+		  SYBMONEY, (BYTE*)&mm1, (DBINT)-1) == -1)
+	croak("Invalid dbconvert() for DBMONEY $m1 parameter");
+    
+    if (dbconvert(dbproc, SYBCHAR,
+		  (BYTE *)m2, (DBINT)-1,
+		  SYBMONEY, (BYTE*)&mm2, (DBINT)-1) == -1)
+	croak("Invalid dbconvert() for DBMONEY $m2 parameter");
+
+    retval = dbmnysub(dbproc, &mm1, &mm2, &mresult);
+
+    new_mnytochar(dbproc, &mresult, mnybuf);
+
+    XPUSHs(sv_2mortal(newSViv(retval)));
+    XPUSHs(sv_2mortal(newSVpv(mnybuf, 0)));
+}
+
+void
+dbmnydec(dbp, m1)
+	SV *	dbp
+	char *	m1
+  PPCODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+    DBMONEY mresult;
+    DBCHAR mnybuf[40];
+    int retval;
+
+    if (dbconvert(dbproc, SYBCHAR,
+		  (BYTE *)m1, (DBINT)-1,
+		  SYBMONEY, (BYTE*)&mresult, (DBINT)-1) == -1)
+	croak("Invalid dbconvert() for DBMONEY $m1 parameter");
+    
+    retval = dbmnydec(dbproc, &mresult);
+
+    new_mnytochar(dbproc, &mresult, mnybuf);
+
+    XPUSHs(sv_2mortal(newSViv(retval)));
+    XPUSHs(sv_2mortal(newSVpv(mnybuf, 0)));
+}
+
+void
+dbmnyinc(dbp, m1)
+	SV *	dbp
+	char *	m1
+  PPCODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+    DBMONEY mresult;
+    DBCHAR mnybuf[40];
+    int retval;
+
+    if (dbconvert(dbproc, SYBCHAR,
+		  (BYTE *)m1, (DBINT)-1,
+		  SYBMONEY, (BYTE*)&mresult, (DBINT)-1) == -1)
+	croak("Invalid dbconvert() for DBMONEY $m1 parameter");
+    
+    retval = dbmnyinc(dbproc, &mresult);
+
+    new_mnytochar(dbproc, &mresult, mnybuf);
+
+    XPUSHs(sv_2mortal(newSViv(retval)));
+    XPUSHs(sv_2mortal(newSVpv(mnybuf, 0)));
+}
+
+void
+dbmnydown(dbp, m1, i1)
+	SV *	dbp
+	char *	m1
+	int	i1
+  PPCODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+    DBMONEY mresult;
+    DBCHAR mnybuf[40];
+    int retval, iresult = 0;
+
+    if (dbconvert(dbproc, SYBCHAR,
+		  (BYTE *)m1, (DBINT)-1,
+		  SYBMONEY, (BYTE*)&mresult, (DBINT)-1) == -1)
+	croak("Invalid dbconvert() for DBMONEY $m1 parameter");
+    
+    retval = dbmnydown(dbproc, &mresult, i1, &iresult);
+
+    new_mnytochar(dbproc, &mresult, mnybuf);
+
+    XPUSHs(sv_2mortal(newSViv(retval)));
+    XPUSHs(sv_2mortal(newSVpv(mnybuf, 0)));
+    XPUSHs(sv_2mortal(newSViv(iresult)));
+}
+
+void
+dbmnyinit(dbp, m1, i1)
+	SV *	dbp
+	char *	m1
+	int	i1
+  PPCODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+    DBMONEY mresult;
+    DBCHAR mnybuf[40];
+    DBBOOL bresult = (DBBOOL)FALSE;
+    int retval;
+
+    if (dbconvert(dbproc, SYBCHAR,
+		  (BYTE *)m1, (DBINT)-1,
+		  SYBMONEY, (BYTE*)&mresult, (DBINT)-1) == -1)
+	croak("Invalid dbconvert() for DBMONEY $m1 parameter");
+    
+    retval = dbmnyinit(dbproc, &mresult, i1, &bresult);
+
+    new_mnytochar(dbproc, &mresult, mnybuf);
+
+    XPUSHs(sv_2mortal(newSViv(retval)));
+    XPUSHs(sv_2mortal(newSVpv(mnybuf, 0)));
+    XPUSHs(sv_2mortal(newSViv((int)bresult)));
+}
+
+void
+dbmnyscale(dbp, m1, i1, i2)
+	SV *	dbp
+	char *	m1
+	int	i1
+	int	i2
+  PPCODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+    DBMONEY mresult;
+    DBCHAR mnybuf[40];
+    int retval;
+
+    if (dbconvert(dbproc, SYBCHAR,
+		  (BYTE *)m1, (DBINT)-1,
+		  SYBMONEY, (BYTE*)&mresult, (DBINT)-1) == -1)
+	croak("Invalid dbconvert() for DBMONEY $m1 parameter");
+    
+    retval = dbmnyscale(dbproc, &mresult, i1, i2);
+
+    new_mnytochar(dbproc, &mresult, mnybuf);
+
+    XPUSHs(sv_2mortal(newSViv(retval)));
+    XPUSHs(sv_2mortal(newSVpv(mnybuf, 0)));
+}
+
+void
+dbmnyzero(dbp)
+	SV *	dbp
+  PPCODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+    DBMONEY mresult;
+    DBCHAR mnybuf[40];
+    int retval;
+
+    retval = dbmnyzero(dbproc, &mresult);
+
+    new_mnytochar(dbproc, &mresult, mnybuf);
+
+    XPUSHs(sv_2mortal(newSViv(retval)));
+    XPUSHs(sv_2mortal(newSVpv(mnybuf, 0)));
+}
+
+
+void
+dbmnymaxneg(dbp)
+	SV *	dbp
+  PPCODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+    DBMONEY mresult;
+    DBCHAR mnybuf[40];
+    int retval;
+
+    retval = dbmnymaxneg(dbproc, &mresult);
+
+    new_mnytochar(dbproc, &mresult, mnybuf);
+
+    XPUSHs(sv_2mortal(newSViv(retval)));
+    XPUSHs(sv_2mortal(newSVpv(mnybuf, 0)));
+}
+
+void
+dbmnymaxpos(dbp)
+	SV *	dbp
+  PPCODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+    DBMONEY mresult;
+    DBCHAR mnybuf[40];
+    int retval;
+
+    retval = dbmnymaxpos(dbproc, &mresult);
+
+    new_mnytochar(dbproc, &mresult, mnybuf);
+
+    XPUSHs(sv_2mortal(newSViv(retval)));
+    XPUSHs(sv_2mortal(newSVpv(mnybuf, 0)));
+}
+
+void
+dbmnyndigit(dbp, m1)
+	SV *	dbp
+	char *	m1
+  PPCODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+    DBMONEY mresult;
+    DBBOOL  bresult = (DBBOOL)FALSE;
+    DBCHAR mnybuf[40], dgtbuf[10];
+    int retval;
+
+    if (dbconvert(dbproc, SYBCHAR,
+		  (BYTE *)m1, (DBINT)-1,
+		  SYBMONEY, (BYTE*)&mresult, (DBINT)-1) == -1)
+	croak("Invalid dbconvert() for DBMONEY $m1 parameter");
+    
+    retval = dbmnyndigit(dbproc, &mresult, dgtbuf, &bresult);
+
+    new_mnytochar(dbproc, &mresult, mnybuf);
+
+    XPUSHs(sv_2mortal(newSViv(retval)));
+    XPUSHs(sv_2mortal(newSVpv(mnybuf, 0)));
+    XPUSHs(sv_2mortal(newSVpv(dgtbuf, 0)));
+    XPUSHs(sv_2mortal(newSViv((int)bresult)));
+}
+
+int
+dbmnycmp(dbp, m1, m2)
+	SV *	dbp
+	char *	m1
+	char *	m2
+  CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+    DBMONEY mm1, mm2;
+
+    if (dbconvert(dbproc, SYBCHAR,
+		  (BYTE *)m1, (DBINT)-1,
+		  SYBMONEY, (BYTE*)&mm1, (DBINT)-1) == -1)
+	croak("Invalid dbconvert() for DBMONEY $m1 parameter");
+    
+    if (dbconvert(dbproc, SYBCHAR,
+		  (BYTE *)m2, (DBINT)-1,
+		  SYBMONEY, (BYTE*)&mm2, (DBINT)-1) == -1)
+	croak("Invalid dbconvert() for DBMONEY $m2 parameter");
+    RETVAL = dbmnycmp(dbproc, &mm1, &mm2);
+}
+ OUTPUT:
+RETVAL
+
+void
+open_commit(package="Sybase::DBlib",user=NULL,pwd=NULL,server=NULL,appname=NULL)
+	char *	package
+	char *	user
+	char *	pwd
+	char *	server
+	char *	appname
+  CODE:
+{
+    DBPROCESS *dbproc;
+    SV *rv;
+    SV *sv;
+    HV *hv;
+    HV *stash;
+    
+    if(user && *user)
+	DBSETLUSER(login, user);
+    if(pwd && *pwd)
+	DBSETLPWD(login, pwd);
+    if(server && !*server)
+	server = NULL;
+    if(appname && *appname)
+	DBSETLAPP(login, appname);
+    if(!(dbproc = open_commit(login, server)))
+    {
+	ST(0) = sv_newmortal();
+    }
+    else
+    {
+	sv = newSViv((IV)dbproc);
+	hv = (HV*)sv_2mortal((SV*)newHV());
+	my_hv_store(hv, HV_dbproc, sv, 0);
+	my_hv_store(hv, HV_dbstatus, newSViv(0), 0);
+	my_hv_store(hv, HV_compute_id, newSViv(0), 0);
+	my_hv_store(hv, HV_keepnum, newSViv(1), 0);
+	my_hv_store(hv, HV_nullundef, newSViv(1), 0);
+	rv = newRV((SV*)hv);
+	stash = gv_stashpv(package, TRUE);
+	ST(0) = sv_2mortal(sv_bless(rv, stash));
+    }
+}
+
+int
+start_xact(dbp, app_name, xact_name, site_count)
+	SV *	dbp
+	char *	app_name
+	char *	xact_name
+	int	site_count
+  CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = start_xact(dbproc, app_name, xact_name, site_count);
+}
+
+int
+stat_xact(dbp, id)
+	SV *	dbp
+	int	id
+  CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = stat_xact(dbproc, id);
+}
+
+int
+scan_xact(dbp, id)
+	SV *	dbp
+	int	id
+  CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = scan_xact(dbproc, id);
+}
+
+int
+commit_xact(dbp, id)
+	SV *	dbp
+	int	id
+  CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = commit_xact(dbproc, id);
+}
+
+void
+close_commit(dbp)
+	SV *	dbp
+  CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    close_commit(dbproc);
+}
+
+
+int
+abort_xact(dbp, id)
+	SV *	dbp
+	int	id
+  CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = abort_xact(dbproc, id);
+}
+
+void
+build_xact_string(xact_name, service_name, commid)
+	char *	xact_name
+	char *	service_name
+	int	commid
+  PPCODE:
+{
+    char *buf;
+
+    New (902, buf, 15 + strlen(xact_name) + strlen(service_name), char);
+
+    build_xact_string(xact_name, service_name, commid, buf);
+
+    XPUSHs(sv_2mortal(newSVpv(buf, 0)));
+
+    Safefree(buf);
+}
+
+int
+dbrpcinit(dbp, rpcname, opt)
+	SV *	dbp
+	char *	rpcname
+	int	opt
+  CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = dbrpcinit(dbproc, rpcname, opt);
+}
+
+int
+dbrpcparam(dbp, parname, status, type, maxlen, datalen, value)
+	SV *	dbp
+	char *	parname
+	int	status
+	int	type
+	int	maxlen
+	int	datalen
+	char *	value
+  CODE:
+{
+#if !defined(max)
+#define max(a, b)	((a) > (b) ? (a) : (b))
+#endif
+    DBPROCESS *dbproc = getDBPROC(dbp);
+    HV *hv;
+    SV **svp, *sv;
+    struct RpcInfo *head = NULL, *ptr = NULL;
+    char buff[256];
+    
+    hv = (HV *)SvRV(dbp);
+    if((svp = my_hv_fetch(hv, HV_rpcinfo, FALSE)))
+	head = (void *)SvIV(*svp);
+
+    New(902, ptr, 1, struct RpcInfo);
+    switch(type)
+    {
+      case SYBBIT:
+      case SYBINT1:
+      case SYBINT2:
+      case SYBINT4:
+	ptr->type = SYBINT4;
+	ptr->u.i = atoi(value);
+	ptr->value = &ptr->u.i;
+	break;
+      case SYBFLT8:
+      case SYBMONEY:
+#if DBLIBVS >= 420
+      case SYBREAL:
+#if DBLIBVS >= 461
+      case SYBMONEY4:
+#if DBLIBVS >= 1000
+      case SYBNUMERIC:		/* dunno if this is the right place */
+      case SYBDECIMAL:
+#endif
+#endif
+#endif
+	ptr->type = SYBFLT8;
+	ptr->u.f = atof(value);
+	ptr->value = &ptr->u.f;
+	break;
+      case SYBCHAR:
+      case SYBDATETIME:
+      case SYBTEXT:
+#if DBLIBVS >= 420
+      case SYBDATETIME4:
+#endif
+	ptr->type = SYBCHAR;
+	ptr->size = max(maxlen, datalen);
+	New(902, ptr->u.c, ptr->size+1, char);
+	strcpy(ptr->u.c, value);
+	ptr->value = ptr->u.c;
+	break;
+      default:
+	sprintf(buff, "Invalid type value (%d) for dbrpcparam()", type);
+	croak(buff);
+    }
+    ptr->next = head;
+    head = ptr;
+    sv = newSViv((IV)head);
+    my_hv_store(hv, HV_rpcinfo, sv, 0);
+    
+    
+    RETVAL = dbrpcparam(dbproc, parname, status, ptr->type, maxlen, datalen, ptr->value);
+}
+
+int
+dbrpcsend(dbp)
+	SV *	dbp
+  CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+    HV *hv;
+    SV **svp, *sv;
+    struct RpcInfo *ptr = NULL, *next = NULL;
+    
+    hv = (HV *)SvRV(dbp);
+    if((svp = my_hv_fetch(hv, HV_rpcinfo, FALSE)))
+	ptr = (void *)SvIV(*svp);
+
+    RETVAL = dbrpcsend(dbproc);
+
+    /* temporay solution: call dbsqlok() directly after dbrpcsend() */
+    if(RETVAL != FAIL)
+	RETVAL = dbsqlok(dbproc);
+    /* clean-up the rpcParam list
+       according to the DBlib docs, it should be safe to this here. */
+    if(ptr)
+    {
+	for(; ptr; ptr = next)
+	{
+	    next = ptr->next;
+	    if(ptr->type == SYBCHAR)
+		Safefree(ptr->u.c);
+	    Safefree(ptr);
+	}
+	sv = newSViv((IV)0);
+	my_hv_store(hv, HV_rpcinfo, sv, 0);
+    }
+}
+
+int
+dbrpwset(srvname, pwd)
+	char *	srvname
+	char *	pwd
+  CODE:
+{
+    if(!srvname || strlen(srvname) == 0)
+	srvname = NULL;
+    RETVAL = dbrpwset(login, srvname, pwd, strlen(pwd));
+}
+
+void
+dbrpwclr()
+  CODE:
+{
+    dbrpwclr(login);
+}

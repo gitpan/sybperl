@@ -1,0 +1,839 @@
+@(#)sybperl.pod	1.7	9/20/95
+
+
+=head1 NAME
+
+sybperl - Sybase extensions to Perl
+
+=head1 SYNOPSIS
+
+   use Sybase::DBlib;
+   use Sybase::CTlib;
+   use Sybase::Sybperl;
+
+=head1 DESCRIPTION
+
+Sybperl implements three I<Sybase> extension modules to I<perl>
+(version 5.001 or higher). I<Sybase::DBlib> adds a subset of the
+I<Sybase DB-Library> API. I<Sybase::CTlib> adds a subset of the
+I<Sybase CT-Library> API. I<Sybase::Sybperl> is a backwards
+compatibility module (implemented on top of I<Sybase::DBlib>) to
+enable scripts written for I<sybperl 1.0xx> to run with I<Perl 5>.
+
+Note: using both I<Sybase::Sybperl> and I<Sybase::DBlib> explicitly in
+a single script is not garanteed to work correctly.
+
+B<NOTE:> Allthough I've tried to describe the usage of each API call,
+you should allways refer to the Sybase OpenClient documentation in
+case of doubt.
+
+=head1 Sybase::DBlib
+
+A generic I<perl> script using I<Sybase::DBlib> would look like this:
+
+    use Sybase::DBlib;
+
+    $dbh = Sybase::DBlib->dblogin('sa', $pwd, $server, 'test_app');
+    $dbh->dbcmd("select * from sysprocesses\n");
+    $dbh->dbsqlexec;
+    $dbh->dbresults;
+    while(@data = $dbh->dbnextrow)
+    {
+    .... do something with @data ....
+    }
+
+
+The API calls that have been implemented use the same calling sequence
+as their C equivalents, with a couple of exceptions, detailed below.
+
+B<List of API calls>
+
+B<Standard Routines:>
+
+=over 8
+
+=item $dbh = Sybase::DBlib->dblogin([$user [, $pwd [, $server [, $appname ]]]])
+
+
+Initiates a connection to a Sybase dataserver, using the supplied
+user, password, server and application name information. Uses the
+default values (see DBSETLUSER(), DBSETLPWD(), etc. in the Sybase
+DB-library documentation) if the parameters are ommitted.
+
+This call can be used multiple times if connecting to multiple servers
+with different username/password combinations is required, for example.
+
+=item $dbh = Sybase::DBlib->dbopen([$server [, $appname ]])
+
+Open an additional connection, using the current LOGINREC information.
+
+=item $status = $dbh->dbuse($database)
+
+Executes "use database $database" for the connection $dbh.
+
+=item $status = $dbh->dbcmd($sql_cmd)
+
+Appends the string $sql_cmd to the current command buffer of this connection.
+
+=item $status = $dbh->dbsqlexec
+
+Sends the content of the current command buffer to the dataserver for
+execution. See the DB-library documentation for a discussion of return
+values.
+
+=item $status = $dbh->dbresults
+
+Retrieves result information from the dataserver after having executed
+dbsqlexec().
+
+=item $status = $dbh->dbcancel
+
+Cancels the current command batch.
+
+=item $status = $dbh->dbcanquery
+
+Cancels the current query within the currently executing command batch.
+
+=item $dbh->dbfreebuf
+
+Free the command buffer (required only in special cases - if you don't
+know what this is you probably don't need it :-)
+
+=item $dbh->dbclose
+
+Force the closing of a connection. Note that connections are
+automatically closed when the $dbh goes out of scope.
+
+=item $status = $dbh->DBCURCMD
+
+Returns the number of the currently executing command in the command
+batch. The first command is number 1.
+
+=item $status = $dbh->DBMORECMDS
+
+Returns TRUE if there are additional commands to be executed in the
+current command batch.
+
+=item $status = $dbh->DBCMDROW
+
+Returns SUCCEED if the current command can return rows.
+
+=item $status = $dbh->DBROWS
+
+Returns SUCCEED if the current command did return rows
+
+=item $status = $dbh->DBCOUNT
+
+Returns the number of rows that the current command affected.
+
+=item $row_num = $dbh->DBCURROW
+
+Returns the number (counting from 1) of the currently retrieved row in
+the current result set.
+
+=item $status = $dbh->dbhasretstat
+
+Did the last executed stored procedure return a status value?
+dbhasretstats must only be called after dbresults returns
+NO_MORE_RESULTS, ie after all the selet, insert, update operations of
+he sored procedure have been processed.
+
+=item $status = $dbh->dbretstatus
+
+Retrieve the return status of a stored procedure. As with
+dbhasretstat, call this function after all the result sets of the
+stored procedure have been processed.
+
+=item $status = $dbh->dbnumcols
+
+How many columns are in the current result set.
+
+=item $status = $dbh->dbcoltype($colid)
+
+What is the column type of column $colid in the current result
+set. 
+
+=item $status = $dbh->dbcollen($colid)
+
+What is the length (in bytes) of column $colid in the current result set.
+
+=item $string = $dbh->dbcolname($colid)
+
+What is the name of column $colid in the current result set.
+
+=item @dat = $dbh->dbnextrow([$doAssoc])
+
+Retrieve one row. dbnextrow returns an array of scalars, one for each
+column value. If $doAssoc is non-0, then dbnextrow returns a hash (aka
+associative array) with column name/value pairs. This relieves the
+programmer from having to call dbbind() or dbdata(). The return value
+of the C version of dbnextrow() can be accessed via the Perl DBPROCESS
+attribute field, as in:
+
+   @arr = $dbh->dbnextrow;		# read results
+   if($dbh->{DBstatus} != REG_ROW) {
+     take some appropriate action...
+   }
+
+When the results row is a COMPUTE row, the ComputeID field of the
+DBPROCESS is set:
+
+   @arr = $dbh->dbnextrow;		# read results
+   if($dbh->{ComputeID} != 0) {	# it's a 'compute by' row
+     take some appropriate action...
+   }
+
+dbnextrow can also return a hash keyed on the column name:
+
+   $dbh->dbcmd("select Name=name, Id = id from test_table");
+   $dbh->dbsqlexec; $dbh->dbresults;
+
+   while(%arr = $dbh->dbnextrow(1)) {
+      print "$arr{Name} : $arr{Id}\n";
+   }
+
+
+=item @dat = $dbh->dbretdata[$doAssoc])
+
+Retrieve value of the parameters marked as 'OUTPUT' in a stored
+procedure. If $doAssoc is non-0, then retrieve the data as an
+associative array with parameter name/value pairs.
+
+=item $string = $dbh->dbstrcpy
+
+Retrieve the contents of the command buffer.
+
+=item $string = $dbh->dbsafestr($string [,$quote_char])
+
+Convert $string to a 'safer' version by inserting single or double
+quotes where appropriate, so that it can be passed to the dataserver
+without syntax errors. 
+
+The second argument to dbsafestr (normally B<DBSINGLE>, B<DBDOUBLE> or
+B<DBBOTH>) has been replaced with a literal ' or " (meaning B<DBSINGLE> or
+B<DBDOUBLE>, respectively). Omitting this argument means B<DBBOTH>.
+
+=item $status = $dbh->dbwritetext($colname, $dbh_2, $colnum, $text)
+
+Insert or update data in a TEXT or IMAGE column. The usage is a bit
+different from that of the C version:
+
+The calling sequence has been somewhat simplified, and logging is
+always off.
+
+B<$dbh_2> and B<$colnum> are the B<DBPROCESS> and column number of a
+currently active query. Example:
+
+   $dbh_2->dbcmd('select the_text, t_index from text_table where t_index = 5');
+   $dbh_2->dbsqlexec; $dbh_2->dbresults;
+   @data = $dbh_2->dbnextrow;
+
+   $d->dbwritetext ("text_table.the_text", $dbh_2, 1,
+	"This is text which was added with Sybperl");
+
+=back
+
+B<BCP Routines:>
+
+=over 8
+
+=item BCP_SETL($state)
+
+This is an exported routine (ie it can be called without a $dbh
+handle) which sets the BCP IN flag to TRUE/FALSE.
+
+It is necessary to call BCP_SETL($DBTRUE) before opening the
+connection with which one wants to run a BCP IN operation.
+
+=item $state = bcp_getl()
+
+Retrieve the current BCP flag status.
+
+=item $status = $dbh->bcp_init($table, $hfile, $errfile, $direction)
+
+Initialize BCP library. $direction can be B<DB_OUT> or B<DB_IN>
+
+=item $status = $dbh->bcp_meminit($numcols)
+
+This is a utility function that does not exist in the normal BCP
+API. It's use is to initialize some internal variables before starting
+a BCP operation from program variables into a table. This call avoids
+setting up translation 
+information for each of the columns of the table being updated,
+obviating the use of the bcp_colfmt call.
+
+See examples, below.
+
+=item $status = $dbh->bcp_sendrow(LIST)
+
+Sends the data in LIST to the server. The LIST is assumed to contain
+one element for each column being updated. To send a NULL value set
+the appropriate element to the Perl B<undef> value.
+
+=item $status = $dbh->bcp_done
+
+=item $status = $dbh->bcp_control($field, $value)
+
+=item $status = $dbh->bcp_columns($colcount)
+
+=item $status = $dbh->bcp_colfmt($host_col, $host_type, $host_prefixlen, $host_collen, $host_term, $host_termlen, $table_col [, $precision, $scale])
+
+If you have DBlibrary for System 10 or higher, then you can pass the
+additional $precision and $scale parameters, and have sybperl call
+bcp_colfmt_ps() instead of bcp_colfmt().
+
+=item $status = $dbh->bcp_collen($varlen, $table_column)
+
+=item $status = $dbh->bcp_exec
+
+=item $status = $dbh->bcp_readfmt($filename)
+
+=item $status = $dbh->bcp_writefmt($filename)
+
+Please see the DB-library documentation for these calls.
+
+=back
+
+B<DBMONEY Routines:>
+
+=over 8
+
+=item ($status, $sum) = $dbh->dbmny4add($m1, $m2)
+
+=item  $status = $dbh->dbmny4cmp($m1, $m2)
+
+=item ($status, $quotient) = $dbh->dbmny4divide($m1, $m2)
+
+=item ($status, $dest) = $dbh->dbmny4minus($source)
+
+=item ($status, $product) = $dbh->dbmny4mul($m1, $m2)
+
+=item ($status, $difference) = $dbh->dbmny4sub($m1, $m2)
+
+=item ($status, $ret) = $dbh->dbmny4zero
+
+=item ($status, $sum) = $dbh->dbmnyadd($m1, $m2)
+
+=item $status = $dbh->dbmnycmp($m1, $m2)
+
+=item ($status, $ret) = $dbh->dbmnydec($m1)
+
+=item ($status, $quotient) = $dbh->dbmnydivide($m1, $m2)
+
+=item ($status, $ret, $remainder) = $dbh->dbmnydown($m1, $divisor)
+
+=item ($status, $ret) = $dbh->dbmnyinc($m1)
+
+=item ($status, $ret, $remain) = $dbh->dbmnyinit($m1, $trim)
+
+=item ($status, $ret) = $dbh->dbmnymaxneg
+
+=item ($status, $ret) = $dbh->dbmnymaxpos
+
+=item ($status, $dest) = $dbh->dbmnyminus($source)
+
+=item ($status, $product) = $dbh->dbmnymul($m1, $m2)
+
+=item ($status, $m1, $digits, $remain) = $dbh->dbmnyndigit($m1)
+
+=item ($status, $ret) = $dbh->dbmnyscale($m1, $multiplier, $addend)
+
+=item ($status, $difference) = $dbh->dbmnysub($m1, $m2)
+
+=item ($status, $ret) = $dbh->dbmnyzero
+
+All of these routines correspond to their DB-library counterpart, with
+the following exception:
+
+The routines which in the C version take pointers to arguments
+(in order to return values) return these values in an array instead:
+
+   status = dbmnyadd(dbproc, m1, m2, result) becomes
+   ($status, $result) = $dbproc->dbmnyadd($m1, $m2)
+
+=back
+
+B<RPC Routines>
+
+B<NOTE:> Check out eg/rpc-example.pl for an example on how to use
+these calls.
+
+=over 8
+
+=item $dbh->dbrpcinit($rpcname, $option)
+
+Initialize an RPC call to the remote procedure $rpcname. See the
+DB-library manual for valid values for $option.
+
+=item $dbh->dbrpcparam($parname, $status, $type, $maxlen, $datalen, $value)
+
+Add a parameter to an RPC call initiated with dbrpcinit(). Please see
+the DB-library manual page for details & values for the parameters.
+
+B<NOTE:> All floaing point types (MONEY, FLOAT, REAL, DECIMAL, etc.)
+are converted to FLOAT before being sent to the RPC.
+
+=item $dbh->dbrpcsend
+
+Execute an RPC initiated with dbrpcinit().
+
+B<NOTE:> This call executes both dbrpcsend() and dbsqlok(). You can
+call $dbh->dbresults direcly after calling $dbh->dbrpcsend.
+
+=item dbrpwset($srvname, $pwd)
+
+Set the password for connecting to a remote server.
+
+=item dbrpwclr()
+
+Clear all remote server passwords.
+
+=back
+
+B<Two Phase Commit Routines:>
+
+=over 8
+
+=item $dbh = Sybase::DBlib->open_commit($user, $pwd, $server, $appname)
+
+=item $id = $dbh->start_xact($app_name, $xact_name, $site_count)
+
+=item $status = $dbh->stat_xact($id)
+
+=item $status = $dbh->scan_xact($id)
+
+=item $status = $dbh->commit_xact($id)
+
+=item $status = $dbh->abort_xact($id)
+
+=item $dbh->close_commit
+
+=item $string = Sybase::DBlib::build_xact_string($xact_name, $service_name, $id)
+
+Please see the Sybase documentation for this.
+
+B<NOTE:> These routines have not been thouroughly tested!
+
+=back
+
+B<Exported Routines:>
+
+=over 8
+
+=item dberrhandle($err_handle)
+
+=item dbmsghandle($msg_handle)
+
+Register an error (or message) handler for DB-library to use. Handler
+examples can be found in B<sybutil.pl> in the Sybperl
+distribution. Returns a reference to the previously defined handler
+(or undef if none were defined). Passing undef as the argument clears
+the handler.
+
+=item dbsetifile($filename)
+
+Set the name of the 'interfaces' file. This file is normally found by
+DB-library in the directory pointed to by the $SYBASE environment variable.
+
+=item dbrecftos($filename)
+
+Start recording all SQL sent to the server in file $filename.
+
+=item dbsetversion($version)
+
+For DB-library 10.0+, determines which behaviour to adopt relative to
+new datatypes (such as NUMERIC, DECIMAL).
+
+=item dbversion()
+
+Returns a string identifying the version of DBlibrary that this copy
+of Sybperl was built with.
+
+=item DBSETLCHARSET($charset)
+
+=item DBSETLNATLANG($language)
+
+=item $time = DBGETTIME()
+
+=item $time = dbsettime($seconds)
+
+=item $time = dbsetlogintime($seconds)
+
+These utility routines are probably very seldom used. See the
+DB-library manual for an explanation of their use.
+
+=item dbexit()
+
+Tell DB-library that we're done. Once this call has been made, no
+further activity requiring DB-library can be performed in the current
+program.
+
+=back
+
+B<Utility Routines:>
+
+These routines are not part of the DB-library API, but have been added
+because they can make our life as programers easier, and exploit
+certain strenghts of Perl.
+
+=over 8
+
+=item $dbh = new Sybase::DBlib user, pwd,...
+
+This is a synonym for Sybase::DBlib->dblogin(...), which we provide to
+be coherent with other Perl extension modules. It is also an accepted
+name for allocating a new object in many Object Oriented environments,
+so we feel that it has it's place here.
+
+=item $ret|@ret = $dbh->sql($cmd [, \&rowcallback])
+
+Runs the sql command and returns the result as a reference to an array
+of the rows. In a LIST context, return the array itself (instead of a
+reference to the array).  Each row is a reference to an array of scalars.
+
+If you provide a second parameter it is taken as a procedure to call
+for each row.  The callback is called with the values of the row as
+parameters.
+
+See eg/sql.pl for an example.
+
+Contributed by Gisle Aas.
+
+B<NOTE:> This routine loads all the data into memory. It should not be
+run with a query that returns a large number of rows.
+
+=back
+
+B<Constants>
+
+=over 8
+
+Most of the #defines from sybdb.h can be accessed as
+B<Sybase::DBlib::NAME> (eg B<Sybase::DBlib::STDEXIT>)
+Additional constants are
+   $SybperlVer	     The current version of sybperl
+   DBLIBVS           The version of I<DBlibrary> that sybperl was built against
+
+=back
+
+B<Status Variables:>
+
+A number of status variables and attributes are associated with each
+DBPROCESS. They can be accessed using the Perl hash table syntax:
+   $dbproc->{'Attribute Name'};
+The following attributes are currently defined:
+    dbNullIsUndef - If set, NULL results are returned as the Perl value
+                    'undef' otherwise as the string "NULL".
+                    Default: set.
+    dbKeepNumeric - If set, numeric results are not converted to
+                    strings before returning the data to
+                    Perl. Default: set.
+    dbBin0x       - If set, BINARY results are preceeded by '0x' in
+                    the result. Default: unset.
+
+The following status variables are defined:
+    DBstatus      - The return status of the last call to dbnextrow.
+    ComputeID     - The compute id of the current returned row. Is 0
+                    if no compute by clause is currently being
+                    processed.
+
+=head1 Examples
+
+B<BCP from program variables>
+
+   &BCP_SETL($DBTRUE);
+   $dbproc = Sybase::DBlib::dblogin();
+   $dbproc->bcp_init("test.dbo.t2", '', 'bcp.err', $DB_IN);
+   $dbproc->bcp_meminit(3);   # we wish to copy three columns into
+			   # the 't2' table
+   while(<>)
+   {
+	chop;
+	@dat = split(' ', $_);
+	$dbproc->bcp_sendrow(@dat);
+   }
+   $ret = &bcp_done($dbproc);
+
+B<Using the sql() routine>
+
+   $dbh = new Sybase::DBlib;
+   $ret = $dbh->sql("select * from sysprocesses");
+   foreach (@$ret)   # Loop through each row
+   {
+       @row = @$_;
+       # do something with the data row...
+   }
+
+   $ret = $dbh->sql("select * from sysusers", sub { print "@_"; });
+   # This will select all the info from sysusers, and print it
+
+
+=head1 BUGS
+
+The 2PC calls have not been well tested.
+
+=head1 Sybase::Sybperl
+
+The Sybase::Sybperl package is designed for backwards compatibility
+with sybperl 1.0xx (for Perl 4.x). It's main purpose is to allow
+sybperl 1.0xx scripts to work unchanged with Perl 5 & sybperl 2. Using
+this API for new scripts is not recomended, unless portability with
+older versions of sybperl is essential.
+
+The sybperl 1.0xx man page is included in this package in pod/sybperl-1.0xx.man
+
+This package is layered on top of the Sybase::DBlib package, and could
+therefore suffer a small performance penalty.
+
+=head1 Sybase::CTlib
+
+The CT-library module has been written in colaboration with Sybase. It
+is still in Beta.
+
+=head1 DESCRIPTION
+
+=over 8
+
+=item $dbh = Sybase::CTlib->ct_connect([$user [, $passwd [, $server [,$appname]]]])
+
+Establishes a connection to the database engine. Initializes and
+allocates resources for the connection, and registers the user name,
+password, target server and application name.
+
+=item $status = $dbh->ct_execute($sql)
+
+Send the SQL commands $sql to the server. Multiple commands are
+allowed. However, you must call ct_results() until it returns
+CS_END_RESULTS or CS_FAIL, or call ct_cancel() before submitting a new
+set of SQL commands to the server.
+
+Return values: CS_SUCCEED, CS_FAIL or CS_CANCELED (the operation was
+canceled).
+
+B<NOTE:> ct_execute() is equivalent to calling ct_command() followed by
+ct_send(). 
+
+=item $status = $dbh->ct_command(type, buffer, len, option)
+
+Append a command to the current SQL command buffer. Please check the
+OpenClient documentation for exact usage.
+
+B<NOTE:> You should not need to call ct_command()/ct_send() directly. Use
+ct_execute() or ct_sql() instead.
+
+=item $status = $dbh->ct_send()
+
+Send the current command buffer to the server for execution.
+
+B<NOTE:> You should not need to call ct_command()/ct_send() directly. Use
+ct_execute() or ct_sql() instead.
+
+=item $status = $dbh->ct_results($res_type)
+
+This routine returns a results type to indicate the status of returned
+data. "Command Done: result type is returned if one result set has
+been processed. "Row result" token is returned if regular rows are
+returned. This output is stored in $res_type.
+
+The commonly used values for $res_type are CS_ROW_RESULT, CS_CMD_DONE,
+CS_CMD_SUCCEED, CS_COMPUTE_RESULT, CS_CMD_FAIL. The full list of
+values is on page 3-203 OpenClient reference manual.
+
+The $status value takes the following values: CS_SUCCEED,
+CS_END_RESULTS, CS_FAIL, CS_CANCELED.
+
+=item @names = $dbh->ct_col_names()
+
+Retrieve the column names of the current query. If the current query
+is not a select statement, then an empty array is returned.
+
+=item @types = $dbh->ct_col_types([$doAssoc])
+
+Retrieve the column types of the currently executing query. If
+$doAssoc is non-0, then a hash (aka associative array) is returned
+with column names/columnt type pairs.
+
+=item @data = $dbh->ct_fetch([$doAssoc])
+
+Retrieve one row of data. If $doAssoc is non-0, a hash is returned
+with column name/value pairs.
+
+An empty array is returned if there is no data to fetch.
+
+=item $dbh->ct_cancel($type)
+
+Issue an attention signal to the server about the current
+transaction. If $type == CS_CANCEL_ALL, then cancels the currend
+command immediately. If $type == CS_CANCEL_ATTN, then discard all
+results when next time the application reads from the server.
+
+=item ct_callback($type, $cb_func)
+
+Install a callback routine. Valid callback types are CS_CLIENTMSG_CB
+and CS_SERVERMSG_CB. Returns a reference to the previously installed
+callback of the specified type, or undef if no callback of that type
+exists. Passing undef as $cb_func unsets the callback for that type.
+
+=item $res_info = $dbh->ct_res_info($info_type)
+
+Retrieves information on the current result set. The type of
+information returned depends on $info_type. Currently supported values
+are: CS_NUM_COMPUTES, CS_NUMDATA, CS_NUMORDERCOLS, CS_ROW_COUNT.
+
+=item ($status, $param) = $dbh->ct_option($action, $option, $param, $type)
+
+This routine will set, retrieve or clear the values of server
+query-processing options.
+
+Values for $action: CS_SET, CS_GET, CS_CLEAR
+
+Values for $option: see p.3-170 of the OpenClient reference manual
+
+Values for $param: When setting an option, $param can be a integer, or
+a string. When retrieving an option, $param is set and returned. When
+clearing an option, $param is ignored.
+
+Value for $type: CS_INT_TYPE if $param is of integer type,
+CS_CHAR_TYPE if $param is a string
+
+=item $ret = $dbh->ct_cursor($type, $name, $text, $option)
+
+Initiate a cursor command. Usage is similar to the CTlibrary
+ct_cursor() call, except that when in C you would pass NULL as the
+value for $name or $text you pass the special Perl value undef
+instead.
+
+See Sybase/eg/ct_cursor.pl for an example.
+
+=item $ret = $dbh->ct_param(\%datafmt)
+
+Define a command parameter. The %datafmt hash is used to pass the
+appropriate parameters to the call. The following fields are defined:
+name (parameter name), datatype, status, indicator and value). These
+fields correspond to the equivalent fields in the CS_DATAFMT structure
+which is used in the CTlibrary ct_param call, and includes the two
+additional parameters 'value' and 'indicator'.
+
+The hash should be used like this:
+
+  %param = (name => '@acc', datatype => CS_CHAR_TYPE,
+            status => CS_INPUTVALUE, value => 'CIS 98941',
+	    indicator => CS_UNUSED);
+
+  $dbh->ct_param(\%param);
+
+Note that $dbh->ct_param() converts all parameter types to either
+CS_CHAR_TYPE, CS_FLOAT_TYPE or CS_INT_TYPE.
+
+See Sybase/eg/ct_param.pl for an example.
+
+=item $ret|@ret = $dbh->ct_sql($cmd [, \&rowcallback])
+
+Runs the sql command and returns the result as a reference to an array
+of the rows.  Each row is a reference to an array of scalars. In a
+LIST context, ct_sql returns an array of references to each row.
+
+If you provide a second parameter it is taken as a procedure to call
+for each row.  The callback is called with the values of the row as
+parameters.
+
+Examples can be found in eg/ct_sql.pl.
+
+B<NOTE:> This routine loads all the data into memory. It should not be
+run with a query that returns a large number of rows.
+
+=item $ret = $dbh->ct_fetchable($restype)
+
+Returns TRUE if the current result set has fetchable rows.
+Use like this:
+
+    $dbh->ct_execute("select * from sysprocesses");
+    while($dbh->ct_results($restype) == CS_SUCCEED) {
+        next if(!$dbh->ct_fetchable($restype));
+
+	while(@dat = $dbh->ct_fetch) {
+	    print "@dat\n";
+	}
+    }
+
+=back
+
+=head1 EXAMPLE
+
+    #!/usr/local/bin/perl
+
+    use Sybase::CTlib;
+
+    ct_callback(CS_CLIENTMSG_CB, \&msg_cb);
+    ct_callback(CS_SERVERMSG_CB, "srv_cb");
+    $uid = 'mpeppler'; $pwd = 'my-secret-password'; $srv = 'TROLL';
+
+    $X = Sybase::CTlib->ct_connect($uid, $pwd, $srv);
+
+    $X->ct_execute("select * from sysusers");
+
+    while(($rc = $X->ct_results($restype)) == CS_SUCCEED) {
+	next if($restype == CS_CMD_DONE || $restype == CS_CMD_FAIL ||
+	        $restype == CS_CMD_SUCCEED);
+	if(@names = $X->ct_col_names()) {
+	     print "@names\n";
+	}
+	if(@types = $X->ct_col_types()) {
+	     print "@types\n";
+	}
+	while(@dat = $X->ct_fetch) {
+	     print "@dat\n";
+	}
+    }
+
+    print "End of Results Sets\n" if($rc == CS_END_RESULTS);
+    print "Error!\n" if($rc == CS_FAIL);
+
+    sub msg_cb {
+        my($layer, $origin, $severity, $number, $msg, $osmsg) = @_;
+
+	printf STDERR "\nOpen Client Message: (In msg_cb)\n";
+	printf STDERR "Message number: LAYER = (%ld) ORIGIN = (%ld) ",
+    	       $layer, $origin;
+	printf STDERR "SEVERITY = (%ld) NUMBER = (%ld)\n",
+	       $severity, $number;
+	printf STDERR "Message String: %s\n", $msg;
+	if (defined($osmsg)) {
+	    printf STDERR "Operating System Error: %s\n", $osmsg;
+	}
+	CS_SUCCEED;
+    }
+
+    sub srv_cb {
+        my($cmd, $number, $severity, $state, $line, $server,
+	   $proc, $msg) = @_;
+
+	printf STDERR "\nServer message: (In srv_cb)\n";
+	printf STDERR "Message number: %ld, Severity %ld, ",
+	       $number, $severity;
+    	printf STDERR "State %ld, Line %ld\n", $state, $line;
+
+	if (defined($server)) {
+	    printf STDERR "Server '%s'\n", $server;
+	}
+
+	if (defined($proc)) {
+	    printf STDERR " Procedure '%s'\n", $proc;
+	}
+
+	printf STDERR "Message String: %s\n", $msg;  CS_SUCCEED;
+    } 
+
+
+=head1 ACKNOWLEDGEMENT
+
+    Larry Wall - for Perl :-)
+    Tim Bunce & Andreas Koenig - for all the work on MakeMaker
+
+=head1 AUTHORS
+
+    Michael Peppler (mpeppler@itf.ch)
+    Dave Bowen & Amy Lin for Sybase::CTlib
+    Jeffrey Wong for the DBMONEY routines
+    Numerous folks have contributed ideas and bug fixes for which
+    they have my undying thanks :-)

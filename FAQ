@@ -1,0 +1,188 @@
+		  SYBPERL Frequently Asked Questions
+
+		  @(#)FAQ	1.3	9/21/95
+
+NOTE: This FAQ is still very much under construction!!!
+
+1)   Sybperl? What is that?
+
+1.1) What is Sybperl?
+
+   Matthew Healy wrote this in a recent comp.databases.sybase post:
+   
+   Perl is an interpreted programming language discussed in
+   comp.lang.perl.* newsgroups; though it's interpreted, the
+   interpreter has an internal compiler built-in, so medium-size
+   programs still run quite efficiently.
+
+   It has become very popular among people who database and/or system
+   administration type work for several reasons:
+
+   o Very powerful and flexible string-manipulation facilities;
+     anything you can do with awk, grep, sed, etc. can be done in
+     Perl -- and it even comes with utilities that convert scripts
+     in those languages into Perl!
+
+   o No arbitrary limits on the size of any object; you can slurp
+     up an entire file into a string variable if you have enough
+     RAM.
+
+   o An incredibly useful feature called associative arrays, which
+     often gives you a quick and easy way of doing things that
+     would otherwise require going back to your data structures
+     textbooks.
+
+   o Versions are available for nearly every platform you've ever
+     heard of.
+
+   o It's FREE!
+
+   Sybperl is a package of extensions to Perl that basically add the
+   Sybase db_library API calls to the Perl language; the combination
+   is an extremely powerful scripting tool for Sybase DBA's and
+   programmers because it adds the existing strengths of Perl to the
+   Sybase API.
+
+   So, when would you use it?  Anytime the combination of shell
+   scripts with isql is too limited but writing a C program is
+   overkill.
+
+   In particular, since Perl has become the language of choice for
+   many WWW gurus, Sybperl has become the tool of choice for
+   integrating Sybase databases with the Web.  And there are now some
+   toolkits written in Sybperl that make it even simpler; my favorite
+   among those is WDB.
+
+   Here are some URLs to check out:
+
+   http://www.sybase.com/WWW/sybase_www_faq.html
+   http://www.sybase.com/WWW/
+   http://www.sybase.com/WWW/sybase_www_tools.html
+   http://www.sybase.com/WWW/Sybperl/index.html
+   http://arch-http.hq.eso.org/bfrasmus/wdb/wdb.html
+   http://arch-http.hq.eso.org/bfrasmus/wdb/distribution/install.html
+   ftp://ftp.demon.co.uk/pub/perl/db/perl4/sybperl/
+   ftp://ftp.demon.co.uk/pub/perl/db/mod/Sybase/
+   ftp://ftp.cis.ufl.edu/pub/perl/
+   ftp://ftp.perl.com/
+
+1.2) Where can I get Sybperl?
+
+   See above :-)
+
+   Version 1.x: ftp://ftp.demon.co.uk/pub/perl/db/perl4/sybperl
+   Version 2.x: ftp://ftp.demon.co.uk/pub/perl/db/mod/Sybase
+
+   Version 2.x is also available on Sybase's Web page:
+   http://www.sybase.com/WWW/Sybperl/index.html. I try to make sure
+   that the Sybase Web page is up to date, but I don't control it...
+
+1.3) Can I get Sybperl for OS 'foo'?
+
+   Perl is primarily a Unix tool, and Sybperl was developped under
+   SunOS. However, Perl has been ported to numerous other OSes
+   (MS-DOS, Windows/NT, OS/2, VMS), and Sybperl should theortically be
+   portable to these OSes as well, in particular with Perl 5's better
+   extension mechanism.
+
+   I only *know* of one *working* port, for Windows/NT, which I
+   understand will become available through http://www.metainfo.com.
+
+   
+2)   Building Sybperl
+
+2.1) make test doesn't work (2.x)
+
+   a) You have compiled sybperl 2b? statically. make test does indeed
+      not work in that case.
+      If you have 2b3 or later, run the static.test script.
+      Otherwise, do the following:
+      cd DBlib; ./perl -I../blib t/dblib.t
+      cd ../Sybperl; ../DBlib/perl -I../blib t/sybperl.t
+      ../DBlib/perl -I../blib t/dbmoney.t
+      cd ../CTlib; ./perl -I../blib t/ctlib.t
+
+   b) The 'interfaces' file is not visible.
+      The Sybase libraries need access to a file that contain
+      information on how to connect to the server. This file is
+      located in the directory pointed to by the SYBASE environment
+      variable.
+
+   c) The userid/password combination is invalid.
+      In versions prior to 2b2, you will need to edit the test scripts
+      to add userid & password information.
+      With version 2b2 a file called PWD is included in the
+      distribution where passwords & userids should be entered.
+   
+2.2) Where is uperl.o (1.x)
+
+   uperl.o is the object file that sybperl 1.x needs to be linked with
+   to give it access to all the Perl routines. uperl.o is normally
+   created when you build perl 4.036, but if you have run make clean
+   since building, you can recreate it by running 'make uperl.o'.
+
+   If you have Perl 5.x you need sybperl 2.x.
+
+3)   Sybperl 1.x vs Sybperl 2.x
+
+3.1) Are sybperl 1.x scripts compatible with 2.x
+
+   Yes. With these exceptions:
+
+   @var means different things to Perl and to Transact-SQL. If you use
+   @var as SQL code (typically: "declare @var int exec my_proc @var
+   out") you need to escape the @ (as in \@var).
+
+   If you were in the habit of making calls to the sybperl 1.x subs
+   without parens (ie &dbnextrow; instead of &dbnextrow()) then there
+   are certain situations where the dbnextrow implementation in
+   sybperl 2.x may try to use an invalid DBPROCESS pointer. This
+   problem does not exist if your scripts always pass explicit
+   DBPROCESS parameters.
+
+4)  Documentation
+   
+4.1) Is there any good sybperl documentation?
+
+   No. :-)
+
+   You need *Perl* documentation (there are over 370 pages of
+   documentation in the standard Perl 5 release...).
+   There are several good Perl books (in particular 'Programming
+   Perl', Larry Wall & Randal Schwartz, O'Reilly and 'Learning Perl',
+   Randal Schwartz, O'Reilly)
+
+   And you need *Sybase* documentation, in particular the Sybase
+   OpenClient/C manual (I've got mine online via the Sybooks CD-ROM)
+   and the Sybase Transact-SQL manual.
+
+4.2) Is there a sybperl FAQ?
+
+   Yes - you're reading it :-)
+   But, more importantly, you should get the Perl FAQ, which is posted
+   monthly in comp.lang.perl.announce, and which can be ftp'd from
+   ftp://ftp.cis.ufl.edu/pub/perl/doc/FAQ.
+
+4.3) Is there a sybperl mailing list?
+
+   Yes. I am exeprimenting with a mailing list at the following
+   address: sybperl-list@itf.ch. To subscribe, send a message with the
+   word 'subscribe' in the body to sybperl-list-request@itf.ch.
+
+   Note that I reserve the right to discontinue this service if the
+   volume becomes to large.
+
+5) Improving sybperl...
+
+   If you have any suggestions regarding how sybperl can be improved,
+   please send them to me - I am always happy to try to add features
+   :-)
+
+   
+Michael
+--
+Michael Peppler, ITF Management SA, Fontaine 13, CH-1204 Geneva
+mpeppler@itf.ch - Tel (4122) 818 3021 - Fax (4122) 312 1325
+GCS d+(-) s++: a C++ US++++$ P+++$ E++ W? N++ !w tv- b+++ G e+++ h---
+r+++ y?
+

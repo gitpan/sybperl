@@ -1,0 +1,23 @@
+/*	@(#)proc.isql	1.1	9/19/95 */
+if exists (select * from sysobjects where name = "t_proc")
+    drop proc t_proc
+go
+create proc t_proc
+	@acc		a_name = null,
+	@date 		datetime = null,
+	@open_val	money out,
+	@open_val_t	money out
+as
+  declare @curr char(5)
+
+
+  if @acc is null
+     print "@acc is null"
+  if @date is null
+     print "@date is null"
+
+/*     select @open_val = null, @open_val_t = null */
+  select @open_val = 1254, @open_val_t = 4521
+
+  return 0
+go
