@@ -1,5 +1,5 @@
 /* -*-C-*-
- *	@(#)CTlib.xs	1.32	03/05/98
+ *	@(#)CTlib.xs	1.33	03/10/98
  */
 
 
@@ -107,6 +107,7 @@ typedef struct _con_info
     HV *hv;
 
     HV *magic;
+    SV *handle;
 
     struct _con_info *next;
 } ConInfo;
@@ -424,7 +425,7 @@ newdbh(info, package, attr_ref)
 
     rv = newRV((SV*)hv);
     stash = gv_stashpv(package, TRUE);
-    sv = sv_bless(rv, stash);
+    info->handle = sv = sv_bless(rv, stash);
         
     return sv;
 }
@@ -1470,7 +1471,7 @@ CS_SERVERMSG	*srvmsg;
 		return CS_FAIL;
 	    }
 
-	    New(902, info, 1, ConInfo);
+	    Newz(902, info, 1, ConInfo);
 	    if((hv = perl_get_hv("Sybase::CTlib::_refCon", FALSE)))
 	    {
 		if((svp = hv_fetch(hv, (char*)connection, sizeof(connection), 0)))
@@ -1633,7 +1634,7 @@ initialize()
     if((sv = perl_get_sv("Sybase::CTlib::Version", TRUE|GV_ADDMULTI)))
     {
 	char buff[256];
-	sprintf(buff, "This is sybperl, version %s\n\nSybase::CTlib version 1.32 03/05/98\n\nCopyright (c) 1995-1997 Michael Peppler\nPortions Copyright (c) 1995 Sybase, Inc.\n\n",
+	sprintf(buff, "This is sybperl, version %s\n\nSybase::CTlib version 1.33 03/10/98\n\nCopyright (c) 1995-1997 Michael Peppler\nPortions Copyright (c) 1995 Sybase, Inc.\n\n",
 		SYBPLVER);
 	sv_setnv(sv, atof(SYBPLVER));
 	sv_setpv(sv, buff);
@@ -5286,7 +5287,7 @@ ct_connect(package="Sybase::CTlib", user=NULL, pwd=NULL, server=NULL, appname=NU
 	SV *	attr
   CODE:
 {
-    ConInfo *info;
+    ConInfo *info = NULL;
     RefCon *refCon;
     CS_CONNECTION *connection = NULL;
     CS_COMMAND *cmd;
@@ -5362,6 +5363,13 @@ ct_connect(package="Sybase::CTlib", user=NULL, pwd=NULL, server=NULL, appname=NU
 
     if (retcode == CS_SUCCEED)
     {
+	/* make sure that CS_USERDATA for this connection is NULL - needed
+	   because servermsg_cb is called when the connection is made */
+	if((retcode = ct_con_props(connection, CS_SET, CS_USERDATA,
+				   &info, CS_SIZEOF(info), NULL)) != CS_SUCCEED)
+	{
+	    warn("ct_con_props(CS_USERDATA) failed");
+	}
 	len = (server == NULL || !*server) ? 0 : CS_NULLTERM;
 	retcode = ct_connect(connection, server, len);
     }
@@ -5554,9 +5562,16 @@ CODE:
 
 	if((hv = perl_get_hv("Sybase::CTlib::_refCon", FALSE)))
 	    hv_delete(hv, (char *)refCon->connection, sizeof(refCon->connection), 0);
+
+	/* only destroy the extra attributes hash if this is the
+	   last handle for this connection */
+	hv_undef(info->connection->attr.other);
+
 	if(debug_level & TRACE_DESTROY)
 	    warn("[In DESTROY] Freeing refCon");
 	Safefree(refCon);
+
+	//hv_undef(info->magic);
     }
     
     if(info->numCols)
@@ -5568,7 +5583,6 @@ CODE:
 	    warn("[In DESTROY] Freeing datafmt");
 	Safefree(info->datafmt);
     }
-    hv_undef(info->connection->attr.other);
     hv_undef(info->hv);
     av_undef(info->av);
     if(debug_level & TRACE_DESTROY)

@@ -1,4 +1,8 @@
-	@(#)CHANGES	1.15	03/06/98
+	@(#)CHANGES	1.16	03/10/98
+
+2.09_02	Bug Fixes
+
+	233: CTlib dumps core in DESTROY.
 
 
 2.09_01 Bug Fixes
