@@ -1,4 +1,4 @@
-@(#)sybperl.pod	1.7	9/20/95
+@(#)sybperl.pod	1.10	10/27/95
 
 
 =head1 NAME
@@ -242,7 +242,7 @@ B<BCP Routines:>
 This is an exported routine (ie it can be called without a $dbh
 handle) which sets the BCP IN flag to TRUE/FALSE.
 
-It is necessary to call BCP_SETL($DBTRUE) before opening the
+It is necessary to call BCP_SETL(TRUE) before opening the
 connection with which one wants to run a BCP IN operation.
 
 =item $state = bcp_getl()
@@ -511,8 +511,11 @@ B<Constants>
 Most of the #defines from sybdb.h can be accessed as
 B<Sybase::DBlib::NAME> (eg B<Sybase::DBlib::STDEXIT>)
 Additional constants are
-   $SybperlVer	     The current version of sybperl
-   DBLIBVS           The version of I<DBlibrary> that sybperl was built against
+
+   $Sybase::DBlib::Version
+		The Sybperl version. Can be interpreted as a string or
+		as a number.
+   DBLIBVS      The version of I<DBlibrary> that sybperl was built against
 
 =back
 
@@ -520,21 +523,28 @@ B<Status Variables:>
 
 A number of status variables and attributes are associated with each
 DBPROCESS. They can be accessed using the Perl hash table syntax:
+
    $dbproc->{'Attribute Name'};
+
 The following attributes are currently defined:
-    dbNullIsUndef - If set, NULL results are returned as the Perl value
-                    'undef' otherwise as the string "NULL".
+
+    dbNullIsUndef - If set, NULL results are returned as
+                    the Perl value 'undef' otherwise as the string "NULL".
                     Default: set.
-    dbKeepNumeric - If set, numeric results are not converted to
-                    strings before returning the data to
-                    Perl. Default: set.
-    dbBin0x       - If set, BINARY results are preceeded by '0x' in
-                    the result. Default: unset.
+    dbKeepNumeric - If set, numeric results are not
+                    converted to strings before returning the data to
+                    Perl.
+		    Default: set.
+    dbBin0x       - If set, BINARY results are preceeded
+		    by '0x' in the result.
+		    Default: unset.
 
 The following status variables are defined:
-    DBstatus      - The return status of the last call to dbnextrow.
-    ComputeID     - The compute id of the current returned row. Is 0
-                    if no compute by clause is currently being
+
+    DBstatus      - The return status of the last call
+		    to dbnextrow.
+    ComputeID     - The compute id of the current returned
+		    row. Is 0 if no compute by clause is currently being
                     processed.
 
 =head1 Examples
@@ -590,6 +600,12 @@ therefore suffer a small performance penalty.
 The CT-library module has been written in colaboration with Sybase. It
 is still in Beta.
 
+In this version, the Sybase DATETIME and MONEY datatypes are kept in
+their native format. This means that it is not necessary to call
+cs_calc() to add two MONEY values together, for example. See the
+description of the Sybase::CTlib::DateTime and Sybase::CTlib::Money
+classes below.
+
 =head1 DESCRIPTION
 
 =over 8
@@ -618,26 +634,29 @@ ct_send().
 Append a command to the current SQL command buffer. Please check the
 OpenClient documentation for exact usage.
 
-B<NOTE:> You should not need to call ct_command()/ct_send() directly. Use
-ct_execute() or ct_sql() instead.
+B<NOTE:> You should only need to call ct_command()/ct_send() directly
+if you want to do RPCs or cursor operations. For straight queries you
+should use ct_execute() or ct_sql() instead.
 
 =item $status = $dbh->ct_send()
 
 Send the current command buffer to the server for execution.
 
-B<NOTE:> You should not need to call ct_command()/ct_send() directly. Use
-ct_execute() or ct_sql() instead.
+B<NOTE:> You only need to call ct_send() directly if you've used
+ct_command() to set up your SQL query.
 
 =item $status = $dbh->ct_results($res_type)
 
 This routine returns a results type to indicate the status of returned
-data. "Command Done: result type is returned if one result set has
+data. "Command Done:" result type is returned if one result set has
 been processed. "Row result" token is returned if regular rows are
 returned. This output is stored in $res_type.
 
 The commonly used values for $res_type are CS_ROW_RESULT, CS_CMD_DONE,
 CS_CMD_SUCCEED, CS_COMPUTE_RESULT, CS_CMD_FAIL. The full list of
 values is on page 3-203 OpenClient reference manual.
+
+See also the description of ct_fetchable() below.
 
 The $status value takes the following values: CS_SUCCEED,
 CS_END_RESULTS, CS_FAIL, CS_CANCELED.
@@ -689,7 +708,7 @@ Values for $action: CS_SET, CS_GET, CS_CLEAR
 
 Values for $option: see p.3-170 of the OpenClient reference manual
 
-Values for $param: When setting an option, $param can be a integer, or
+Values for $param: When setting an option, $param can be a integer or
 a string. When retrieving an option, $param is set and returned. When
 clearing an option, $param is ignored.
 
@@ -723,7 +742,8 @@ The hash should be used like this:
   $dbh->ct_param(\%param);
 
 Note that $dbh->ct_param() converts all parameter types to either
-CS_CHAR_TYPE, CS_FLOAT_TYPE or CS_INT_TYPE.
+CS_CHAR_TYPE, CS_FLOAT_TYPE, CS_DATETIME_TYPE, CS_MONEY_TYPE or
+CS_INT_TYPE.
 
 See Sybase/eg/ct_param.pl for an example.
 
@@ -737,10 +757,16 @@ If you provide a second parameter it is taken as a procedure to call
 for each row.  The callback is called with the values of the row as
 parameters.
 
+This routine is very usefull to send SQL commands to the server that
+do not return rows, such as:
+
+    $dbh->ct_sql("use BugTrack");
+
 Examples can be found in eg/ct_sql.pl.
 
-B<NOTE:> This routine loads all the data into memory. It should not be
-run with a query that returns a large number of rows.
+B<NOTE:> This routine loads all the data into memory. Memory
+consumption can therefore become quite important for a query that
+returns a large number of rows.
 
 =item $ret = $dbh->ct_fetchable($restype)
 
@@ -822,7 +848,132 @@ Use like this:
 	}
 
 	printf STDERR "Message String: %s\n", $msg;  CS_SUCCEED;
-    } 
+    }
+
+    
+=head1 Special handling of DATETIME, MONEY & NUMERIC/DECIMAL values
+
+
+The Sybase::CTlib module includes special features to handle
+B<DATETIME>, B<MONEY>, and B<NUMERIC/DECIMAL> values in their native
+formats correctly. What this means is that when you retrieve a date
+using ct_fetch() it is not converted to a string, but kept in the
+internal format used by the Sybase libraries. You can then manipulate
+this date as you see fit, and in particular 'crack' the date into it's
+components.
+
+The same is true for B<MONEY> and B<NUMERIC> values, which in
+B<Sybase::DBlib> are converted to floating point values, and hence are
+subject to loss of precision in certain situations. Here they are
+stored as B<MONEY> values, and by using operator overloading we can
+give you intuitive access to the cs_calc() routine.
+
+This feature has been implemented by creating three new classes:
+B<Sybase::CTlib::DateTime>, B<Sybase::CTlib::Money> and
+B<Sybase::CTlib::Numeric> (hereafter
+referred to as B<DateTime>, B<Money> and B<Numeric>). To create data items
+of these types you call:
+
+   $dbh = new Sybase::CTlib user, password;
+   ...  # code deleted
+   # Create a new DateTime object, and initialize to Jan 1, 1995:
+   $date = $dbh->newdate('Jan 1 1995');
+
+   # Create a new Money object
+   $mny = $dbh->newmoney;	# Default value is 0
+
+   # Create a new Numeric object
+   $num = $dbh->newnumeric(11.111);
+
+The B<DateTime> class defines the following methods:
+
+    $date->str		   Convert to string
+    @arr = $date->crack	   'Crack' the date into its components
+    $date->cmp($date2)	   Compare $date with $date2.
+    $date2 = $date->calc($days, $msecs)
+		           Add or substract $days and $msecs from
+			   $date, and returns the new date.
+    ($days, $msecs) = $date->diff($date2)
+			   Compute the difference, in $days and
+			   $msecs between $date and $date2.
+    $val = $date->info($datepart)
+			   Calls cs_dt_info to return the string
+			   representation for a datepart. Valid
+			   dateparts are CS_MONTH, CS_SHORTMONTH
+			   and CS_DAYNAME.
+    $time = $date->mktime
+    $time = $date->timelocal
+    $time = $date->timegm
+			   Converts a Sybase B<DATETIME> value to a
+			   Unix B<time_t> value. The B<mktime> and
+			   B<timelocal> methods assumes the date is
+			   stored in local time, B<timegm> assumes
+			   GMT. The B<mktime> method uses the POSIX
+			   module.
+			   
+    
+Both the B<str> and the B<cmp> methods will be called transparently
+when they are needed, so that
+
+    print "$date"
+    
+will print the date string correctly, and
+
+    $date1 cmp $date2
+
+will do a comparison of the two dates, not the two strings.
+
+B<crack> executes cs_dt_crack() on the date value, and returns the
+following list:
+
+    ($year, $month, $month_day, $year_day, $week_day, $hour,
+	$minute, $second, $millisecond, $time_zone) = $date->crack;
+
+Compare this with the value returned by the standard Perl function
+localtime():
+
+    ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) =
+                                                   localtime(time);
+
+In addition, the values returned for the week_day can change depending
+on the locale that has been set.
+
+Please see the discussion on cs_dt_crack() in the I<Open Client /
+Open Server Common Libraries Reference Manual, chap. 2>.
+
+The B<Money> and B<Numeric> classes define these methods
+
+    $mny->str		      Convert to string
+    $mny->num		      Convert to a floating point number
+    $mny->cmp($mny2)	      Compare two Money or Numeric values
+    $mny->set($number)	      Set the value of $mny to $number
+    $mny->calc($mny2, $op)    Perform the calculation specified by $op
+			      on $mny and $mny2. $op is one of '+',
+			      '-', '*' or '/'.
+
+As with the B<DateTime> class, the B<str> and B<cmp> methods will be
+called automatically for you when required. In addition, you can
+perform normal arithmetic on B<Money> or B<Numeric> datatypes without
+calling the B<calc> method explicitly.
+
+B<CAVEAT!> You must call the B<set> method to assign a value to a
+B<Money/Numeric> data item. If you use
+
+      $mny = 4.05
+
+then $mny will loose its special B<Money> or B<Numeric> behavior and
+become a normal Perl data item.
+
+When a new B<Numeric> data item is created, the I<SCALE> and
+I<PRECISION> values are determined by the initialization. If the data
+item is created as part of a I<SELECT> statement, then the I<SCALE>
+and I<PRECISION> values will be those of the retrieved item. If the
+item is created via the B<newnumeric> method (either explicitly or
+implicitly) the I<SCALE> and I<PRECISION> are deduced from the
+initializing value. For example, $num = $dbh->newnumeric(11.111) will
+produce an item with a I<SCALE> of 3 and a I<PRECISION> of 5. This is
+totally transparent to the user.
+
 
 
 =head1 ACKNOWLEDGEMENT

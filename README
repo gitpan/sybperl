@@ -1,6 +1,6 @@
-		     @(#)README	1.16	9/21/95
+		     @(#)README	1.17	10/30/95
 
-			   sybperl 2 beta 3
+			   sybperl 2.0
 	
 	  This is sybperl, the Sybase extensions for Perl5.
 
@@ -22,44 +22,91 @@
 
 ---------------------------------------------------------------------
 
+Please read the UPGRADE file if your previous version of sybperl was
+1.0xx.
+
 This version requires Perl5.001. The 'official' unofficial patches 1a
-through 1m are recommended.
+through 1m are recommended (sybperl may fail to build cleanly without
+these patches).
+You can get a pre-patched version of Perl5.001m from most Perl source
+archives (for example:
+ftp://ftp.delphi.com/pub/mirrors/packages/perl/ftp.perl.com/src).
 
 There are three modules in this distribution: Sybase::DBlib,
 Sybase::Sybperl and Sybase::CTlib.
 
-Sybase::DBlib implements the Perl 5 version of the DB-library
-API. This differs slightly from the Perl 4 version.
+Sybase::DBlib implements the Perl 5 version of the DB-Library
+API. This differs slightly from the Perl 4 version. Note that this is
+not a full implementation of the DB-Library API.
 The Sybase::Sybperl module implements the sybperl 1.0xx API, and is
 built on top of Sybase::DBlib.
 
 All of the sybperl 1.0xx API has been implemented, and there are some
 extras (such as the two-phase commit routines).
 
-Sybase::CTlib implements a limited subset of the Client Library API,
-and should still be considered 'test' software.
+Sybase::CTlib implements a subset of the newer Client Library API,
+and should still be considered 'beta' software, although it is rapidly
+becoming my favorite API for Perl/Sybase programing. Client Library is
+included with Sybase's OpenClient libraries as of System 10.
 
 ---------------------------------------------------------------------
 
 Installation:
 
-Normally, the following steps should be sufficient, assuming that
-Perl 5.001 or later is installed at your site :
+Before you start, you have to consider the following issues:
 
-   1) Unpack the package somewhere convenient.
-      You can either add the Sybase modules to the Perl 5.001 source
-      tree, or unpack it someplace else, provided that 5.001 has been
-      installed at your site. Building Sybperl outside of the Perl
-      source tree is recomended. If you don't want to install Perl 5.001
-      as a production version right now, you can still install it in
-      some other place, and access that version by setting your PATH
+a) Is Perl 5.001 (or later) already installed at your site?
+
+   If Perl 5.001 is the default production version of Perl at your
+   site, then i recommend that you unpack the sybperl distribution
+   outside of the Perl source tree. The sybperl build process will
+   normally be able to find the pieces it needs this is the case, and
+   it will be easier for you to manage upgrades to Perl and/or to the
+   add-on extensions that you may have if they are kept separate.
+
+   If Perl 5.001 is not yet the default version of Perl, then you
+   should unpack the sybperl distribution in the ext/ directory of the
+   Perl 5.001 source tree.
+
+b) Do you want the Sybase modules to be dynamically loadable?
+
+   Most Unix systems come with the capability of loading object code
+   into an already executing program dynamically, usually via some
+   sort of special library (on SunOS, for example, it's libdl.a).
+
+   The advantage of dynamic loading is that you do not need to install
+   a new Perl binary to provide new functionality, and the size of the
+   binary does not grow as you add this functionality. The cost is a
+   small performance penalty on startup.
+
+   Static loading might be more advantageous to those specific modules
+   which you know you will be using very often (however, I use dynamic
+   loading here at ITF, although nearly all our Perl scripts use the
+   Sybase modules).
+
+   Note that if you are using HP-UX, you can only use dynamic loading
+   if you have the add-on (extra cost) C compiler (or GNU gcc) and if
+   you have the System 10 shared libraries (libsybdb.sl vs libsybdb.a)
+   as HP-UX can't load an object dynamically which has not been
+   compiled with the PIC (position independant code) flag.
+
+
+Once you have answered these two questions, you can proceed:
+
+   1) Unpack the package.
+      See comments under a) above.
+      
+      Note that even if you don't want to install Perl 5.001 as a
+      production version right now, you can still install it in some
+      other place, and access that version by setting your PATH
       variable accordingly (I have a production version Perl5.001m
       under /usr/local/{bin,lib} and a debug version of Perl5.001m
       under /f2/{bin, lib} and change my path when I need to test
       things with debugging turned on).
       
    2) Edit CONFIG
-      This should be fairly straightforward.
+      See comments under b) above regarding dynamic vs static loading.
+      
       
       NOTE: I have discovered what I think is a bug in Perl 5.001m
       which shows up when logically testing an array where all the
@@ -75,8 +122,8 @@ Perl 5.001 or later is installed at your site :
       associative arrays instead of normal arrays.
 
    3) Type: perl Makefile.PL
-      If you are building against a vanilla Perl5.001 release you will
-      get the following warning:
+      If you are building against a vanilla (unpatched) Perl5.001
+      release you will get the following warning:
 	  'dist is not a known MakeMaker parameter name.
       This can safely be ignored.
       
@@ -86,9 +133,6 @@ Perl 5.001 or later is installed at your site :
 	  Subroutine mkbootstrap redefined at Makefile.PL line 4
 	  Subroutine mksymlists redefined at Makefile.PL line 4
       This can be ignored.
-      If you are building using static linking, you need to cd to
-      DBlib and type 'make perl' to build the perl binary with DBlib.a
-      included. You may need to run ranlib on libperl.a or DBlib.a.
 
    6) Edit PWD
       Enter the user id and password that you want to use to run the
@@ -97,26 +141,40 @@ Perl 5.001 or later is installed at your site :
       any security concerns!
       
    6) Type: make test
-      If you have built sybperl with LINKTYPE=static, make test will
-      not work. You have to run the 'static.test' shell script
-      instead.
+      If you decided to use static loading then a new perl binary will
+      be generated at this point.
       
    7) If everything went OK, type: make install
       Note that the man page does not get installed automatically. To
       install the documentation, cd to the pod directory, and read the
       README file there.
+      Also note that even if you've asked for static linking and a
+      perl binary has been built in the sybperl source directory, no
+      perl binary gets installed (see step 8).
+
+   8) If the LINKTYPE is static type:
+
+	 make inst_perl MAP_TARGET=perl
+
+      to install the new Perl binary. This step is not required when
+      using dynamic linking as the existing Perl binary will load the
+      new code dynamically when required.
 
 
+In case of problems:
+====================
 
-NOTE: If you are building against OpenClient 10.x under SunOS or
-      Solaris you need to make sure that the dynamic linker (ld.so)
-      can find libsybdb.so. This can be done by linking it to /usr/lib
-      (for example) or setting LD_LIBRARY_PATH to point to
-      $SYBASE/lib.
+First, read the FAQ file in the sybperl distribution.
+
+Second, fire off an e-mail to me (mpeppler@itf.ch) or to the Sybperl
+mailing list (sybperl-list@itf.ch) with a *full* description of what
+doesn't work, including version numbers of Perl and sybperl, the
+hardware and OS version, and the Sybase Open Client version you are
+using.
 
 
-The regression tests are still under construction, but they test most
-of the basic functions, and should work cleanly.
+The regression tests don't attempt to test *everything*, but they do
+test all of the basic functions, and should work cleanly.
 
 There are quite a few small example scripts in eg/ which illustrate
 the use of both the DBlib and CTlib modules.
@@ -138,6 +196,13 @@ I have set up a bug tracking database at ITF, to which bugs can be
 submitted via e-mail. If you have a comment, bug report or feature
 request you would like to make please use the template in the SPR file
 in this directory.
+
+When submitting bugs, or any sort of problem report, please make sure
+you include full version information for Sybperl, Perl, Sybase and
+also what hardware/OS configuration you are on. The exact Sybperl
+versions can be extracted by running the 'Version' script in this
+directory. Perl's configuration can be summarized with the 'myconfig'
+script in the Perl source directory.
 
 
 Comments, criticism, et.al. VERY welcome!

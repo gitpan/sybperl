@@ -1,6 +1,6 @@
 #!/usr/local/bin/perl
 #
-# 	@(#)ct_param.pl	1.3	9/19/95
+# 	@(#)ct_param.pl	1.4	10/5/95
 #
 # Example of ct_param() usage.
 # The RPC we want to run is in the proc.isql file in this directory.
@@ -22,7 +22,7 @@ $d->ct_param(\%param) == CS_SUCCEED || die;
 # Alternate technique: pass an anonymous hash...
 $d->ct_param({name => '@date',
 	      datatype => CS_DATETIME_TYPE,
-	      status => CS_INPUTVALUE,
+	      status => CS_RETURN,
 	      value => '950529' ,
 	     indicator => CS_UNUSED});
 $d->ct_param({name => '@open_val',
@@ -44,6 +44,16 @@ while($d->ct_results($restype) == CS_SUCCEED)
 
     while(%dat = $d->ct_fetch(1))
     {
-	print "$_: $dat{$_}\n";
+	foreach (keys(%dat)) {
+	    print "$_: $dat{$_}\n";
+
+	    # Check to see if the date parameter that we've retrieved is really
+	    # a Sybase::CTlib::DateTime reference.
+	    if($_ =~ /\@date/)
+	    {
+		print ref($dat{$_}), "\n";
+		# Should print 'Sybase::CTlib::DateTime'.
+	    }
+	}
     }
 }

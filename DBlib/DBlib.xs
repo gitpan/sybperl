@@ -1,6 +1,7 @@
 /* -*-C-*-
- * @(#)DBlib.xs	1.19	9/20/95
- */
+ *	@(#)DBlib.xs	1.22	9/28/95
+ */	
+
 
 /* Copyright (c) 1991-1995
    Michael Peppler
@@ -344,8 +345,16 @@ initialize()
 	/* This is deprecated: use Sybase::DBlib::Version instead */
 	if((sv = perl_get_sv("main::SybperlVer", TRUE)))
 	    sv_setpv(sv, SYBPLVER);
+
 	if((sv = perl_get_sv("Sybase::DBlib::Version", TRUE)))
-	    sv_setpv(sv, SYBPLVER);
+	{
+	    char buff[256];
+	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib version 1.22 9/28/95\n\nCopyright (c) 1991-1995 Michael Peppler\n\n",
+		    SYBPLVER);
+	    sv_setnv(sv, atof(SYBPLVER));
+	    sv_setpv(sv, buff);
+	    SvNOK_on(sv);
+	}
     }
 }
     
@@ -723,12 +732,19 @@ int arg;
 #ifdef DB_IN
 	    return DB_IN;
 #else
+#ifdef IN
+	    return IN;
+	
+#endif
 	    goto not_there;
 #endif
 	if (strEQ(name, "DB_OUT"))
 #ifdef DB_OUT
 	    return DB_OUT;
 #else
+#ifdef OUT
+	    return OUT;
+#endif
 	    goto not_there;
 #endif
 	break;
@@ -1044,12 +1060,6 @@ int arg;
 	if (strEQ(name, "ON"))
 #ifdef ON
 	    return ON;
-#else
-	    goto not_there;
-#endif
-	if (strEQ(name, "OUT"))
-#ifdef OUT
-	    return OUT;
 #else
 	    goto not_there;
 #endif

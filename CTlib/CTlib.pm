@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# @(#)CTlib.pm	1.7	9/20/95
+# @(#)CTlib.pm	1.10	10/27/95
 
 # Copyright (c) 1995
 #   Michael Peppler
@@ -12,11 +12,182 @@
 #   or the Artistic License, copies of which should have accompanied
 #   your Perl kit.
 
+package Sybase::CTlib::DateTime;
+
+# Sybase DATETIME handling.
+
+# For converting to Unix time:
+
+require Time::Local;
+
+require POSIX;
+
+# Here we set up overloading operators
+# for certain operations.
+
+%OVERLOAD = ("\"\"" => \&d_str,		# convert to string
+	     "cmp" => \&d_cmp,		# compare two dates
+	     "<=>" => \&d_cmp);		# same thing
+
+sub d_str {
+    my $self = shift;
+
+    $self->str;
+}
+
+sub d_cmp {
+    my ($left, $right, $order) = @_;
+
+    $left->cmp($right, $order);
+}
+
+sub mktime {
+    my $self = shift;
+    my (@data, $ret);
+
+    @data = $self->crack;
+
+    $ret = POSIX::mktime($data[7], $data[6], $data[5], $data[2],
+				  $data[1], $data[0]-1900);
+}
+
+sub timelocal {
+    my $self = shift;
+    my (@data, $ret);
+
+    @data = $self->crack;
+
+    $ret = Time::Local::timelocal($data[7], $data[6], $data[5], $data[2],
+				  $data[1], $data[0]-1900);
+}
+
+sub timegm {
+    my $self = shift;
+    my (@data, $ret);
+
+    @data = $self->crack;
+
+    $ret = Time::Local::timegm($data[7], $data[6], $data[5], $data[2],
+			       $data[1], $data[0]-1900);
+}
+    
+
+package Sybase::CTlib::Money;
+
+# Sybase MONEY handling. Again, we set up overloading for
+# certain operators (in particular the arithmetic ops.)
+
+%OVERLOAD = ("\"\"" => \&m_str,		# Convert to string
+	     "0+" => \&m_num,		# Convert to floating point
+	     "<=>" => \&m_cmp,		# Compare two money items
+	     "+" => \&m_add,		# These you can guess...
+	     "-" => \&m_sub,
+	     "*" => \&m_mul,
+	     "/" => \&m_div);
+
+    
+sub m_str {
+    my $self = shift;
+
+    $self->str;
+}
+
+sub m_num {
+    my $self = shift;
+
+    $self->num;
+}
+
+sub m_cmp {
+    my ($left, $right, $order) = @_;
+    my $ret;
+
+    $ret = $left->cmp($right, $order);
+}
+
+sub m_add {
+    my ($left, $right) = @_;
+
+    $left->calc($right, '+');
+}
+sub m_sub {
+    my ($left, $right, $order) = @_;
+
+    $left->calc($right, '-', $order);
+}
+sub m_mul {
+    my ($left, $right) = @_;
+
+    $left->calc($right, '*');
+}
+sub m_div {
+    my ($left, $right, $order) = @_;
+
+    $left->calc($right, '/', $order);
+}
+
+package Sybase::CTlib::Numeric;
+
+# Sybase Numeric/Decimal handling. Again, we set up overloading for
+# certain operators (in particular the arithmetic ops.)
+
+%OVERLOAD = ("\"\"" => \&n_str,		# Convert to string
+	     "0+" => \&n_num,		# Convert to floating point
+	     "<=>" => \&n_cmp,		# Compare
+	     "+" => \&n_add,		# These you can guess...
+	     "-" => \&n_sub,
+	     "*" => \&n_mul,
+	     "/" => \&n_div);
+
+    
+sub n_str {
+    my $self = shift;
+
+    $self->str;
+}
+
+sub n_num {
+    my $self = shift;
+
+    $self->num;
+}
+
+sub n_cmp {
+    my ($left, $right, $order) = @_;
+    my $ret;
+
+    $ret = $left->cmp($right, $order);
+}
+
+sub n_add {
+    my ($left, $right) = @_;
+
+    $left->calc($right, '+');
+}
+sub n_sub {
+    my ($left, $right, $order) = @_;
+
+    $left->calc($right, '-', $order);
+}
+sub n_mul {
+    my ($left, $right) = @_;
+
+    $left->calc($right, '*');
+}
+sub n_div {
+    my ($left, $right, $order) = @_;
+
+    $left->calc($right, '/', $order);
+}
+
+
+
 package Sybase::CTlib;
 
 require Exporter;
 require AutoLoader;
 require DynaLoader;
+
 @ISA = qw(Exporter AutoLoader DynaLoader);
 # Items to export into callers namespace by default
 # (move infrequently used names to @EXPORT_OK below)
@@ -658,12 +829,11 @@ sub ct_sql
     my($db, $cmd, $sub) = @_;
     my(@res, @data, $res_type, $rc);
 
-    ($db->ct_execute($cmd) == CS_SUCCEED) || return undef;
+    ($db->ct_execute($cmd) == &CS_SUCCEED) || return undef;
 
-    while(($rc = $db->ct_results($res_type)) == CS_SUCCEED) {
-	next if($res_type == CS_CMD_DONE ||
-		$res_type == CS_CMD_FAIL ||
-		$res_type == CS_CMD_SUCCEED);
+    while(($rc = $db->ct_results($res_type)) == &CS_SUCCEED) {
+	next if($db->ct_fetchable($res_type) == 0);
+
         while (@data = $db->ct_fetch) {
             if (defined $sub) {
                 &$sub(@data);
@@ -679,9 +849,9 @@ sub ct_fetchable
 {
     my($db, $restype) = @_;
     
-   ($restype == CS_ROW_RESULT ||
-    $restype == CS_PARAM_RESULT ||
-    $restype == CS_STATUS_RESULT ||
-    $restype == CS_CURSOR_RESULT ||
-    $restype == CS_COMPUTE_RESULT);
+   ($restype == &CS_ROW_RESULT ||
+    $restype == &CS_PARAM_RESULT ||
+    $restype == &CS_STATUS_RESULT ||
+    $restype == &CS_CURSOR_RESULT ||
+    $restype == &CS_COMPUTE_RESULT);
 }

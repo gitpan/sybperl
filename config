@@ -1,0 +1,60 @@
+# -*-Perl-*-
+#	@(#)config	1.4	10/4/95;
+#
+# Extract relevant info from the CONFIG and patchlevel.h files.
+
+my @dirs = ('.', '..', '../..', '../../..');
+
+sub config
+{
+    my(%attr, %patchlvl);
+    my($left, $right, $dir, $dummy, $config);
+    
+    foreach $dir (@dirs)
+    {
+	$config = "$dir/CONFIG";
+	last if(-f $config);
+    }
+    open(CFG, $config) || die "Can't open $config: $!";
+    
+    while(<CFG>)
+    {
+	chop;
+	s/^\s*//;
+	next if /^#|^\s*$/;
+	s/#.*$//;
+	
+	($left, $right) = split(/=/);
+	$left =~ s/\s*//g;
+
+	$sattr{$left} = $right;
+    }
+
+    close(CFG);
+
+    foreach $dir (@dirs)
+    {
+	$config = "$dir/patchlevel.h";
+	last if(-f $config);
+    }
+    open(CFG, $config) || die "Can't open $config: $!";
+
+    while(<CFG>)
+    {
+	chop;
+	next if !/^#/;
+	
+	($dummy, $left, $right) = split(' ');
+	$left =~ s/\s*//g;
+
+	$patchlvl{$left} = $right;
+    }
+    close(CFG);
+    $patchlvl{UNOFFICIAL} = '' if(!defined($patchlvl{UNOFFICIAL}));
+
+    $sattr{VERSION} = "$patchlvl{VERSION}.$patchlvl{PATCHLEVEL}$patchlvl{UNOFFICIAL}";
+
+    \%sattr;
+}
+
+1;

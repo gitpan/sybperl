@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# @(#)Sybperl.pm	1.18	9/18/95
+# @(#)Sybperl.pm	1.20	9/30/95
 #
 # Copyright (c) 1994-1995
 #   Michael Peppler
@@ -52,8 +52,8 @@ $MORE_ROWS = Sybase::DBlib::MORE_ROWS;
 $REG_ROW = Sybase::DBlib::REG_ROW;
 $DBTRUE = Sybase::DBlib::TRUE;
 $DBFALSE = Sybase::DBlib::FALSE;
-$DB_IN = DB_IN;
-$DB_OUT = DB_OUT;
+$DB_IN = Sybase::DBlib::DB_IN;
+$DB_OUT = Sybase::DBlib::DB_OUT;
 
 # Set defaults.
 tie $dbNullIsUndef, Sybase::Sybperl::Attribs, 'dbNullIsUndef', 1;
@@ -78,18 +78,19 @@ tie $dbBin0x, Sybase::Sybperl::Attribs, 'dbBin0x', 0;
 	     BCP_SETL bcp_getl
 	     dbsetlogintime dbsettime DBGETTIME
 	     DBSETLNATLANG DBSETLCHARSET dbsetversion dbversion
-	     dbsetifile
-	     DBLIBVS FAIL IN OUT
+	     dbsetifile dbrpwclr dbrpwset
+	     DBLIBVS FAIL
 	     INT_CANCEL INT_CONTINUE	INT_EXIT INT_TIMEOUT
 	     MORE_ROWS NO_MORE_RESULTS NO_MORE_ROWS NULL REG_ROW
 	     STDEXIT SUCCEED SYBESMSG 
 	     BCPBATCH BCPERRFILE BCPFIRST BCPLAST BCPMAXERRS	BCPNAMELEN
-	     DBBOTH DBSINGLE DB_IN DB_OUT
+	     DBBOTH DBSINGLE DB_IN DB_OUT TRUE FALSE
 	     dbmnymaxpos dbmnymaxneg dbmnyndigit dbmnyscale dbmnyinit
 	     dbmnydown dbmnyinc dbmnydec dbmnyzero dbmnycmp dbmnysub
 	     dbmnymul dbmnyminus dbmnydivide dbmnyadd dbmny4zero
 	     dbmny4cmp dbmny4sub dbmny4mul dbmny4minus dbmny4divide
-	     dbmny4add sql);
+	     dbmny4add sql
+	     dbrpcinit dbrpcparam dbrpcsend);
 
 
 # Internal routine to check that a parameter passed as $dbproc to one
@@ -372,6 +373,7 @@ sub dbhasretstat
     $dbproc = $default_db if(!defined($dbproc) || !&isadb($dbproc));
     $ret = $dbproc->dbhasretstat;
 }
+
 sub dbretstatus
 {
     my($dbproc) = @_;
@@ -389,22 +391,25 @@ sub dbnumcols
     $dbproc = $default_db if(!defined($dbproc) || !&isadb($dbproc));
     $ret = $dbproc->dbnumcols;
 }
+
 sub dbprtype
 {
     my(@params) = @_;
     my($dbproc);
     my($ret);
 
-    $dbproc = shift(@params);
-    if(!$dbproc)
+    if(@params == 1)
     {
 	croak("dbproc is undefined.") if (!defined($default_db));
-	$dbproc = $default_db;
+    }
+    else
+    {
+	$dbproc = shift(@params);
     }
 
     $ret = $dbproc->dbprtype(@params);
-    $ret;
 }
+
 sub dbcoltype
 {
     my(@params) = @_;
@@ -412,10 +417,7 @@ sub dbcoltype
     
     if(@params == 1)
     {
-	if(!defined($default_db))
-	{
-	    croak("dbproc is undefined.");
-	}
+	croak("dbproc is undefined.") if(!defined($default_db));
 	$dbproc = $default_db;
     }
     else
@@ -424,6 +426,7 @@ sub dbcoltype
     }
     $ret = $dbproc->dbcoltype(@params);
 }
+
 sub dbcollen
 {
     my(@params) = @_;
@@ -431,10 +434,7 @@ sub dbcollen
     
     if(@params == 1)
     {
-	if(!defined($default_db))
-	{
-	    croak("dbproc is undefined.");
-	}
+	croak("dbproc is undefined.") if(!defined($default_db));
 	$dbproc = $default_db;
     }
     else
@@ -443,6 +443,7 @@ sub dbcollen
     }
     $ret = $dbproc->dbcollen(@params);
 }
+
 sub dbcolname
 {
     my(@params) = @_;
@@ -450,10 +451,7 @@ sub dbcolname
     
     if(@params == 1)
     {
-	if(!defined($default_db))
-	{
-	    croak("dbproc is undefined.");
-	}
+	croak("dbproc is undefined.") if(!defined($default_db));
 	$dbproc = $default_db;
     }
     else
@@ -474,15 +472,13 @@ sub dbretdata
     }
     else
     {
-	if(!defined($default_db))
-	{
-	    croak("dbproc is undefined.");
-	}
+	croak("dbproc is undefined.") if(!defined($default_db));
 	$dbproc = $default_db;
     }
     @ret = $dbproc->dbretdata(@params);
 }
-sub dbsafstr
+
+sub dbsafestr
 {
     my(@params) = @_;
     my($dbproc, $ret);
@@ -504,10 +500,7 @@ sub bcp_init
     
     if(@params == 4)
     {
-	if(!defined($default_db))
-	{
-	    croak("dbproc is undefined.");
-	}
+	croak("dbproc is undefined.") if(!defined($default_db));
 	$dbproc = $default_db;
     }
     else
@@ -515,8 +508,6 @@ sub bcp_init
 	$dbproc = shift(@params);
     }
     $ret = $dbproc->bcp_init(@params);
-
-    $ret;
 }
 
 sub bcp_meminit
@@ -526,10 +517,7 @@ sub bcp_meminit
     
     if(@params == 1)
     {
-	if(!defined($default_db))
-	{
-	    croak("dbproc is undefined.");
-	}
+	croak("dbproc is undefined.") if(!defined($default_db));
 	$dbproc = $default_db;
     }
     else
@@ -537,8 +525,6 @@ sub bcp_meminit
 	$dbproc = shift(@params);
     }
     $ret = $dbproc->bcp_meminit(@params);
-
-    $ret;
 }
 
 sub bcp_sendrow
@@ -549,8 +535,6 @@ sub bcp_sendrow
     $dbproc = shift(@params);
 
     $ret = $dbproc->bcp_sendrow(@params);
-
-    $ret;
 }
 
 sub bcp_batch
@@ -578,10 +562,7 @@ sub bcp_control
     
     if(@params == 2)
     {
-	if(!defined($default_db))
-	{
-	    croak("dbproc is undefined.");
-	}
+	croak("dbproc is undefined.") if(!defined($default_db));
 	$dbproc = $default_db;
     }
     else
@@ -589,8 +570,6 @@ sub bcp_control
 	$dbproc = shift(@params);
     }
     $ret = $dbproc->bcp_control(@params);
-
-    $ret;
 }
 
 sub bcp_columns
@@ -600,10 +579,7 @@ sub bcp_columns
     
     if(@params == 1)
     {
-	if(!defined($default_db))
-	{
-	    croak("dbproc is undefined.");
-	}
+	croak("dbproc is undefined.") if(!defined($default_db));
 	$dbproc = $default_db;
     }
     else
@@ -611,8 +587,6 @@ sub bcp_columns
 	$dbproc = shift(@params);
     }
     $ret = $dbproc->bcp_columns(@params);
-
-    $ret;
 }
 
 sub bcp_colfmt
@@ -622,10 +596,7 @@ sub bcp_colfmt
     
     if(@params == 7)
     {
-	if(!defined($default_db))
-	{
-	    croak("dbproc is undefined.");
-	}
+	croak("dbproc is undefined.") if(!defined($default_db));
 	$dbproc = $default_db;
     }
     else
@@ -633,8 +604,6 @@ sub bcp_colfmt
 	$dbproc = shift(@params);
     }
     $ret = $dbproc->bcp_collen(@params);
-
-    $ret;
 }
 
 sub bcp_collen
@@ -644,16 +613,11 @@ sub bcp_collen
     
     if(@params == 2)
     {
-	if(!defined($default_db))
-	{
-	    croak("dbproc is undefined.");
-	}
+	croak("dbproc is undefined.") if(!defined($default_db));
 	unshift(@params, $default_db);
     }
     $params[0] = $default_db if(!$params[0]);
     $ret = $params[0]->bcp_collen($params[1], $params[2]);
-
-    $ret;
 }
 
 sub bcp_exec
@@ -685,8 +649,6 @@ sub bcp_readfmt
     }
     $params[0] = $default_db if(!$params[0]);
     $ret = $params[0]->bcp_readfmt($params[1]);
-
-    $ret;
 }
 
 sub bcp_writefmt
@@ -708,8 +670,6 @@ sub bcp_writefmt
     }
     $params[0] = $default_db if(!$params[0]);
     $ret = $params[0]->bcp_writefmt($params[1]);
-
-    $ret;
 }
 
 ###
@@ -752,9 +712,8 @@ sub dbmny4divide
     }
 
     @ret = $dbproc->dbmny4divide(@params);
-
-    @ret;
 }
+
 sub dbmny4minus
 {
     my(@params) = @_;
@@ -771,9 +730,8 @@ sub dbmny4minus
     }
 
     @ret = $dbproc->dbmny4minus(@params);
-
-    @ret;
 }
+
 sub dbmny4mul
 {
     my(@params) = @_;
@@ -790,9 +748,8 @@ sub dbmny4mul
     }
 
     @ret = $dbproc->dbmny4mul(@params);
-
-    @ret;
 }
+
 sub dbmny4sub
 {
     my(@params) = @_;
@@ -809,9 +766,8 @@ sub dbmny4sub
     }
 
     @ret = $dbproc->dbmny4sub(@params);
-
-    @ret;
 }
+
 sub dbmny4cmp
 {
     my(@params) = @_;
@@ -828,9 +784,8 @@ sub dbmny4cmp
     }
 
     $ret = $dbproc->dbmny4cmp(@params);
-
-    $ret;
 }
+
 sub dbmny4zero
 {
     my($dbproc) = @_;
@@ -839,8 +794,6 @@ sub dbmny4zero
     $dbproc = $default_db if(!defined($dbproc));
 
     @ret = $dbproc->dbmny4zero(@params);
-
-    @ret;
 }
 
 
@@ -860,8 +813,6 @@ sub dbmnyadd
     }
 
     @ret = $dbproc->dbmnyadd(@params);
-
-    @ret;
 }
 
 sub dbmnydivide
@@ -880,9 +831,8 @@ sub dbmnydivide
     }
 
     @ret = $dbproc->dbmnydivide(@params);
-
-    @ret;
 }
+
 sub dbmnyminus
 {
     my(@params) = @_;
@@ -899,9 +849,8 @@ sub dbmnyminus
     }
 
     @ret = $dbproc->dbmnyminus(@params);
-
-    @ret;
 }
+
 sub dbmnymul
 {
     my(@params) = @_;
@@ -918,9 +867,8 @@ sub dbmnymul
     }
 
     @ret = $dbproc->dbmnymul(@params);
-
-    @ret;
 }
+
 sub dbmnysub
 {
     my(@params) = @_;
@@ -937,9 +885,8 @@ sub dbmnysub
     }
 
     @ret = $dbproc->dbmnysub(@params);
-
-    @ret;
 }
+
 sub dbmnycmp
 {
     my(@params) = @_;
@@ -956,9 +903,8 @@ sub dbmnycmp
     }
 
     $ret = $dbproc->dbmnycmp(@params);
-
-    $ret;
 }
+
 sub dbmnyzero
 {
     my($dbproc) = @_;
@@ -967,9 +913,8 @@ sub dbmnyzero
     $dbproc = $default_db if(!defined($dbproc));
 
     @ret = $dbproc->dbmnyzero(@params);
-
-    @ret;
 }
+
 sub dbmnydec
 {
     my(@params) = @_;
@@ -986,9 +931,8 @@ sub dbmnydec
     }
 
     @ret = $dbproc->dbmnydec(@params);
-
-    @ret;
 }
+
 sub dbmnyinc
 {
     my(@params) = @_;
@@ -1005,9 +949,8 @@ sub dbmnyinc
     }
 
     @ret = $dbproc->dbmnyinc(@params);
-
-    @ret;
 }
+
 sub dbmnydown
 {
     my(@params) = @_;
@@ -1024,9 +967,8 @@ sub dbmnydown
     }
 
     @ret = $dbproc->dbmnydown(@params);
-
-    @ret;
 }
+
 sub dbmnyinit
 {
     my(@params) = @_;
@@ -1043,9 +985,8 @@ sub dbmnyinit
     }
 
     @ret = $dbproc->dbmnyinit(@params);
-
-    @ret;
 }
+
 sub dbmnyscale
 {
     my(@params) = @_;
@@ -1062,9 +1003,8 @@ sub dbmnyscale
     }
 
     @ret = $dbproc->dbmnyscale(@params);
-
-    @ret;
 }
+
 sub dbmnyndigit
 {
     my(@params) = @_;
@@ -1081,8 +1021,6 @@ sub dbmnyndigit
     }
 
     @ret = $dbproc->dbmnyndigit(@params);
-
-    @ret;
 }
 
 sub sql
@@ -1106,5 +1044,46 @@ sub sql
     @res;					# return the result array
 }
 
+sub dbrpcsend
+{
+    my($dbproc) = @_;
+
+    $dbproc = $default_db if(!defined($dbproc) || !&isadb($dbproc));
+
+    $dbproc->dbrpcsend;
+}
+
+sub dbrpcparam
+{
+    my(@param) = @_;
+    my($dbproc);
+
+    if(@param == 7)
+    {
+	$dbproc = shift(@param);
+    }
+    else
+    {
+	$dbproc = $default_db;
+    }
+    $dbproc->dbrpcparam(@param);
+}
+
+sub dbrpcinit
+{
+    my(@param) = @_;
+    my($dbproc);
+
+    if(@param == 3)
+    {
+	$dbproc = shift(@param);
+    }
+    else
+    {
+	$dbproc = $default_db;
+    }
+
+    $dbproc->dbrpcinit(@param);
+}
 
 1;

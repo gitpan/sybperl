@@ -1,4 +1,4 @@
-# @(#)sybutil.pl	1.4	5/3/95
+# @(#)sybutil.pl	1.5	10/18/95
 #
 # Copyright (c) 1994
 #   Michael Peppler and ITF Management SA
@@ -17,7 +17,8 @@ sub message_handler
     my ($db, $message, $state, $severity, $text, $server, $procedure, $line)
 	= @_;
 
-    if ($severity > 0)
+    # Don't display 'informational' messages:
+    if ($severity > 10)
     {
 	print STDERR ("Sybase message ", $message, ", Severity ", $severity,
 	       ", state ", $state);

@@ -1,6 +1,6 @@
 #!./perl
 
-#	%W%	%G%
+#	@(#)dbmoney.t	1.8	10/16/95
 
 print "1..32\n";
 
@@ -8,7 +8,7 @@ require 'sybperl.pl';
 
 # This test file is still under construction...
 # Find the passwd file:
-@dirs = ('./..', './../..', './../../..');
+@dirs = ('./.', './..', './../..', './../../..');
 foreach (@dirs)
 {
     if(-f "$_/PWD")

@@ -1,8 +1,8 @@
 #!/usr/local/bin/perl
 #
-#	@(#)sql.pl	1.1	8/7/95
+#	@(#)sql.pl	1.2	10/2/95
 
-# Using the special one step query routine ct_sql().
+# Using the special one step query routine sql().
 
 use Sybase::DBlib;
 

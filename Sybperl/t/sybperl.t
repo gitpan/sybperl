@@ -1,6 +1,6 @@
 #!./perl
 
-#	%W%	%G%
+#	@(#)sybperl.t	1.10	10/16/95
 
 print "1..28\n";
 
@@ -9,7 +9,7 @@ require 'sybperl.pl';
 # This test file is still under construction...
 
 # Find the passwd file:
-@dirs = ('./..', './../..', './../../..');
+@dirs = ('./.', './..', './../..', './../../..');
 foreach (@dirs)
 {
     if(-f "$_/PWD")
@@ -103,10 +103,9 @@ $old = &dbmsghandle ("msg_handler");
 
 # Test for the use of a default dbproc:
 
-( ($dbproc2 = &dblogin()) != -1 )
+( ($dbproc2 = &dblogin($Uid, $Pwd, $Srv)) != -1 )
     and print("ok 17\n")
-    or print "not ok 17
--- You may need to edit t/sybperl.t to add login names and passwords\n";
+    or print "not ok 17";
 
 ( &dbuse($dbproc2, 'tempdb') == $SUCCEED )
     and print("ok 18\n")

@@ -2,12 +2,13 @@
 # Configuration file for Sybperl
 #
 # DBlibrary version. Set to 1000 (or higher) if you have System 10
-# Set to 0 if you do not want DBlib or if DBlib is not available
+# Set to 0 if you do not want to build DBlib or if DBlib is not available
 # (Linux, for example)
 DBLIBVS=1000
 
-# CTlib version. Set to 0 if CTlibrary is not available on your
-# system, or if you don't want to build the CTlib module
+# CTlib version. Set to 0 if Client Library is not available on your
+# system, or if you don't want to build the CTlib module. The Client
+# Library started shipping with System 10.
 # Note that the CTlib module is still under construction, though the
 # core API should be stable now.
 # Set to 100 if you have System 10.
@@ -31,10 +32,12 @@ EXTRA_LIBS=
 EXTRA_DEFS=-DUNDEF_BUG
 
 # LINKTYPE
-# If you wish to link Sybase::DBlib statically into perl
-# uncomment the line below, run the make normally, then cd into
-# Sybase/DBlib and run 'make perl'.
+# If you wish to link Sybase::DBlib and/or Sybase::CTlib statically
+# into perl uncomment the line below and run the make normally. Then,
+# when you run 'make test' a new perl binary will be built.
 #LINKTYPE=static
 
+# The sybperl version info is now extracted from the patchlevel.h
+# file in this directory.
 # Sybperl version - shouldn't need to change this.
-VERSION=2b3
+#VERSION=2.0

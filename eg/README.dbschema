@@ -8,4 +8,8 @@ constraints, among others).
 
 The previous version of dbschema is available in dbschema.old
 
+In addition, Ashu Joglekar has hacked dbschema.old to add System 10
+stuff. His version is in dbschema.10.pl. See the comments at the top
+of that file for the changes he added.
+
 Michael

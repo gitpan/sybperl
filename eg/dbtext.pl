@@ -1,6 +1,6 @@
 #!/usr/local/bin/perl
 #
-#	@(#)dbtext.pl	1.2	11/30/94
+#	@(#)dbtext.pl	1.3	10/17/95
 #
 # Example code showing the Sybperl usage of dbwritetext().
 #
@@ -30,8 +30,7 @@ $d->dbresults;
 
 $d2->dbwritetext ("text_table.the_text", $d, 1, "This is text which was added with Sybperl");
 
-@result = $d->sql('select t_index, the_text from text_table where t_index = 5');
-
-print @result, "\n";
+$d->sql('select t_index, the_text from text_table where t_index = 5',
+	sub { print @_, "\n";});
 
 $d->dbclose;

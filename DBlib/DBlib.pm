@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# @(#)DBlib.pm	1.15	9/18/95
+# @(#)DBlib.pm	1.17	10/27/95
 
 # Copyright (c) 1991-1995
 #   Michael Peppler
@@ -18,9 +18,6 @@ require AutoLoader;
 require DynaLoader;
 use Carp;
 
-$DBTRUE = TRUE;
-$DBFALSE = FALSE;
-
 @ISA = qw(Exporter AutoLoader DynaLoader);
 
 @EXPORT = qw( dbmsghandle dberrhandle dbrecftos dbexit
@@ -34,7 +31,7 @@ $DBFALSE = FALSE;
 	     STDEXIT SUCCEED SYBESMSG 
 	     BCPBATCH BCPERRFILE BCPFIRST BCPLAST BCPMAXERRS	BCPNAMELEN
 	     DBBOTH DBSINGLE DB_IN DB_OUT
-	     $DBTRUE $DBFALSE
+	     TRUE FALSE
 	     DBARITHABORT DBARITHIGNORE DBBUFFER DBBUFSIZE DBDATEFORMAT
 	     DBNATLANG DBNOAUTOFREE DBNOCOUNT DBNOEXEC DBNUMOPTIONS
 	     DBOFFSET DBROWCOUNT DBSHOWPLAN DBSTAT DBSTORPROCID
@@ -120,12 +117,12 @@ sub dbsucceed
     my($abort) = shift;
     my($ret);
     
-    if(($ret = $self->dbsqlexec) == SUCCEED)
+    if(($ret = $self->dbsqlexec) == &SUCCEED)
     {
 	$ret = $self->dbresults;
     }
 
-    croak "dbsucceed failed\n" if($abort && $ret == FAIL);
+    croak "dbsucceed failed\n" if($abort && $ret == &FAIL);
 
     $ret;
 }
@@ -147,7 +144,7 @@ sub sql				# Submitted by Gisle Aas
 
     my @res;
     my @data;
-    while($db->dbresults != NO_MORE_RESULTS) {
+    while($db->dbresults != &NO_MORE_RESULTS) {
         while (@data = $db->dbnextrow) {
             if (defined $sub) {
                 &$sub(@data);
@@ -167,7 +164,7 @@ sub r_sql {
 
     my @res;
     my @data;
-    while($db->dbresults != NO_MORE_RESULTS) {
+    while($db->dbresults != &NO_MORE_RESULTS) {
         while (@data = $db->dbnextrow) {
             if (defined $sub) {
                 &$sub(@data);

@@ -1,23 +1,13 @@
 # -*-Perl-*-
-#	@(#)Makefile.PL	1.5	9/18/95
+#	@(#)Makefile.PL	1.7	10/18/95
 
 use ExtUtils::MakeMaker;
 
-open(CFG, "../CONFIG") || die "Can't open ../CONFIG: $!";
+require '../config';
 
-while(<CFG>)
-{
-    chop;
-    s/^\s*//;
-    next if /^#|^\s*$/;
-    
-    ($left, $right) = split(/=/);
-    $left =~ s/\s*//g;
+$sattr = &config;
 
-    $sattr{$left} = $right;
-}
-close(CFG);
-$DBLIBVS = $sattr{DBLIBVS};
+$DBLIBVS = $$sattr{DBLIBVS};
 
 #####
 ### Configure End
@@ -25,7 +15,7 @@ $DBLIBVS = $sattr{DBLIBVS};
 
 # Write a dummy makefile if DBLIBVS is 0 - this means that we don't have
 # DBlibrary on this system...
-if(!$DBLIBVS)
+if($DBLIBVS == 0)
 {
     open(MF, ">Makefile") || die "Can't open Makefile: $!";
     print MF "# Empty Makefile to keep make happy\n\nall:\n\nconfig:\n\ntest:\n\ninstall:\n\n";
@@ -36,8 +26,9 @@ if(!$DBLIBVS)
 
 
 WriteMakefile("NAME" => "Sybase::Sybperl",
-	      "VERSION" => "$sattr{VERSION}",
-	      "SKIP" => [qw(static dynamic)]
+	      "VERSION" => "$$sattr{VERSION}",
+	      "SKIP" => [qw(static dynamic)],
+	      "MAP_TARGET" => '../perl'
 	      );
 
 sub MY::postamble {
@@ -47,3 +38,13 @@ static :: $(INST_PM)
 '
 }
 
+
+sub MY::staticmake
+{
+    my($self, %attribs) = @_;
+
+'
+# --- MakeMaker makeaperl section ---
+MAP_TARGET    = ../perl
+';
+}

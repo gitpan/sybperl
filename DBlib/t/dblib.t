@@ -1,12 +1,13 @@
 #!./perl
 
-#	@(#)dblib.t	1.11	8/28/95
+#	@(#)dblib.t	1.13	10/16/95
 
 print "1..16\n";
 
 use Sybase::DBlib;
 
 # This test file is still under construction...
+$Version = $SybperlVer;
 $Version = $Sybase::DBlib::Version;
 
 print "Sybperl Version $Version\n";
@@ -15,7 +16,7 @@ dbmsghandle ("message_handler"); # Some user defined error handlers
 dberrhandle ("error_handler");
 
 # Find the passwd file:
-@dirs = ('./..', './../..', './../../..');
+@dirs = ('./.', './..', './../..', './../../..');
 foreach (@dirs)
 {
     if(-f "$_/PWD")

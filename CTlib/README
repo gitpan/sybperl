@@ -1,13 +1,9 @@
-	@(#)README	1.1	8/7/95
+	@(#)README	1.2	10/18/95
 	
-This is an ALPHA version of the CTlib module. It is based on the API
+This is a Beta version of the CTlib module. It is based on the API
 definition that has been developped by Dave Bowen & Amy Lin at
-Sybase.
-
-It is a fairly small subset of the CTlibrary API, and documentation
-has been included in pod/sybperl.pod.
-
-***WARNING***
+Sybase, but includes some quite usefull additions (in particular, the
+native handling of datetime and money values).
 
 There is a chance that the API definition will still change in the
 future. Although I think that this will mean *additional* calls, rather

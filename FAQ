@@ -1,8 +1,9 @@
 		  SYBPERL Frequently Asked Questions
 
-		  @(#)FAQ	1.3	9/21/95
+		  @(#)FAQ	1.4	10/27/95
 
 NOTE: This FAQ is still very much under construction!!!
+
 
 1)   Sybperl? What is that?
 
@@ -73,6 +74,10 @@ NOTE: This FAQ is still very much under construction!!!
    Version 1.x: ftp://ftp.demon.co.uk/pub/perl/db/perl4/sybperl
    Version 2.x: ftp://ftp.demon.co.uk/pub/perl/db/mod/Sybase
 
+   These directories are mirrored on Delphi Internet:
+   ftp://ftp.delphi.com/pub/mirrors/packages/perl/db/...
+   (Although it appears that the mirroring is not done very often)
+   
    Version 2.x is also available on Sybase's Web page:
    http://www.sybase.com/WWW/Sybperl/index.html. I try to make sure
    that the Sybase Web page is up to date, but I don't control it...
@@ -88,25 +93,40 @@ NOTE: This FAQ is still very much under construction!!!
    I only *know* of one *working* port, for Windows/NT, which I
    understand will become available through http://www.metainfo.com.
 
-   
-2)   Building Sybperl
+   I am always ready to provide any help I can to anyone wishing to
+   port Sybperl to any particular OS/platform.
 
-2.1) make test doesn't work (2.x)
+1.4) Is there a version of Sybperl for Perl 5?
+
+   Yes. Sybperl 2.x works only with Perl 5.
+   
+   Sybperl 1.x does *not* work with Perl 5, as the Perl extension mechanism
+   was changed with Perl 5.
+
+   
+2) Building Sybperl
+
+2.1) make test doesn't work (2b?)
 
    a) You have compiled sybperl 2b? statically. make test does indeed
       not work in that case.
-      If you have 2b3 or later, run the static.test script.
+      If you have 2b3, run the static.test script.
       Otherwise, do the following:
       cd DBlib; ./perl -I../blib t/dblib.t
       cd ../Sybperl; ../DBlib/perl -I../blib t/sybperl.t
       ../DBlib/perl -I../blib t/dbmoney.t
       cd ../CTlib; ./perl -I../blib t/ctlib.t
 
+      Alternative (strongly recommended!): get the 2.0 production
+      release.
+
    b) The 'interfaces' file is not visible.
       The Sybase libraries need access to a file that contain
       information on how to connect to the server. This file is
-      located in the directory pointed to by the SYBASE environment
-      variable.
+      normally located at the root of the Sybase installation
+      directory, and the Sybase libraries and programs normally use
+      the SYBASE environement variable to find this directory (ie
+      sybperl will try to find $SYBASE/interfaces in order to run).
 
    c) The userid/password combination is invalid.
       In versions prior to 2b2, you will need to edit the test scripts
@@ -114,7 +134,7 @@ NOTE: This FAQ is still very much under construction!!!
       With version 2b2 a file called PWD is included in the
       distribution where passwords & userids should be entered.
    
-2.2) Where is uperl.o (1.x)
+2.2) Where is uperl.o (1.x)?
 
    uperl.o is the object file that sybperl 1.x needs to be linked with
    to give it access to all the Perl routines. uperl.o is normally
@@ -123,9 +143,79 @@ NOTE: This FAQ is still very much under construction!!!
 
    If you have Perl 5.x you need sybperl 2.x.
 
+2.3) How to get Dynamic Linking under HP-UX (2.x)?
+
+   The bundled C compiler that comes with HP-UX apparently can't
+   produce position independant code, which is needed to build a
+   dynamically loadable library under HP-UX. The solution there is to
+   use the add-on ANSI-C compiler or GCC.
+
+   In addition, you can't build a dynamically loadable module of
+   DBlibrary v. 4.x, because it is a statically linked library, and
+   was not compiled using the position independent code flag.
+
+   So the end result is: to get a dynamically loadable version you
+   need the Sybase System 10 OpenClient libraries, and a C compiler
+   that is capable of producing position independent code.
+
+2.4) How do I set PERL_SRC?
+
+   This problem sometimes appears when building sybperl with a copy of
+   Perl that has not been installed (ie from the source tree):
+   
+   You've run
+
+   prompt> perl Makefile.PL
+   prompt> make
+
+   and the output looked something like this:
+
+   sybperl-2b3% make
+   Rebuilding CTlib/Makefile ...
+   /home/mpeppler/PERL/perl5.001/miniperl -I//home/mpeppler/PERL/perl5.001/lib \
+   -e "use ExtUtils::MakeMaker; MM->runsubdirpl(qw(CTlib))" \
+        INST_LIB=/home/mpeppler/PERL/perl5.001/lib INST_ARCHLIB=/home/mpeppler/PERL/perl5.001/lib \
+        INST_EXE=./blib LINKTYPE=dynamic LIBPERL_A=libperl.a 
+	Unable to locate Perl source. Try setting PERL_SRC in Makefile.PL or on command line.
+	make: *** [CTlib/Makefile] Error 2
+
+   To do this, you need to add a parameter to the WriteMakefile() call
+   in each of the Makefile.PLs (toplevel, DBlib/Makefile.PL,
+   CTlib/Makefile.PL and Sybperl/Makefile.PL). The parameter should
+   look like this
+   WriteMakefile(DISTNAME => "sybperl",
+                 .... other parameters,
+		 PERL_SRC => "/home/mpeppler/src/perl5.001",
+		 ...);
+   obviously replacing "/home/mpeppler/src/perl5.001" with the
+   appropriate directory on your system.
+
+
+2.5) I've moved the Sybase libraries, and Sybperl won't run...
+
+   The sybperl make process hard-codes the path to the Sybase shared
+   libraries (libsybdb.so and friends) into the binaries (either the
+   dynamically loadable modules, or the Perl executable). This is done
+   so that Perl can find the libraries it needs even if the
+   LD_LIBRARY_PATH environment variable which is normally used to
+   specify special library directories is not set (as when running a
+   script from cron, for example).
+
+   This technique obviously fails when the paths to the Sybase
+   libraries are changed (through an upgrade, or when moving the
+   binaries to another machine with a different configuration).
+
+   The solution is to:
+
+       - Set LD_LIBRARY_PATH to include the Sybase library directories
+       or
+       - Link the Sybase libraries to a standard directory (such as
+       /usr/lib or /usr/local/lib) which will be searched by default.
+
+   
 3)   Sybperl 1.x vs Sybperl 2.x
 
-3.1) Are sybperl 1.x scripts compatible with 2.x
+3.1) Are sybperl 1.x scripts compatible with 2.x?
 
    Yes. With these exceptions:
 
@@ -140,6 +230,28 @@ NOTE: This FAQ is still very much under construction!!!
    problem does not exist if your scripts always pass explicit
    DBPROCESS parameters.
 
+   Here at ITF I've linked /usr/local/bin/perl to
+   /usr/local/bin/sybperl and all my old sybperl scripts work,
+   provided that they had a "require 'sybperl.pl';" at the top.
+
+3.2) Is sybperl 2.x stable enough to use, or should I use 1.x for
+   production code?
+
+   The advantage (if one can call it that) of sybperl 1.x over 2.x is
+   that the code is frozen - both for sybperl itself and for
+   perl. This means that any bugs that you code around will not come
+   back to bite you as you upgrade from one release to the other.
+
+   That said I think that 2.x is stable enough, certainly if you use the
+   Sybase::DBlib and/or Sybase::Sybperl modules. The Sybase::CTlib
+   module is under active development, but I'm fairly certain that the
+   current API will not be modified.
+
+   The concern that some people have over the apparent instability of
+   Perl 5 is understandable, but I've been using Perl 5 in production
+   code here since January '95 with no problems.
+
+   
 4)  Documentation
    
 4.1) Is there any good sybperl documentation?
@@ -165,14 +277,34 @@ NOTE: This FAQ is still very much under construction!!!
 
 4.3) Is there a sybperl mailing list?
 
-   Yes. I am exeprimenting with a mailing list at the following
+   Yes. I am exprimenting with a mailing list at the following
    address: sybperl-list@itf.ch. To subscribe, send a message with the
    word 'subscribe' in the body to sybperl-list-request@itf.ch.
 
-   Note that I reserve the right to discontinue this service if the
+   Note that I may have to discontinue this service if the
    volume becomes to large.
 
+   
 5) Improving sybperl...
+
+5.1) Reporting bugs
+
+   I have a simple bug tracking database here at ITF. You can submit
+   bugs for sybperl either to myself, or directly into the bug
+   database by sending an e-mail message to bugtrack@itf.ch with the
+   following additional fields:
+
+   bug-category: sybperl
+   bug-priority: high [or medium, or low]
+   bug-type: bug [or feature, or change (for behavior change) or
+						      other]
+   bug-summary: One line description
+
+   The remainder of the message can be used to describe the bug or
+   feature request in detail, with examples, etc.
+   
+   
+5.2) Feature requests
 
    If you have any suggestions regarding how sybperl can be improved,
    please send them to me - I am always happy to try to add features
