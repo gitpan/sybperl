@@ -1,6 +1,6 @@
 /* -*-C-*-
  *
- * $Id: CTlib.xs,v 1.41 2000/05/13 22:51:14 mpeppler Exp $
+ * $Id: CTlib.xs,v 1.42 2000/11/15 00:30:05 mpeppler Exp $
  *	@(#)CTlib.xs	1.37	03/26/99
  */
 
@@ -40,7 +40,20 @@
 
 #include <ctpublic.h>
 
+#if defined(CS_VERSION_125)
+#define CTLIB_VERSION   CS_VERSION_125
+#else 
+#if defined(CS_VERSION_120)
+#define CTLIB_VERSION   CS_VERSION_120
+#else 
+#if defined(CS_VERSION_110)
+#define CTLIB_VERSION   CS_VERSION_110
+#else
 #define CTLIB_VERSION	CS_VERSION_100
+#endif
+#endif
+#endif
+
 #ifndef MAX
 #define MAX(X,Y)	(((X) > (Y)) ? (X) : (Y))
 #endif
@@ -222,6 +235,7 @@ static CS_CONNECTION *get_con _((SV*));
 static CS_COMMAND *get_cmd _((SV*));
 static void cleanUp _((ConInfo *));
 static char *GetAggOp _((CS_INT));
+static CS_INT get_cwidth _((CS_DATAFMT *));
 static CS_INT display_dlen _((CS_DATAFMT *));
 static CS_RETCODE display_header _((CS_INT, CS_DATAFMT*));
 static CS_RETCODE describe _((ConInfo *, SV*, int, int));
@@ -959,7 +973,7 @@ CS_INT op;
 }
 
 static CS_INT
-display_dlen(column)
+get_cwidth(column)
 CS_DATAFMT *column;
 {
     CS_INT		len;
@@ -970,12 +984,12 @@ CS_DATAFMT *column;
       case CS_VARCHAR_TYPE:
       case CS_TEXT_TYPE:
       case CS_IMAGE_TYPE:
-	len = MIN(column->maxlength, MAX_CHAR_BUF);
+	len = column->maxlength;
 	break;
 
       case CS_BINARY_TYPE:
       case CS_VARBINARY_TYPE:
-	len = MIN((2 * column->maxlength) + 2, MAX_CHAR_BUF);
+	len = (2 * column->maxlength) + 2;
 	break;
 	
       case CS_BIT_TYPE:
@@ -1013,6 +1027,32 @@ CS_DATAFMT *column;
 	
       default:
 	len = column->maxlength;
+	break;
+    }
+    
+    return len;
+}
+
+static CS_INT
+display_dlen(column)
+CS_DATAFMT *column;
+{
+    CS_INT		len;
+
+    len = get_cwidth(column);
+
+    switch ((int) column->datatype)
+    {
+      case CS_CHAR_TYPE:
+      case CS_VARCHAR_TYPE:
+      case CS_TEXT_TYPE:
+      case CS_IMAGE_TYPE:
+      case CS_BINARY_TYPE:
+      case CS_VARBINARY_TYPE:
+	len = MIN(column->maxlength, MAX_CHAR_BUF);
+	break;
+	
+      default:
 	break;
     }
     
@@ -1259,7 +1299,7 @@ describe(info, dbp, restype, textBind)
 	  default:
 	  DoChar:;
 	    info->datafmt[i].maxlength =
-		display_dlen(&info->datafmt[i]) + 1;
+		get_cwidth(&info->datafmt[i]) + 1;
 	    info->datafmt[i].datatype = CS_CHAR_TYPE;
 	    info->datafmt[i].format   = CS_FMT_NULLTERM;
 	    New(902, info->coldata[i].value.c, info->datafmt[i].maxlength, char);
@@ -1710,7 +1750,7 @@ initialize()
     if((sv = perl_get_sv("Sybase::CTlib::Version", TRUE|GV_ADDMULTI)))
     {
 	char buff[256];
-	sprintf(buff, "This is sybperl, version %s\n\nSybase::CTlib $Revision: 1.41 $ $Date: 2000/05/13 22:51:14 $\n\nCopyright (c) 1995-1999 Michael Peppler\nPortions Copyright (c) 1995 Sybase, Inc.\n\n",
+	sprintf(buff, "This is sybperl, version %s\n\nSybase::CTlib $Revision: 1.42 $ $Date: 2000/11/15 00:30:05 $\n\nCopyright (c) 1995-1999 Michael Peppler\nPortions Copyright (c) 1995 Sybase, Inc.\n\n",
 		SYBPLVER);
 	sv_setnv(sv, atof(SYBPLVER));
 	sv_setpv(sv, buff);
@@ -3658,6 +3698,12 @@ int arg;
 		if (strEQ(name, "CS_MONTH"))
 #ifdef CS_MONTH
 		    return CS_MONTH;
+#else
+		goto not_there;
+#endif
+		if (strEQ(name, "CS_MORE"))
+#ifdef CS_MORE
+		    return CS_MORE;
 #else
 		goto not_there;
 #endif
@@ -5723,10 +5769,7 @@ ct_cmd_realloc(dbp)
     if((RETVAL = ct_cmd_alloc(info->connection->connection, &cmd)) == CS_SUCCEED)
     {
 	if((RETVAL = ct_cmd_drop(info->cmd)) == CS_SUCCEED)
-	{
 	    info->cmd = cmd;
-	    hv_store(hv, (char*)info->cmd, sizeof(info->cmd), newSViv((IV)info), 0);
-	}
 	else
 	    ct_cmd_drop(cmd);
     }
@@ -5907,11 +5950,14 @@ CODE:
 	    SV **svp;
 
 	    svp = hv_fetch((HV*)SvRV(attr), "total_txtlen", 12, 0);
-	    /* XXX hack! */
-	    if(svp && SvIOK(*svp) || SvTAINTED(*svp))
+	    if (svp && SvGMAGICAL(*svp))   /* eg if from tainted expression */
+		mg_get(*svp);
+	    if(svp && SvIOK(*svp))
 		info->iodesc.total_txtlen = SvIV(*svp);
 
 	    svp = hv_fetch((HV*)SvRV(attr), "log_on_update", 13, 0);
+	    if (svp && SvGMAGICAL(*svp))   /* eg if from tainted expression */
+		mg_get(*svp);
 	    if(svp && SvIOK(*svp))
 		info->iodesc.log_on_update = SvIV(*svp);
 	}
@@ -6786,7 +6832,7 @@ calc(valp, days, msecs = 0)
 	croak("valp is not of type %s", DateTimePkg);
     tmp = *ptr;			/* make a copy: we don't want to change the original! */
     tmp.dtdays += days;
-    tmp.dttime += msecs;
+    tmp.dttime += msecs * 0.3333333333;
     ST(0) = sv_2mortal(newdate(&tmp));
 }
 

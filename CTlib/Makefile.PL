@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# $Id: Makefile.PL,v 1.21 2000/05/13 22:56:29 mpeppler Exp $
+# $Id: Makefile.PL,v 1.22 2000/11/15 00:29:36 mpeppler Exp $
 # @(#)Makefile.PL	1.19	03/26/99
 
 
@@ -19,6 +19,10 @@ $sattr = &config;
 $CTLIBVS = $$sattr{CTLIBVS};
 $SYBASE = $$sattr{SYBASE};
 $VERSION = $$sattr{VERSION};
+
+if($ENV{SYBASE_OCS}) {
+    $SYBASE .= "/$ENV{SYBASE_OCS}";
+}
 
 open(IN, "CTlib.pm.in") || die "Can't open CTlib.pm.in: $!";
 {

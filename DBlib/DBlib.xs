@@ -1,5 +1,5 @@
 /* -*-C-*-
- * $Id: DBlib.xs,v 1.50 2000/05/13 22:52:58 mpeppler Exp $
+ * $Id: DBlib.xs,v 1.51 2000/11/15 00:32:21 mpeppler Exp $
  *
  * From
  *	@(#)DBlib.xs	1.47	03/26/99
@@ -937,7 +937,7 @@ initialize()
 	if((sv = perl_get_sv("Sybase::DBlib::Version", TRUE|GV_ADDMULTI)))
 	{
 	    char buff[256];
-	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib $Revision: 1.50 $ $Date: 2000/05/13 22:52:58 $ \n\nCopyright (c) 1991-1999 Michael Peppler\n\n",
+	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib $Revision: 1.51 $ $Date: 2000/11/15 00:32:21 $ \n\nCopyright (c) 1991-1999 Michael Peppler\n\n",
 		    SYBPLVER);
 	    sv_setnv(sv, atof(SYBPLVER));
 	    sv_setpv(sv, buff);
@@ -3995,6 +3995,46 @@ PPCODE:
 #endif
 }
 
+int
+dbretlen(dbp, retnum)
+	SV *	dbp
+	int	retnum
+CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = dbretlen(dbproc, retnum);
+}
+ OUTPUT:
+RETVAL
+
+int
+dbrettype(dbp, retnum)
+	SV *	dbp
+	int	retnum
+CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = dbrettype(dbproc, retnum);
+}
+ OUTPUT:
+RETVAL
+
+char *
+dbretname(dbp, retnum)
+	SV *	dbp
+	int	retnum
+CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = dbretname(dbproc, retnum);
+}
+ OUTPUT:
+RETVAL
+
+
 void
 dbretdata(dbp,doAssoc=0)
 	SV *	dbp
@@ -4489,6 +4529,13 @@ dbsetdefcharset(char_set)
 int
 dbsetdeflang(language)
 	char *	language
+
+int
+dbsetmaxprocs(maxprocs)
+	int	maxprocs
+
+int
+dbgetmaxprocs()
 
 
 void
@@ -6059,7 +6106,7 @@ calc(valp, days, msecs = 0)
 	croak("valp is not of type %s", DateTimePkg);
     tmp = ptr->date;			/* make a copy: we don't want to change the original! */
     tmp.dtdays += days;
-    tmp.dttime += msecs;
+    tmp.dttime += msecs * 0.33333333;
     ST(0) = sv_2mortal(newdate(ptr->dbproc, &tmp));
 }
 

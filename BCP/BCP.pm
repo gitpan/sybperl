@@ -1,4 +1,4 @@
-# $Id: BCP.pm,v 1.3 2000/03/27 16:06:36 mpeppler Exp $
+# $Id: BCP.pm,v 1.4 2000/11/15 00:28:32 mpeppler Exp $
 # from	@(#)BCP.pm	1.15	03/05/98
 #
 # Copyright (c) 1996-1999
@@ -470,7 +470,7 @@ while(@data = &$in_sub($sep)) {
     foreach $i (keys(%reorder)) {
 	$t_data[$reorder{$i}-1] = $data[$i-1];
     }
-    @data = @t_data;
+    @data = @t_data if @t_data;
     
     if(defined($g_cb)){
 	next unless &$g_cb(\@data);

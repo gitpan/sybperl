@@ -1,4 +1,15 @@
-	$Id: CHANGES,v 1.2 1999/09/21 21:15:20 mpeppler Exp mpeppler $
+	$Id: CHANGES,v 1.3 2000/11/15 00:43:28 mpeppler Exp $
+
+2.13    Yet more bug fixes
+
+        Correct EMBED_SYBASE handling (bug in config.pl script).
+	Fix building for Sybase 12.0 (uses SYBASE_OCS environment 
+	variable.)
+	Added dbretlen(), dbretname(), dbrettype() to DBlib.
+        Minor changes to support wide data in Sybase 12.5.
+
+	340: Sybase::BCP fails unless REORDER is defined.
+	342: DateTime calc method microseconds aren't.
 
 2.12    More bug fixes
 

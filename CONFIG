@@ -25,6 +25,12 @@ SYBASE=/opt/sybase
 # setting the SYBASE environment variable will have no effect.
 EMBED_SYBASE = 0
 
+# If EMBED_SYBASE is set, then if EMBED_SYBASE_USE_HOME is also set
+# then, if the SYBASE env. variable is not set at run-time we look
+# for the "sybase" user's home directory first, and then for the 
+# build-time Sybase directory.
+EMBED_SYBASE_USE_HOME = 0
+
 # Additional libraries.
 # Some systems require -lnsl or -lBSD.
 # Solaris 2.x needs -ltli

@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# $Id: Makefile.PL,v 1.21 1999/09/21 21:09:18 mpeppler Exp $
+# $Id: Makefile.PL,v 1.22 2000/11/15 00:31:45 mpeppler Exp $
 #	@(#)Makefile.PL	1.19	03/26/99
 
 require 5.002;
@@ -15,6 +15,10 @@ $sattr = &config;
 $DBLIBVS = $$sattr{DBLIBVS};
 $SYBASE = $$sattr{SYBASE};
 $VERSION = $$sattr{VERSION};
+
+if($ENV{SYBASE_OCS}) {
+    $SYBASE .= "/$ENV{SYBASE_OCS}";
+}
 
 open(IN, "DBlib.pm.in") || die "Can't open DBlib.pm.in: $!";
 {

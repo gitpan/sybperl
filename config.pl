@@ -1,5 +1,5 @@
 # -*-Perl-*-
-#	$Id: config.pl,v 1.3 2000/05/13 22:58:24 mpeppler Exp $
+#	$Id: config.pl,v 1.4 2000/11/15 00:42:41 mpeppler Exp $
 #
 # Extract relevant info from the CONFIG and patchlevel.h files.
 
@@ -32,7 +32,7 @@ sub config
 	next if /^#|^\s*$/;
 	s/#.*$//;
 	
-	($left, $right) = split(/=/);
+	($left, $right) = split(/=\s*/);
 	$left =~ s/\s*//g;
 
 	$sattr{$left} = $right;
@@ -49,7 +49,7 @@ sub config
 
     while(<CFG>)
     {
-	chop;
+	chomp;
 	next if !/^#/;
 	
 	($dummy, $left, $right) = split(' ');
@@ -118,8 +118,11 @@ sub getExtraLibs {
     my $cfg = shift;
 
     my $lib = "$dir/lib";
+    if($ENV{SYBASE_OCS}) {
+	$lib = "$dir/$ENV{SYBASE_OCS}/lib";
+    }
 
-    opendir(DIR, "$dir/lib") || die "Can't access $dir/lib: $!";
+    opendir(DIR, "$lib") || die "Can't access $lib: $!";
     my %files = map { $_ =~ s/lib([^\.]+)\..*/$1/; $_ => 1 } grep(/lib/, readdir(DIR));
     closedir(DIR);
 
@@ -143,6 +146,10 @@ sub getExtraLibs {
 sub checkLib {
     my $dir = shift;
 
+    if($ENV{SYBASE_OCS}) {
+	$dir .= "/$ENV{SYBASE_OCS}";
+    }
+
     opendir(DIR, "$dir/lib") || die "Can't access $dir/lib: $!";
     my @files = grep(/libct/i, readdir(DIR));
     closedir(DIR);
@@ -157,7 +164,8 @@ sub putEnv {
     my $replace = '';
 
     if($$sattr{EMBED_SYBASE}) {
-	$replace = qq(
+	if($$satter{EMBED_SYBASE_USE_HOME}) {
+	    $replace = qq(
 BEGIN {
     if(!\$ENV{'SYBASE'}) {
 	if(\@_ = getpwnam("sybase")) {
@@ -168,6 +176,15 @@ BEGIN {
     }
 }
 );
+	} else {
+	    $replace = qq(
+BEGIN {
+    if(!\$ENV{'SYBASE'}) {
+	\$ENV{'SYBASE'} = '$$sattr{SYBASE}';
+    }
+}
+);
+	}
     }
 
     $data =~ s/__SYBASE__/$replace/;

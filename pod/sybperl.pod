@@ -1,4 +1,4 @@
-<--$Id: sybperl.pod,v 1.36 2000/05/13 22:54:50 mpeppler Exp $-->
+<--$Id: sybperl.pod,v 1.37 2000/11/15 00:33:47 mpeppler Exp $-->
 
 =head1 NAME
 
@@ -1539,6 +1539,13 @@ struct for column $colnum. The CS_IODESC struct is stored internally
 in the $dbh, and stores the text pointer, the total length and whether
 logging should be turned on for updates.
 
+The %attr hash can be used to set the B<total_txtlen> and
+B<log_on_update> fields of the CS_IODESC by setting the 
+corresponding fields in the %attr param:
+
+	%attr = ( total_txtlen => 1024, log_on_update => 1 );
+        $dbh->ct_data_info(CS_SET, $colnum, \%attr);
+
 If $dbh_2 is passed and $action is CS_SET then the CS_IODESC struct
 from $dbh_2 is copied to $dbh. This is usefull if you need to update
 TEXT columns in multiple rows by selecting the rows in one
@@ -1985,6 +1992,9 @@ Compare $date with $date2.
 
 Add or substract $days and $msecs from $date, and returns the new
 date.
+
+B<NOTE:> The minimal interval that Sybase understands is 1/300th of second,
+so amounts of less than 3 $msecs will NOT be visible.
 
 =item ($days, $msecs) = $date->diff($date2)
 

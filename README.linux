@@ -1,9 +1,17 @@
-	$Id: README.linux,v 1.1 1999/05/18 14:05:41 mpeppler Exp $
+	$Id: README.linux,v 1.2 2000/11/15 00:41:42 mpeppler Exp $
 
-There is a symbol conflict between Berkeley DB 1.xx, the ndbm library
-and Sybase's DB-Library. This means that you can't use the default
-perl version that is installed on linux to build the Sybase::DBlib
-part of sybperl.
+There are two possible problems with sybperl on linux.
+
+The LANG or LC_ALL environment variable may be set to a value 
+that has not been defined in the $SYBASE/locales/locales.dat file.
+Depending on the situation this can cause sybperl to core dump on
+startup. See http://www.mbay.net/~mpeppler/linux.html#q1.14.
+
+The second problem affects certain versions of perl that have been
+built with the Berkley-DB library linked in: There is a symbol
+conflict between Berkeley DB 1.xx, the ndbm library and Sybase's
+DB-Library. This means that you can't use the default perl version
+that is installed on linux to build the Sybase::DBlib part of sybperl.
 
 The solution is to rebuild perl without -ldb and -lndbm. I've done the 
 following, although there are of course other ways of doing this:

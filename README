@@ -1,4 +1,4 @@
-	$Id: README,v 1.3 2000/05/13 22:59:49 mpeppler Exp $
+	$Id: README,v 1.4 2000/11/15 00:37:15 mpeppler Exp $
 
 			   sybperl 2.0
 	
@@ -55,73 +55,36 @@ System 10.
 
 Recent Changes:
 
-2.10    CTlib TEXT/IMAGE handling
+2.13    Yet more bug fixes
 
-	**WARNING**
+        Correct EMBED_SYBASE handling (bug in config.pl script).
+	Fix building for Sybase 12.0 (uses SYBASE_OCS environment 
+	variable.)
+	Added dbretlen(), dbretname(), dbrettype() to DBlib.
+        Minor changes to support wide data in Sybase 12.5.
 
-	Please see the sybperl man page on changes to the dbpoll()
-	call. 
+	340: Sybase::BCP fails unless REORDER is defined.
+	342: DateTime calc method microseconds aren't.
 
-	Added ct_get_data(), ct_send_data(), ct_data_info().
-	Added some missing documentation.
-	Added Sybase::CTlib::DBDEAD().
-	Added Sybase::DBlib::dbcomputeinfo().
+2.12    More bug fixes
 
-	Changed dbpoll() to handle polling on a single handle.
+	Better EMBED_SYBASE, thanks to Mike Hiller.
+	Added UseBix0x mode to CTlib.
 
-	W. Philipp Moore supplied a patch to CTlib/Makefile.PL to 
-	link with the Sybase _r (re-entrant) libraries if perl
-	was compiled with threading enabled. **THERE IS NO GUARANTEE
-	THAT A THREADED VERSION OF Sybase::CTlib WILL WORK
-	CORRECTLY!!!***
-	Read README.thread for details.
+	269: dbsqlsend() missing from Sybperl.pm emulation layer.
+	315: -ldnet_stub directive in CONFIG ignored for OSF1/Tru64 Unix.
+	312: DBINTERRUPT misspelled in DBlib.xs.
 
-	Bug Fixes:
+2.11	Various bug fixes.
 
-	247: Sybase::DBlib::sql() returns invalid results in $doAssoc mode
-	     when multiple result sets are being processed.
-	248: cs_dt_info(CS_DT_CONVFMT) doesn't work.
-	
-2.09_05 DBlib asynch calls
-
-	Added dbpoll(), dbsqlsend() to allow asynchronous calls to Sybase.
-
-	Applied W. Philipp Moore's patch to the nsql() routine.
-
-2.09_04 DBlib dbreg*() calls
-
-	Added dbreg*() calls to allow execution of OpenServer registered
-	procedures.
-
-2.09_03 Bug Fixes
-
-	235: Calling DBlib's dbexit() breaks Sybase::DBlib on Win32
-	236: Sybase::CTlib doesn't work with OC 11.x on Win32.
-
-2.09_02	Bug Fixes
-
-	233: CTlib dumps core in DESTROY.
-
-
-2.09_01 Bug Fixes
-
-	This is a bug fix release. The only functional change is in the
-	handling of attributes in Sybase::CTlib when using the 
-	ct_cmd_alloc() call. If you use that call to open
-	multiple cursors on the same connection then you should
-	be aware that the attributes are shared between the handles
-	opened for this connection (ie the handle created with
-	ct_connect() and the handles created with ct_cmd_alloc().)
-
-	Other fixes:
-
-	218: length($buf) is incorrect after dbreadtext().
-	223: dbreadtext() leaves garbage at the end of $buf
-	224: dbreadtext() missing from Sybase::Sybperl
-	226: Changing $user in dblogin() fails on NCR
-	228: BCP RECORD_SEPARATOR error
-	229: BCP & null_pattern error
-	232: SEGV in ctutils.pl when inserting a duplicate row.
+	nsql() patch from W. Philipp Moore.
+	Added EMBED_SYBASE configuration variable.
+	dbreadtext() could cause a core dump if the internal call failed.
+	Figured out what was needed to get Sybase::DBlib to talk to an 
+	MS-SQL 7 dataserver. Sybase::CTlib still does not work with the
+	normal, non-patched MS-SQL 7 server.
+	Fixed bug 261: Money/Numeric potentially lose precision in
+		       Sybase::CTlib.
 
 ---------------------------------------------------------------------
 
@@ -165,9 +128,9 @@ b) Do you want the Sybase modules to be dynamically loadable?
 
    Note that if you are using HP-UX, you can only use dynamic loading
    if you have the add-on (extra cost) C compiler (or GNU gcc) and if
-   you have the System 10 shared libraries (libsybdb.sl vs libsybdb.a)
-   as HP-UX can't load an object dynamically which has not been
-   compiled with the PIC (position independant code) flag. 
+   you have the System 10 (or later)  shared libraries (libsybdb.sl vs 
+   libsybdb.a) as HP-UX can't load an object dynamically which has not 
+   been compiled with the PIC (position independant code) flag. 
 
 c) The DO_TIE compile option
 
@@ -244,6 +207,14 @@ h) Linux -lndbm and -lgbdm issues.
    rebuilding perl without -lndbm and -lgdbm in the extra libraries
    line (and of course without -ldb) seems to solve the problem.
 
+i) Sybase 12.0 or later.
+
+   If you have Sybase 12.0 installed then the build process uses the
+   SYBASE_OCS environment variable to locate the OpenClient files
+   below the directory defined by $SYBASE. The script tests for the
+   existence of the SYBASE_OCS environment variable, and uses it if
+   it exists.
+
    
 Once you have answered these eight questions, you can proceed:
 
@@ -259,6 +230,13 @@ Once you have answered these eight questions, you can proceed:
       things with debugging turned on).
       
    2) Edit CONFIG
+
+      If the SYBASE environment variable is set correctly you can
+      try to skip this step and see if the build works, as the
+      build process tries to determine what libraries to use and
+      where to locate them automatically. 
+      If the build fails you should check the following.
+
       See comments under b) above regarding dynamic vs static loading.
       Some systems require extra libraries to build (Solaris 2.x
       requires -lnsl, for example). You should check your Sybase
@@ -279,6 +257,7 @@ Once you have answered these eight questions, you can proceed:
       - 4.8, 4.9.x                     461         0
       - 10.0.x                        1000       100
       - 11.x			      1000	 100
+      - 12.x			      1000	 100
 
       You can check for the DB-Library version by looking at the top
       of the sybdb.h include file (it should be located in
@@ -398,7 +377,7 @@ in the body to subscribe to the list.
 Reporting Bugs:
 ===============
 
-I have set up a (sinple) bug tracking database, which can be accessed
+I have set up a (simple) bug tracking database, which can be accessed
 on line at http://gw.peppler.org/cgi-bin/bug.cgi. You can submit bugs 
 directly, or send me email using the SPR file in this directory. Keep
 in mind that gw.peppler.org is on the end of a K56 line, so it may be 
