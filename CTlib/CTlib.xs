@@ -1,5 +1,5 @@
 /* -*-C-*-
- *	@(#)CTlib.xs	1.24	02/05/97
+ *	@(#)CTlib.xs	1.26	10/07/97
  */
 
 
@@ -40,6 +40,7 @@ typedef struct _col_data
 {
     CS_SMALLINT	indicator;
     CS_INT	type;
+    CS_INT      realtype;
     union {
 	CS_CHAR	*c;
 	CS_INT i;
@@ -64,6 +65,20 @@ typedef struct _ref_con
     int refcount;
 } RefCon;
 
+#if 0
+struct attribs {
+    int UseDateTime;
+    int UseMoney;
+    int UseNumeric;
+    int MaxRows;
+    int ComputeId;
+    int ExtendedError;
+    int RowCount;
+    int RC;
+    int pid;
+};
+#endif
+
 typedef struct _con_info
 {
     ConType type;
@@ -74,6 +89,11 @@ typedef struct _con_info
     RefCon *connection;
     CS_COMMAND *cmd;
     CS_INT lastResult;
+#if 0
+    AV *av;
+    HV *hv;
+    struct attribs attr;
+#endif
 } ConInfo;
 
 
@@ -946,6 +966,8 @@ describe(info, dbp, restype)
 	    }
 	    sprintf(info->datafmt[i].name, "%s(%d)", agg_op_name, agg_op);
 	}
+	
+	info->coldata[i].realtype = info->datafmt[i].datatype;
 
 	switch(info->datafmt[i].datatype)
 	{
@@ -979,7 +1001,7 @@ describe(info, dbp, restype)
 	  case CS_TEXT_TYPE:
 	  case CS_IMAGE_TYPE:
 	    info->datafmt[i].datatype = CS_TEXT_TYPE;
-	    info->datafmt[i].format   = CS_FMT_NULLTERM;
+	    info->datafmt[i].format   = CS_FMT_UNUSED; /*CS_FMT_NULLTERM;*/
 	    New(902, info->coldata[i].value.c, info->datafmt[i].maxlength, char);
 	    info->coldata[i].type = CS_TEXT_TYPE;
 	    retcode = ct_bind(info->cmd, (i + 1), &info->datafmt[i],
@@ -1462,7 +1484,7 @@ initialize()
     if((sv = perl_get_sv("Sybase::CTlib::Version", TRUE)))
     {
 	char buff[256];
-	sprintf(buff, "This is sybperl, version %s\n\nSybase::CTlib version 1.24 02/05/97\n\nCopyright (c) 1995-1997 Michael Peppler\nPortions Copyright (c) 1995 Sybase, Inc.\n\n",
+	sprintf(buff, "This is sybperl, version %s\n\nSybase::CTlib version 1.26 10/07/97\n\nCopyright (c) 1995-1997 Michael Peppler\nPortions Copyright (c) 1995 Sybase, Inc.\n\n",
 		SYBPLVER);
 	sv_setnv(sv, atof(SYBPLVER));
 	sv_setpv(sv, buff);
@@ -5306,11 +5328,9 @@ CODE:
     if(refCon->refcount == 0)
     {
 	close_option = CS_FORCE_CLOSE;
-	if((retcode = ct_close(refCon->connection, close_option)) != CS_SUCCEED)
-	    warn("ct_close() failed");
-	else
-	    if((retcode = ct_con_drop(refCon->connection)) != CS_SUCCEED)
-		warn("ct_con_drop() failed");
+	ct_close(refCon->connection, close_option);
+	ct_con_drop(refCon->connection);
+
 	if((hv = perl_get_hv("Sybase::CTlib::_refCon", FALSE)))
 	    hv_delete(hv, (char *)refCon->connection, sizeof(refCon->connection), 0);
 	Safefree(refCon);
@@ -5470,7 +5490,7 @@ ct_col_types(dbp, doAssoc=0)
     {
 	if(doAssoc)
 	    XPUSHs(sv_2mortal(newSVpv(info->datafmt[i].name, 0)));
-	XPUSHs(sv_2mortal(newSViv((CS_INT)info->datafmt[i].datatype)));
+	XPUSHs(sv_2mortal(newSViv((CS_INT)info->coldata[i].realtype)));
     }
 }
 
@@ -5549,7 +5569,9 @@ PPCODE:
     switch(retcode)
     {
       case CS_ROW_FAIL:		/* not sure how I should handle this one! */
-	goto TryAgain;
+	  if(debug_level & TRACE_FETCH)
+	      warn("%s->ct_fetch() returned CS_ROW_FAIL",  neatsvpv(dbp, 0));
+	  /* FALL THROUGH */
       case CS_SUCCEED:
 	for(i = 0; i < info->numCols; ++i)
 	{
@@ -5689,31 +5711,54 @@ PPCODE:
 }
 
 int
-ct_config(action, property, buffer)
+ct_config(action, property, param, type=CS_CHAR_TYPE)
 	int	action
 	int	property
-	char *	buffer
+	SV *	param
+	int	type
 CODE:
 {
     char buff[256];
-    CS_INT outlen;
+    CS_INT outlen, *outptr = NULL;
+    CS_INT int_param;
     CS_RETCODE retcode;
+    CS_VOID *param_ptr;
+    CS_INT param_len;
 
     if(action == CS_GET)
     {
-	buffer = &buff[0];
-	retcode = ct_config(context, action, property, buffer, 255,
-			    &outlen);
+	if(type == CS_INT_TYPE) {
+	    param_ptr = &int_param;
+	    param_len = CS_UNUSED;
+	}
+	else {
+	    param_ptr = buff;
+	    param_len = 255;
+	}
+	retcode = ct_config(context, action, property, param_ptr, param_len,
+			    NULL);
     }
     else if(action == CS_SET)
     {
-	retcode = ct_config(context, action, property, buffer, CS_NULLTERM,
+	if(type == CS_INT_TYPE) {
+	    int_param = SvIV(param);
+	    param_ptr = &int_param;
+	    param_len = CS_UNUSED;
+	} else {
+	    param_ptr = SvPV(param, na);
+	    param_len = CS_NULLTERM;
+	}
+	retcode = ct_config(context, action, property, param_ptr, param_len,
 			    NULL);
     }
     RETVAL = retcode;
     /* This is a hack: */
-    if(action == CS_GET)
-	sv_setpv((SV*)ST(2), buffer);
+    if(action == CS_GET) {
+	if(type == CS_INT_TYPE)
+	    sv_setiv((SV*)ST(2), int_param);
+	else
+	    sv_setpv((SV*)ST(2), buff);
+    }
 }
  OUTPUT:
 RETVAL

@@ -1,5 +1,5 @@
 # -*-Perl-*-
-#	@(#)config	1.7	1/30/96;
+#	@(#)config.pl	1.8	10/03/97;
 #
 # Extract relevant info from the CONFIG and patchlevel.h files.
 
@@ -63,6 +63,14 @@ sub config
     $sattr{VERSION} = "$patchlvl{VERSION}.$patchlvl{PATCHLEVEL}$patchlvl{UNOFFICIAL}";
 
     $sattr{LINKTYPE} = 'static' if(!defined($Config{'usedl'}));
+
+    # Set Sybase directory to the SYBASE env variable if the one from
+    # CONFIG appears invalid
+    $sattr{SYBASE} = $ENV{SYBASE} if(!exists($sattr{SYBASE})
+				     || !-d $sattr{SYBASE} 
+				     || !-d "$sattr{SYBASE}/lib"
+				     || !-d "$sattr{SYBASE}/include"
+				    );
 
     \%sattr;
 }

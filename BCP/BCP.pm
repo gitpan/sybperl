@@ -1,4 +1,4 @@
-#	@(#)BCP.pm	1.10	02/04/97
+#	@(#)BCP.pm	1.12	10/07/97
 
 # Copyright (c) 1996-1997
 #   Michael Peppler
@@ -131,6 +131,11 @@ The file where invalid rows should be recorded. Default: bcp.err.
 
 The pattern that separates fields in the input file, or that should be used
 to separate fields in the output file. Default: TAB.
+
+=item RECORD_SEPARATOR
+
+The pattern that separates records (rows) in the input file. Sybase:BCP will
+set a local copy of $\ to this value before reading the file. Default: NEWLINE.
 
 =item FIELDS
 
@@ -280,12 +285,12 @@ use vars qw(@ISA @EXPORT $VERSION $Version);
 
 use strict;
 
-$VERSION = '0.05';
-$Version = '1.10 02/04/97';
+$VERSION = '0.06';
+$Version = '1.12 10/07/97';
 
 my @g_keys = qw(INPUT OUTPUT ERRORS SEPARATOR FIELDS BATCH_SIZE
 	     NULL DATE REORDER CALLBACK TAB_INFO DIRECTION CONDITION
-             LOGGER);
+             LOGGER RECORD_SEPARATOR);
 my @f_keys = qw(CALLBACK SKIP);
 my %g_keys = map { $_ => 1 } @g_keys;
 my %f_keys = map { $_ => 1 } @f_keys;
@@ -318,7 +323,7 @@ sub new {
 
     $d = new Sybase::DBlib $user,$passwd,$server,$appname,
                {Global => {}, Cols => {}};
-    bless $d, $package;
+    bless $d, $package if $d;
 }
 
 sub DESTROY {
@@ -371,6 +376,10 @@ sub run {
 	$self->do_out(@_);
     } else {
 	$self->do_in(@_);
+	my $log_file = $self->{Global}->{ERRORS} || 'bcp.err';
+	if(-e $log_file && -z $log_file) {
+	    unlink($log_file);
+	}
     }
 }
 
@@ -381,12 +390,14 @@ sub do_out {
 sub do_in {
     my $self = shift;
     my $verbose = shift;   # not used....
+
 	
     # Initialize:
     my $infile 	= $self->{Global}->{INPUT};
     my $table 	= $self->{Global}->{OUTPUT};
     my $logfile = $self->{Global}->{ERRORS};
     my $sep 	= $self->{Global}->{SEPARATOR};
+    local $\    = $self->{Global}->{RECORD_SEPARATOR} || "\n";
     my $cols 	= $self->{Global}->{FIELDS};
     my $batch_size = $self->{Global}->{BATCH_SIZE};
     my $null_pattern = $self->{Global}->{'NULL'};
@@ -394,8 +405,7 @@ sub do_in {
     my %cols 	= defined($self->{Cols}) ? %{$self->{Cols}} : undef;
     my $g_cb 	= $self->{Global}->{CALLBACK};
     my $logger  = $self->{Global}->{LOGGER} || \&carp;
-    my %reorder = defined($self->{Global}->{REORDER}) ?
-	%{$self->{Global}->{REORDER}} : undef;
+    my %reorder = %{$self->{Global}->{REORDER}} if(defined($self->{Global}->{REORDER}));
     my @tabinfo = @{$self->{Global}->{TAB_INFO}};
     my $i;
     my $in_sub;
@@ -564,8 +574,8 @@ sub do_in {
 sub _readln {
     my $sep = shift;
     my $ln; my @d;
-    if($ln = <IN>) {
-	chop $ln;
+    if(defined($ln = <IN>)) {
+	chomp $ln;
 	@d = split(/\Q$sep\E/o, $ln, -1);
     }
     @d;

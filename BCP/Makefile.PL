@@ -1,4 +1,4 @@
-#	@(#)Makefile.PL	1.5	03/22/96
+#	@(#)Makefile.PL	1.6	06/02/97
 
 require 5.002;
 use ExtUtils::MakeMaker;
@@ -6,8 +6,8 @@ use ExtUtils::MakeMaker;
 $VERSION='0.03';
 $DBLIBVS = 0;
 
-if(-f '../config') {
-    require '../config';
+if(-f '../config.pl') {
+    require '../config.pl';
 
     $sattr = &config;
 

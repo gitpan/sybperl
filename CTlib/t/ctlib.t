@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# @(#)ctlib.t	1.14	1/10/96
+# @(#)ctlib.t	1.15	05/20/97
 #
 # Small test script for Sybase::CTlib
 
@@ -49,6 +49,8 @@ ct_callback(CS_SERVERMSG_CB, "srv_cb");
 (($rc = $X->ct_execute("use master")) == CS_SUCCEED)
     and print "ok 3\n"
     or print "not ok 3\n";
+
+$res_type = 0;
 while(($rc = $X->ct_results($res_type)) == CS_SUCCEED)
 {
     print "$res_type\n";
@@ -88,9 +90,9 @@ while(@dat = $X->ct_fetch) {
 # Test the DateTime routines:
 
 $X->ct_execute("select getdate(), crdate from master.dbo.sysdatabases where name = 'master'\n");
-while($X->ct_results($restype) == CS_SUCCEED)
+while($X->ct_results($res_type) == CS_SUCCEED)
 {
-    next if(!$X->ct_fetchable($restype));
+    next if(!$X->ct_fetchable($res_type));
     while(($date, $crdate) = $X->ct_fetch)
     {
 	(ref($date) eq 'Sybase::CTlib::DateTime')

@@ -1,4 +1,4 @@
-		     @(#)README	1.24	01/19/97
+		     @(#)README	1.25	10/07/97
 
 			   sybperl 2.0
 	
@@ -41,10 +41,9 @@ Sybase::BCP is a simplified bulk copy API, and requires Sybase::DBlib.
 The Sybase::Sybperl module implements the sybperl 1.0xx API, and is
 built on top of Sybase::DBlib.
 
-Sybase::CTlib implements a subset of the newer Client Library API,
-and should still be considered 'beta' software, although it is rapidly
-becoming my favorite API for Perl/Sybase programing. Client Library is
-included with Sybase's OpenClient libraries as of System 10.
+Sybase::CTlib implements a subset of the newer Client Library API.
+Client Ligrary is included with Sybase's OpenClient libraries as of 
+System 10.
 
 ---------------------------------------------------------------------
 
@@ -126,6 +125,17 @@ d) The -L/usr/local/lib switch and libtcl.{a, so, sl}
    module will not work. The solution is to either move or rename
    tcl/tk's libtcl.a while you build sybperl, or to remove the
    -L/usr/local/lib flag from Perl's Config.pm file.
+
+e) The LD_LIBRARY_PATH variable and libintl.so
+
+   On Solaris 2.x (and possibly other OSes as well) there is a library
+   in /usr/lib called libintl.so.*, the same name as one of Sybase's
+   ClientLibrary libs. If the LD_LIBRARY_PATH variable includes
+   /usr/lib (or /lib) *before* $SYBASE/lib then the wrong library will
+   be found at run-time, causing 'make test' to fail. The solution is
+   to remove /usr/lib from LD_LIBRARY_PATH (there should be no reason
+   to include it as the system directories [/usr/lib and /lib] are
+   automatically searched for shared libraries when a program starts.)
    
 Once you have answered these four questions, you can proceed:
 
@@ -182,7 +192,7 @@ Once you have answered these four questions, you can proceed:
       Client versions that are in fact installed at your site. Check
       them again. In the case of the Sybase::DBlib module, it doesn't
       hurt to build with DBLIBVS set to 400 as this is pretty well
-      guarateed to work (provided you have *some* version of
+      guaranteed to work (provided you have *some* version of
       DB-Library!)
 
    6) Edit PWD
@@ -201,7 +211,9 @@ Once you have answered these four questions, you can proceed:
 
       If you get undefined symbols when testing CTlib (such as _net_*
       or _intl_getenv not defined), then I'd bet that you have either
-      a libtcl.* or libintl.* in /usr/local/lib.  See point d) above.
+      a libtcl.* in /usr/local/lib, or you have LD_LIBRARY_PATH that
+      includes /usr/lib on Solaris 2.x (which has its own libintl.so
+      just to confuse the issue!).  See points d) and e) above.
       
    7) If everything went OK, type: make install
       Note that the man page does not get installed automatically. To
@@ -213,7 +225,7 @@ Once you have answered these four questions, you can proceed:
 
    8) If the LINKTYPE is static type:
 
-	 make inst_perl MAP_TARGET=perl
+	 make -f Makefile.aperl inst_perl MAP_TARGET=perl
 
       to install the new Perl binary. This step is not required when
       using dynamic linking as the existing Perl binary will load the

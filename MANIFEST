@@ -31,7 +31,7 @@ Sybperl/t/dbmoney.t
 Sybperl/t/sybperl.t
 UPGRADE
 Version
-config
+config.pl
 eg/GenRepDefs.pl
 eg/Login.pm
 eg/README

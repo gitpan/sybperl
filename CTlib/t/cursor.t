@@ -1,6 +1,6 @@
 #!./perl
 
-#	@(#)cursor.t	1.4	11/14/96
+#	@(#)cursor.t	1.5	05/20/97
 
 ######################### We start with some black magic to print on failure.
 
@@ -72,6 +72,8 @@ if($ver < 10.0) {
 ($d->ct_send == CS_SUCCEED)
     and print "ok 6\n"
     or print "not ok 6\n";
+
+$restype = 0;
 while($d->ct_results($restype) == CS_SUCCEED) {}
 ($d2->ct_cursor(CS_CURSOR_DECLARE, "second_cursor",
 		'select * from sysusers',

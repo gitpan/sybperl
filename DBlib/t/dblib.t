@@ -1,6 +1,6 @@
 #!./perl
 
-#	@(#)dblib.t	1.17	2/20/96
+#	@(#)dblib.t	1.18	06/27/97
 
 print "1..19\n";
 
@@ -173,7 +173,7 @@ sub msg_handler
 
     if ($severity > 0)
     {
-	($message == 102)
+	($message == 102 || $message == 170) # MS-SQL server returns 170...
 	    and print("ok 15\n")
 		or print("not ok 15\n");
     }

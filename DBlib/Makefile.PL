@@ -1,12 +1,12 @@
 # -*-Perl-*-
-#	@(#)Makefile.PL	1.13	03/22/96
+#	@(#)Makefile.PL	1.14	06/02/97
 
 require 5.002;
 
 use ExtUtils::MakeMaker;
 use Config;
 
-require '../config';
+require '../config.pl';
 
 $sattr = &config;
 

@@ -1,6 +1,6 @@
 #!./perl
 
-#	@(#)sybperl.t	1.12	2/13/96
+#	@(#)sybperl.t	1.13	06/27/97
 
 print "1..28\n";
 
@@ -173,7 +173,7 @@ sub msg_handler
 
     if ($severity > 0)
     {
-	($message == 102)
+	($message == 102 || $message == 170) # MS-SQL server returns 170
 	    and print("ok 15\n")
 		or print("not ok 15\n");
     }

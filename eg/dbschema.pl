@@ -1,42 +1,53 @@
 #!/usr/local/bin/perl -w
 #
-#	@(#)dbschema.pl	1.14	
+#	@(#)dbschema.pl	1.17	06/13/97
 #
-# dbschema.pl   A script to extract a database structure from
-#               a Sybase database
+# dbschema.pl	A script to extract a database structure from
+#		a Sybase database
 #
-# Written by:   Michael Peppler (mpeppler@itf.ch)
-#               Substantially rewritten by David Whitmarsh from a partial
-#               System 10 implementation by Ashu Joglekar
-# Last Mods:    22 Feb 1994
+# Written by:	Michael Peppler (mpeppler@itf.ch)
+#		Substantially rewritten by David Whitmarsh from a partial
+#		System 10 implementation by Ashu Joglekar
+# Last Mods:    9 April 1997
 #
-# Usage:        dbschema.pl -d database -o script.name -t pattern -s server -v
-#                   where   database is self-explanatory (default: master)
+# Usage:	dbschema.pl -d database -o script.name -t pattern -s server -v
+#		    where   database is self-explanatory (default: master)
 #                           script.name is the output file (default: script.isql)
 #                           pattern is the pattern of object names (in sysobjects)
 #                           that we will look at (default: %), and server is
-#                           the server to connect to (default, the value of $ENV{DSQUERY}).
+#			    the server to connect to (default, the value of $ENV{DSQUERY}).
 #
-#                   -v turns on a verbose switch.
+#		    -v turns on a verbose switch.
 #
 #    Changes:   11/18/93 - bpapp - Put in interactive SA password prompt
 #               11/18/93 - bpapp - Get protection information for views and
 #                                  stored procedures.
-#               02/22/94 - mpeppler - Merge bpapp's changes with itf version
-#               09/15/94 - mpeppler - Minor changes for use with Sybperl2
-#                                     alpha1
-#               13/10/95 - Ashu Joglekar - System 10 w/o RI
-#               11/11/96 - David Whitmarsh -
-#                               Use Sybase::DBlib
-#                               System 10 declarative RI
-#                               constraints
-#                               Eliminate key truncation problems
-#                               Optional password command line
-#                               Debugged and strictified
-#                               Some index/key options
+#		02/22/94 - mpeppler - Merge bpapp's changes with itf version'
+#		09/15/94 - mpeppler - Minor changes for use with Sybperl2
+#				      alpha1
+#		13/10/95 - Ashu Joglekar - System 10 w/o RI
+#		11/11/96 - David Whitmarsh -
+#				Use Sybase::DBlib
+#				System 10 declarative RI
+#				constraints
+#				Eliminate key truncation problems
+#				Optional password command line
+#				Debugged and strictified
+#				Some index/key options
+#		17/2/97 - Michael Peppler
+#				Fixed small ',' problem in printKeys()
+#		11/3/97 - David Whitmarsh
+#				bug handling user defined types used as
+#				identity columns.
+#				addtype now has scale, prec
+#				removed spurious addtypes for nchar etc.
+#				null/not null/identity on types
+#               12/3/97 - Michael Peppler
+#                               Added -i switch to set an alternate interfaces
+#                               file.
 #
-#               If anyone knows a way to distinguish between key and reference
-#               declarations made at column and table level, let me know.
+#		If anyone knows a way to distinguish between key and reference
+#		declarations made at column and table level, let me know.
 #------------------------------------------------------------------------------
 
 
@@ -56,9 +67,9 @@ sub DumpTable;
 my ($dbproc, @dat, $dat, $udflt, $urule, %udflt, %urule, %tables, @tabnames, @col);
 my ($rule, $dflt, $date, $name);
 
-select (STDOUT); $| = 1;                # make unbuffered
+select (STDOUT); $| = 1;		# make unbuffered
 
-getopts ('u:p:d:t:o:s:v');
+getopts ('u:p:d:t:o:s:i:v');
 
 $Getopt::Std::opt_u = `whoami` unless $Getopt::Std::opt_u;
 $Getopt::Std::opt_d = 'master' unless $Getopt::Std::opt_d;
@@ -78,6 +89,9 @@ if (!$Getopt::Std::opt_p) {
     chop($Getopt::Std::opt_p = <>);
     system("stty echo");
 }
+if($Getopt::Std::opt_i) {
+    dbsetifile($Getopt::Std::opt_i);
+}
 
 $dbproc = new Sybase::DBlib ("$Getopt::Std::opt_u", $Getopt::Std::opt_p, $Getopt::Std::opt_s);
 $dbproc->dbuse ($Getopt::Std::opt_d);
@@ -88,7 +102,7 @@ $dbproc->dbuse ($Getopt::Std::opt_d);
 #
 $dbproc->{"dbNullIsUndef"} = TRUE;
 
-chop($date = &ctime(time));
+$date = scalar(localtime);
 
 print "dbschema.pl on Database $Getopt::Std::opt_d\n";
 
@@ -112,10 +126,14 @@ print SCRIPT
 $dbproc->dbcmd (<<SQLEND
 select s.length, s.name, st.name,
        object_name(s.tdefault),
-       object_name(s.domain)
+       object_name(s.domain),
+       s.prec, s.scale,
+       s.allownulls,
+       isnull (s.ident, 1)
 from   dbo.systypes s, dbo.systypes st
 where  st.type = s.type
-and s.usertype > 100 and st.usertype < 100 and st.usertype != 18
+and s.usertype > 100 and st.usertype < 100
+and st.name not in  ('intn', 'nvarchar', 'sysname', 'nchar')
 SQLEND
 );
 
@@ -127,15 +145,17 @@ $dbproc->dbresults;
 
 while((@dat = $dbproc->dbnextrow))
 {
-    print SCRIPT "sp_addtype $dat[1],";
-    if ($dat[2] =~ /char|binary/)
-    {
-        print SCRIPT "'$dat[2]($dat[0])'";
-    }
-    else
-    {
-        print SCRIPT "$dat[2]";
-    }
+    print SCRIPT "sp_addtype $dat[1], ";
+    ($dat[2] =~ /char\b|binary\b/ and
+        print SCRIPT "'$dat[2]($dat[0])'")
+    or ($dat[2] =~ /\bnumeric\b|\bdecimal\b/ and
+	print SCRIPT "'$dat[2]($dat[5],$dat[6])'")
+    or print SCRIPT "$dat[2]";
+
+    (($dat[8] == 1) and print SCRIPT ", 'identity'")
+    or (($dat[7] == 1) and print SCRIPT ", 'null'")
+    or print SCRIPT ", 'not null'";
+
     print SCRIPT "\ngo\n";
 
     # Now remember the default & rule for later.
@@ -264,13 +284,13 @@ sub getPerms
     $cnt = 0;
     while(($ret = $dbproc->dbresults) != NO_MORE_RESULTS && $ret != FAIL)
     {
-        while(@dat = $dbproc->dbnextrow)
-        {
-            $act = 'to';
-            $act = 'from' if $dat[0] =~ /Revoke/;
-            print SCRIPT "$dat[2] $dat[3] on $obj $act $dat[1]\n";
-            ++$cnt;
-        }
+	while(@dat = $dbproc->dbnextrow)
+	{
+	    $act = 'to';
+	    $act = 'from' if $dat[0] =~ /Revoke/;
+	    print SCRIPT "$dat[2] $dat[3] on $obj $act $dat[1]\n";
+	    ++$cnt;
+	}
     }
     $cnt;
 }
@@ -281,11 +301,11 @@ sub getObj
     my (@dat, @items, @vi, $found, $text);
     
     $dbproc->dbcmd (<<SQLEND
-select  distinct o.name, u.name, o.id
-from    dbo.sysobjects o, dbo.sysusers u,
-        dbo.sysprocedures p
-where   o.type = '$obj' and o.name like '$Getopt::Std::opt_t' and u.uid = o.uid
-        and o.id = p.id and p.status & 4096 != 4096
+select	distinct o.name, u.name, o.id
+from	dbo.sysobjects o, dbo.sysusers u,
+	dbo.sysprocedures p
+where	o.type = '$obj' and o.name like '$Getopt::Std::opt_t' and u.uid = o.uid
+	and o.id = p.id and p.status & 4096 != 4096
 order by o.name
 SQLEND
     );
@@ -295,39 +315,39 @@ SQLEND
 
     while((@dat = $dbproc->dbnextrow))
     {
-        push (@items, [ @dat ]);        # and save it in a list
+	push (@items, [ @dat ]);	# and save it in a list
     }
 
     foreach (@items)
     {
-        @vi = @$_;
-        $found = 0;
+	@vi = @$_;
+	$found = 0;
 
-        $dbproc->dbcmd ("select text from dbo.syscomments where id = $vi[2]");
-        $dbproc->dbsqlexec;
-        $dbproc->dbresults;
-        
-        print SCRIPT
-            "/* $objname $vi[0], owner $vi[1] */\n";
+	$dbproc->dbcmd ("select text from dbo.syscomments where id = $vi[2]");
+	$dbproc->dbsqlexec;
+	$dbproc->dbresults;
+	
+	print SCRIPT
+	    "/* $objname $vi[0], owner $vi[1] */\n";
 
-        while(($text) = $dbproc->dbnextrow)
-        {
-            if(!$found && $vi[1] ne 'dbo')
-            {
-                ++$found if($text =~ /$vi[1]/);
-            }
-            print SCRIPT $text;
-        }
-        print SCRIPT "\ngo\n";
-        if(!$found && $vi[1] ne 'dbo')
-        {
-            print "**Warning**\n$objname $vi[0] has owner $vi[1]\nbut this is not mentioned in the CREATE PROC statement!!\n";
-            print LOG "$objname $vi[0] (owner $vi[1])\n";
-        }
-        if ($obj eq 'V' || $obj eq 'P')
-        {
-           getPerms("$vi[0]") && print SCRIPT "go\n";
-        }
+	while(($text) = $dbproc->dbnextrow)
+	{
+	    if(!$found && $vi[1] ne 'dbo')
+	    {
+		++$found if($text =~ /$vi[1]/);
+	    }
+	    print SCRIPT $text;
+	}
+	print SCRIPT "\ngo\n";
+	if(!$found && $vi[1] ne 'dbo')
+	{
+	    print "**Warning**\n$objname $vi[0] has owner $vi[1]\nbut this is not mentioned in the CREATE PROC statement!!\n";
+	    print LOG "$objname $vi[0] (owner $vi[1])\n";
+	}
+	if ($obj eq 'V' || $obj eq 'P')
+	{
+	   getPerms("$vi[0]") && print SCRIPT "go\n";
+	}
 
     }
 }
@@ -374,30 +394,30 @@ $dbproc->dbresults;
 while((@dat = $dbproc->dbnextrow)) {
 
     if ($dat[0] eq "primary") {
-        print SCRIPT "sp_primarykey $dat[1]";
+	print SCRIPT "sp_primarykey $dat[1],";
 
-        PrintCols (@dat[3..10]);
+	PrintCols (@dat[3..10]);
 
-        print SCRIPT "\ngo\n";
+	print SCRIPT "\ngo\n";
     }
     if ($dat[0] eq "foreign") {
-        print SCRIPT "sp_foreignkey $dat[1], $dat[2]";
+	print SCRIPT "sp_foreignkey $dat[1], $dat[2],";
 
-        PrintCols (@dat[11..18]);
+	PrintCols (@dat[11..18]);
 
-        print SCRIPT "\ngo\n";
+	print SCRIPT "\ngo\n";
     }
     if ($dat[0] eq "common") {
-        print SCRIPT "sp_commonkey $dat[1], $dat[2]";
+	print SCRIPT "sp_commonkey $dat[1], $dat[2],";
 
-        PrintCols (@dat[3..10]);
+	PrintCols (@dat[3..10]);
 
-        print SCRIPT "\ngo\n";
+	print SCRIPT "\ngo\n";
     }
 }
 
 print "done\n"
-        
+	
 
 }
 
@@ -408,7 +428,7 @@ sub getComment
     my ($line, $text);
 
     $dbproc->dbcmd (
-        qq(select text from dbo.syscomments where id = $objid)); 
+	qq(select text from dbo.syscomments where id = $objid)); 
     $dbproc->dbsqlexec;
     $dbproc->dbresults;
     
@@ -416,7 +436,7 @@ sub getComment
 
     while(($line) = $dbproc->dbnextrow)
     {
-        $text = $text . $line;
+	$text = $text . $line;
     }
 
     return $text;
@@ -428,10 +448,10 @@ sub PrintCols
 
     $first = 1;
     while ($col = shift (@_)) {
-        last if ($col eq '*');
-        print SCRIPT ", " if !$first;
-        $first = 0;
-        print SCRIPT "$col";
+	last if ($col eq '*');
+	print SCRIPT ", " if !$first;
+	$first = 0;
+	print SCRIPT "$col";
     }
 }
 
@@ -452,6 +472,7 @@ sub DumpTable
     my (@refcols, @reflist, @field, $rule, $dflt, %rule, %dflt, $ddlrule, $ddldflt);
     my ($refname, $first, $matchstring, $field, @constrids, $constrid);
     my ($frgntabref);
+    my ($nultype);
 
 # first, get any reference and ensure that dependent tables have already been
 # created
@@ -507,38 +528,38 @@ SQLEND
 
     while((@refcols = $dbproc->dbnextrow))
     {
-        push (@reflist, [ @refcols ]);
+	push (@reflist, [ @refcols ]);
     }
 
     foreach (@reflist) {
 
-        @refcols = @$_;
+	@refcols = @$_;
 
 # if the foreign table is in a foreign database or is not in 
 # our table list, then don't do any more than add it to the list
 
-        next if $refcols[0] ne $Getopt::Std::opt_d;
+	next if $refcols[0] ne $Getopt::Std::opt_d;
 
-        $refname = $refcols[3] . "." . $refcols[2];
+	$refname = $refcols[3] . "." . $refcols[2];
 
-        next if not defined ($tables{$refname});
+	next if not defined ($tables{$refname});
 
-        $frgntabref = $tables{$refname};
+	$frgntabref = $tables{$refname};
 
 # otherwise check if it's already been dumped, if so, continue
 
-        next if @$frgntabref[3] eq "Y";
+	next if @$frgntabref[3] eq "Y";
 
 # make sure we aren't in a refernce loop by checking to see if this table is
 # already in the heirarchy of refering tables that led to the current invocation
 
-        grep ($refname, @referers)
-            && PRINT SCRIPT "/* WARNING: circular foreign key reference to $refname */\n"
-            && print LOG "@$tabref[1].@$tabref[0] in circular foreign key reference to $refname\n";
+	grep ($refname, @referers)
+	    && print SCRIPT "/* WARNING: circular foreign key reference to $refname */\n"
+	    && print LOG "@$tabref[1].@$tabref[0] in circular foreign key reference to $refname\n";
 
 # so dump the referenced tables first
 
-        DumpTable ($frgntabref, @referers, $refname);
+	DumpTable ($frgntabref, @referers, $refname);
     }
 
     print "Creating table @$tabref[0], owner @$tabref[1]\n" if $Getopt::Std::opt_v;
@@ -580,49 +601,50 @@ SQLEND
     @col = ();
     while (@field = $dbproc->dbnextrow)
     {
-        push @col, [ @field ];
+	push @col, [ @field ];
     }
 
     foreach (@col) {
-        @field = @$_;
+	@field = @$_;
 
-        print SCRIPT ",\n" if !$first;          # add a , and a \n if not first field in table
+        print SCRIPT ",\n" if !$first;		# add a , and a \n if not first field in table
 
-        # get the declarative rule and default (if set)
+	# get the declarative rule and default (if set)
 
-        if ($field[9] != 0) {
-            $ddldflt = getComment ($field[11]);
-        } else {
-            $ddldflt = "";
-        }
-        if ($field[10] != 0) {
-            $ddlrule = getComment ($field[12]);
-        } else {
-            $ddlrule = "";
-        }
+	if ($field[9] != 0) {
+	    $ddldflt = getComment ($field[11]);
+	} else {
+	    $ddldflt = "";
+	}
+	if ($field[10] != 0) {
+	    $ddlrule = getComment ($field[12]);
+	} else {
+	    $ddlrule = "";
+	}
         
-        # Check if its an identity column
-        if ($field[8] != 1)
-        {       
-            print SCRIPT "\t$field[0] \t$field[1]";
-            print SCRIPT "($field[2])" if $field[1] =~ /char|bin/;
-            print SCRIPT "($field[3],$field[4])" if $field[1] =~ /numeric|decimal/;
-            
-            print SCRIPT " $ddldflt $nul[$field[5]] $ddlrule";
-        } else {
-            print SCRIPT "\t$field[0] \t$field[1]\t($field[3],$field[4])\t $ddldflt identity $ddlrule";
-        }
-        if (defined ($field[7])
-            && ((!defined ($urule{$field[1]})) || $urule{$field[1]} ne $field[7])
-            && ($field[10] == 0)) {
-            $rule{"@$tabref[0].$field[0]"} = $field[7];
-        }
+	# Check if its an identity column
+	if ($field[8] == 1) {	
+	    $nultype = "identity";
+	} else {
+	    $nultype = $nul[$field[5]];
+	}
 
-        if (defined ($field[6])
-            && ((!defined ($udflt{$field[1]})) || $udflt{$field[1]} ne $field[6])
-            && ($field[9] == 0)) {
-            $dflt{"@$tabref[0].$field[0]"} = $field[6];
-        }
+	print SCRIPT "\t$field[0] \t$field[1]";
+	print SCRIPT "($field[2])" if $field[1] =~ /char|bin/;
+	print SCRIPT "($field[3],$field[4])" if $field[1] =~ /\bnumeric\b|\bdecimal\b/;
+	print SCRIPT " $ddldflt $nultype $ddlrule";
+
+	if (defined ($field[7])
+	    && ((!defined ($urule{$field[1]})) || $urule{$field[1]} ne $field[7])
+	    && ($field[10] == 0)) {
+	    $rule{"@$tabref[0].$field[0]"} = $field[7];
+	}
+
+	if (defined ($field[6])
+	    && ((!defined ($udflt{$field[1]})) || $udflt{$field[1]} ne $field[6])
+	    && ($field[9] == 0)) {
+	    $dflt{"@$tabref[0].$field[0]"} = $field[6];
+	}
         $first = 0 if $first;
         
     }
@@ -630,38 +652,38 @@ SQLEND
 # references
 
     foreach (@reflist) {
-        @refcols = @$_;
+	@refcols = @$_;
 
-        print SCRIPT ",";
+	print SCRIPT ",";
 
-        $refname = $refcols[3] . "." . $refcols[2];
+	$refname = $refcols[3] . "." . $refcols[2];
 
-        if ($refcols[0] ne $Getopt::Std::opt_d) {
-            print SCRIPT "\n/* The following reference is in database
+	if ($refcols[0] ne $Getopt::Std::opt_d) {
+	    print SCRIPT "\n/* The following reference is in database
 ** $refcols[0], edit the script to create the reference manually
 ";
-            print LOG "Reference for @$tabref[1].@$tabref[0] in foreign database\n\t";
-            $refname = $refcols[0] . "." . $refname;
-        }
-        print SCRIPT "\n\t";
+	    print LOG "Reference for @$tabref[1].@$tabref[0] in foreign database\n\t";
+	    $refname = $refcols[0] . "." . $refname;
+	}
+	print SCRIPT "\n\t";
 
-        $matchstring = substr($refcols[1], 0, 8) . "[_0-9][_0-9]*";
-        $refcols[1] !~ /$matchstring/
-                && print SCRIPT "CONSTRAINT $refcols[1] ";
+	$matchstring = substr($refcols[1], 0, 8) . "[_0-9][_0-9]*";
+	$refcols[1] !~ /$matchstring/
+		&& print SCRIPT "CONSTRAINT $refcols[1] ";
 
-        print SCRIPT "FOREIGN KEY (";
+	print SCRIPT "FOREIGN KEY (";
+	
+	PrintCols (@refcols[4..19]);
+
+	print SCRIPT ") REFERENCES $refname (";
+
+	PrintCols (@refcols[20..35]);
         
-        PrintCols (@refcols[4..19]);
+	print SCRIPT ")";
 
-        print SCRIPT ") REFERENCES $refname (";
-
-        PrintCols (@refcols[20..35]);
-        
-        print SCRIPT ")";
-
-        if ($refcols[0] ne $Getopt::Std::opt_d) {
-            print SCRIPT "*/";
-        }
+	if ($refcols[0] ne $Getopt::Std::opt_d) {
+	    print SCRIPT "*/";
+	}
     }
 
 # now get the indexes and keys...
@@ -702,23 +724,23 @@ SQLEND
 # if this is a key or unique constraint, print out the details
 # otherwise buffer it up to print as an index afterwards
 
-        if ($field[3] & 2) {
-            print (SCRIPT ",\n\t");
-            print SCRIPT "CONSTRAINT $field[0] " unless ($field[3] & 8);
+	if ($field[3] & 2) {
+	    print (SCRIPT ",\n\t");
+	    print SCRIPT "CONSTRAINT $field[0] " unless ($field[3] & 8);
 
-            if ($field[2] & 2048) {
-                print SCRIPT "PRIMARY KEY ";
-                print SCRIPT "NONCLUSTERED " if ($field[1] != 1);
-            } else {
-                print SCRIPT "UNIQUE ";
-                print SCRIPT "CLUSTERED " if ($field[1] == 1);
-            }
-            print SCRIPT "(";
-            PrintCols (@field[4..19]);
-            print SCRIPT ")";
-        } else {
-            push @col, [ @field ];
-        }
+	    if ($field[2] & 2048) {
+		print SCRIPT "PRIMARY KEY ";
+		print SCRIPT "NONCLUSTERED " if ($field[1] != 1);
+	    } else {
+		print SCRIPT "UNIQUE ";
+		print SCRIPT "CLUSTERED " if ($field[1] == 1);
+	    }
+	    print SCRIPT "(";
+	    PrintCols (@field[4..19]);
+	    print SCRIPT ")";
+	} else {
+	    push @col, [ @field ];
+	}
     }
 
 # Now do the table level check constraints
@@ -736,18 +758,18 @@ SQLEND
     $dbproc->dbresults;
 
     while (@field = $dbproc->dbnextrow) {
-        @constrids = (@constrids, $field[0]);
+	@constrids = (@constrids, $field[0]);
     }
 
     foreach $constrid (@constrids) {
-        print SCRIPT ",\n\t" . getComment ($constrid);
+	print SCRIPT ",\n\t" . getComment ($constrid);
     }
 
-    print SCRIPT "\n)\ngo\n";   # end of CREATE TABLE
+    print SCRIPT "\n)\ngo\n";	# end of CREATE TABLE
 
-    foreach (@col) {    # now print the indexes
+    foreach (@col) {	# now print the indexes
 
-        @field = @$_;
+	@field = @$_;
 
         print SCRIPT "\nCREATE ";
         print SCRIPT "UNIQUE " if $field[2] & 2;
@@ -755,23 +777,23 @@ SQLEND
         print SCRIPT "INDEX $field[0]\n";
         print SCRIPT "ON @$tabref[1].@$tabref[0] (";
 
-        PrintCols (@field[4..19]);
+	PrintCols (@field[4..19]);
         
         print SCRIPT ")";
 
-        $first = 1;
-        if ($field[2] & 64) {
-            print SCRIPT " WITH ALLOW_DUP_ROW";
-            $first = 0;
-        }
-        if ($field[2] & 1) {
-            print SCRIPT (($first == 0) ? ", " : " WITH ") . "IGNORE_DUP_KEY";
-            $first = 0;
-        }
-        if ($field[2] & 4) {
-            print SCRIPT (($first == 0) ? ", " : " WITH ") . "IGNORE_DUP_ROW";
-            $first = 0;
-        }
+	$first = 1;
+	if ($field[2] & 64) {
+	    print SCRIPT " WITH ALLOW_DUP_ROW";
+	    $first = 0;
+	}
+	if ($field[2] & 1) {
+	    print SCRIPT (($first == 0) ? ", " : " WITH ") . "IGNORE_DUP_KEY";
+	    $first = 0;
+	}
+	if ($field[2] & 4) {
+	    print SCRIPT (($first == 0) ? ", " : " WITH ") . "IGNORE_DUP_ROW";
+	    $first = 0;
+	}
 
         print SCRIPT "\ngo\n";
 
@@ -784,38 +806,38 @@ SQLEND
 
     if(@$tabref[1] ne 'dbo' && (keys(%dflt) || keys(%rule)))
     {
-        print SCRIPT "/* The owner of the table is @$tabref[1].
+	print SCRIPT "/* The owner of the table is @$tabref[1].
  * I can't bind the rules/defaults to a table of which I am not the owner.
  * The procedures below will have to be run manualy by user @$tabref[1].
  */";
-        print LOG "Defaults/Rules for @$tabref[1].@$tabref[0] could not be bound\n";
+	print LOG "Defaults/Rules for @$tabref[1].@$tabref[0] could not be bound\n";
     }
 
     while(($dat, $dflt)=each(%dflt))
     {
-        print SCRIPT "/* " if @$tabref[1] ne 'dbo';
-        print SCRIPT "sp_bindefault $dflt, '$dat'";
-        if(@$tabref[1] ne 'dbo')
-        {
-            print SCRIPT " */\n";
-        }
-        else
-        {
-            print SCRIPT "\ngo\n";
-        }
+	print SCRIPT "/* " if @$tabref[1] ne 'dbo';
+	print SCRIPT "sp_bindefault $dflt, '$dat'";
+	if(@$tabref[1] ne 'dbo')
+	{
+	    print SCRIPT " */\n";
+	}
+	else
+	{
+	    print SCRIPT "\ngo\n";
+	}
     }
     while(($dat, $rule) = each(%rule))
     {
-        print SCRIPT "/* " if @$tabref[1] ne 'dbo';
-        print SCRIPT "sp_bindrule $rule, '$dat'";
-        if(@$tabref[1] ne 'dbo')
-        {
-            print SCRIPT " */\n";
-        }
-        else
-        {
-            print SCRIPT "\ngo\n";
-        }
+	print SCRIPT "/* " if @$tabref[1] ne 'dbo';
+	print SCRIPT "sp_bindrule $rule, '$dat'";
+	if(@$tabref[1] ne 'dbo')
+	{
+	    print SCRIPT " */\n";
+	}
+	else
+	{
+	    print SCRIPT "\ngo\n";
+	}
     }
     print SCRIPT "\n/* End of description of table @$tabref[1].@$tabref[0] */\n";
 

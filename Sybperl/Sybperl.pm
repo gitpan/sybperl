@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# @(#)Sybperl.pm	1.22	1/30/96
+# @(#)Sybperl.pm	1.25	06/27/97
 #
 # Copyright (c) 1994-1995
 #   Michael Peppler
@@ -39,10 +39,10 @@ package Sybase::Sybperl;
 
 use Carp;
 require Exporter;
-require AutoLoader;
+use AutoLoader 'AUTOLOAD';
 use Sybase::DBlib;
 
-@ISA = qw(Exporter AutoLoader);
+@ISA = qw(Exporter);
 
 $SUCCEED = Sybase::DBlib::SUCCEED;
 $FAIL = Sybase::DBlib::FAIL;
@@ -149,8 +149,12 @@ sub dbclose
     croak "&dbclose() must be called with an argument!\n"
 	if(!defined($dbproc) || !&isadb($dbproc));
 
+    if($default_db == $dbproc) {
+	undef($default_db);
+    }
+
     delete($DBprocs{$dbproc});
-    $dbproc->dbclose;
+    $dbproc->force_dbclose;
     undef($dbproc);
 }
 
@@ -1121,3 +1125,5 @@ sub dbwritetext
 }
 
 1;
+
+

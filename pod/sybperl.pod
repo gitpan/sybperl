@@ -1,4 +1,4 @@
-<--@(#)sybperl.pod	1.18	02/04/97-->
+<--@(#)sybperl.pod	1.23	10/07/97-->
 
 =head1 NAME
 
@@ -70,7 +70,7 @@ the $dbh. This has been done to implement a stricter behavior and to
 catch attribute errors.
 
 It B<is> possible to add your own attributes to a $dbh at creation
-time. The L<Sybase::BCP> module adds two attributes to the normal
+time. The B<Sybase::BCP> module adds two attributes to the normal
 I<Sybase::DBlib> attribute set by passing an additional attribute
 variable to the I<Sybase::DBlib> new() call:
 
@@ -90,7 +90,7 @@ default, because there is a performance penalty associated with it. It
 is turned on by using package or database handle specific attributes.
 
 Please see the discussion on
-L<Special handling of DATETIME, MONEY & NUMERIC/DECIMAL values>
+B<Special handling of DATETIME, MONEY & NUMERIC/DECIMAL values>
 below for details.
 
 =head2 Compatibility with Sybase Open Client documentation.
@@ -124,7 +124,7 @@ A generic I<perl> script using I<Sybase::DBlib> would look like this:
 The API calls that have been implemented use the same calling sequence
 as their C equivalents, with a couple of exceptions, detailed below.
 
-Please see also L<Common Sybase::DBlib and Sybase::CTlib routines> below.
+Please see also B<Common Sybase::DBlib and Sybase::CTlib routines> below.
 
 B<List of API calls>
 
@@ -167,6 +167,12 @@ Appends the string $sql_cmd to the current command buffer of this connection.
 Sends the content of the current command buffer to the dataserver for
 execution. See the DB-library documentation for a discussion of return
 values.
+
+=item $status = $dbh->dbsqlok
+
+Wait for results from the server and verify the correctness of the 
+instructions the server is responding to. Mainly for use with dbmoretext() 
+in Sybase::DBlib. See also the Sybase documentation for details.
 
 =item $status = $dbh->dbresults
 
@@ -221,6 +227,11 @@ Returns the number of rows that the current command affected.
 
 Returns the number (counting from 1) of the currently retrieved row in
 the current result set.
+
+=item $spid = $dbh->dbspid
+
+Returns the SPID (server process ID) of the current connection to the Sybase
+server.
 
 =item $status = $dbh->dbhasretstat
 
@@ -323,6 +334,16 @@ The second argument to dbsafestr() (normally B<DBSINGLE>, B<DBDOUBLE> or
 B<DBBOTH>) has been replaced with a literal ' or " (meaning B<DBSINGLE> or
 B<DBDOUBLE>, respectively). Omitting this argument means B<DBBOTH>.
 
+=item $packet_size = $dbh->dbgetpacket
+
+Returns the TDS packet size currently in use for this $dbh.
+
+=back
+
+=head2 TEXT/IMAGE Routines
+
+=over 8
+
 =item $status = $dbh->dbwritetext($colname, $dbh_2, $colnum, $text [, $log])
 
 Insert or update data in a TEXT or IMAGE column. The usage is a bit
@@ -341,15 +362,61 @@ currently active query. Example:
    $d->dbwritetext ("text_table.the_text", $dbh_2, 1,
 	"This is text which was added with Sybperl", TRUE);
 
-=item $packet_size = $dbh->dbgetpacket
+=item $status = $dbh->dbpreptext($colname, $dbh_2, $colnum, $size [, $log])
 
-Returns the TDS packet size currently in use for this $dbh.
+Prepare to insert or update text with dbmoretext().
+
+The calling sequence is a little different from the C version, and
+logging is B<off> by default:
+
+B<$dbh_2> and B<$colnum> are the B<DBPROCESS> and column number of a
+currently active query. Example:
+
+   $dbh_2->dbcmd('select the_text, t_index from text_table where t_index = 5');
+   $dbh_2->dbsqlexec; $dbh_2->dbresults;
+   @data = $dbh_2->dbnextrow;
+
+   $size = length($data1) + length($data2);
+   $d->dbpreptext ("text_table.the_text", $dbh_2, 1, $size, TRUE);
+   $dbh->dbsqlok;
+   $dbh->dbresults;
+   $dbh->dbmoretext(length($data1), $data1);
+   $dbh->dbmoretext(length($data2), $data2);
+
+   $dbh->dbsqlok;
+   $dbh->dbresults;
+
+=item $status = $dbh->dbmoretext($size, $data)
+
+Sends a chunk of TEXT/IMAGE data to the server. See the example above.
+
+=item $status = $dbh->dbreadtext($buf, $size)
+
+Read a TEXT/IMAGE data item in $size chunks.
+
+Example:
+
+    $dbh->dbcmd("select data from text_test where id=1");
+    $dbh->dbsqlexec;
+    while($dbh->dbresults != NO_MORE_RESULTS) {
+        my $bytes;
+        my $buf = '';
+        while(($bytes = $dbh->dbreadtext($buf, 512)) != NO_MORE_ROWS) {
+	    if($bytes == -1) {
+	        die "Error!";
+            } elsif ($bytes == 0) {
+                print "End of row\n";
+            } else {
+                print "$buf";
+            }
+        }
+    }
 
 =back
 
-B<BCP Routines:>
+=head2 BCP Routines:
 
-See also the L<Sybase::BCP> module.
+See also the B<Sybase::BCP> module.
 
 =over 8
 
@@ -435,7 +502,7 @@ B<DBMONEY Routines:>
 
 B<NOTE:> In this version it is possible to avoid calling the routines
 below and still get B<DBMONEY> calculations done with the correct
-precision. See the L<Sybase::DBlib::Money> discussion below.
+precision. See the B<Sybase::DBlib::Money> discussion below.
 
 =over 8
 
@@ -741,11 +808,13 @@ clause is currently being processed.
 
 =back
 
-=head1 Examples
+=head2 Examples
+
+=over 4
 
 =item BCP from program variables
 
-See also L<Sybase::BCP> for a symplified bulk copy API.
+See also B<Sybase::BCP> for a symplified bulk copy API.
 
 
    &BCP_SETL(TRUE);
@@ -837,7 +906,9 @@ This could then be used like this:
 
 Et voila!
 
-=head1 BUGS
+=back
+
+=head2 BUGS
 
 The 2PC calls have not been well tested.
 
@@ -856,10 +927,9 @@ therefore suffer a small performance penalty.
 
 =head1 Sybase::CTlib
 
-The CT-library module has been written in colaboration with Sybase. It
-is still in Beta.
+The CT-library module has been written in colaboration with Sybase.
 
-=head1 DESCRIPTION
+=head2 DESCRIPTION
 
 =over 8
 
@@ -1044,27 +1114,32 @@ The attributes values are copied from $dbh to $dbh2.
 Drops the current I<CS_COMMAND> structure, and reallocs a new
 one. Returns CS_SUCCEED on successfull completion.
 
-=item $ret = ct_config($action, $property, $value)
+=item $ret = ct_config($action, $property, $value, $type)
 
 Calls ct_config() to change some basic parameter, like the
-<B>interfaces</B> file location.
+B<interfaces> file location.
 
-$action can be <B>CS_SET</B> or <B>CS_GET</B>.
+$action can be B<CS_SET> or B<CS_GET>.
 
 $property is one of the properties that is settable via ct_config()
 (see your OpenClient man page on ct_config() for a complete list).
 
-$value is the input value if $action is <B>CS_GET</B>, and the output
-value if $action is <B>CS_GET</B>.
+$value is the input value if $action is B<CS_GET>, and the output
+value if $action is B<CS_GET>.
+
+$type is the data type of the property that is being set or
+retrieved. It defaults to B<CS_CHAR_TYPE>, but should be set to
+B<CS_INT_TYPE> if an integer value (such B<CS_NETIO> is being set or
+retrieved).
 
 $ret is the return status of the ct_config() call.
 
 Example:
 
-	$ret = ct_config(CS_SET, CS_IFILE, "/home/mpeppler/foo");
+	$ret = ct_config(CS_SET, CS_IFILE, "/home/mpeppler/foo", CS_CHAR_TYPE);
 	print "$ret\n";
 
-	$ret = ct_config(CS_GET, CS_IFILE, $out);
+	$ret = ct_config(CS_GET, CS_IFILE, $out, CS_CHAR_TYPE);
 	print "$ret - $out\n";  #prints 1 - /home/mpeppler/foo
 
 
@@ -1116,7 +1191,7 @@ Use like this:
 =back
 
 
-=head1 EXAMPLES
+=head2 EXAMPLES
 
     #!/usr/local/bin/perl
 
@@ -1182,7 +1257,7 @@ Use like this:
 	printf STDERR "Message String: %s\n", $msg;  CS_SUCCEED;
     }
 
-=head1 ATTRIBUTES
+=head2 ATTRIBUTES
 
 The behaviour of certain aspects of the Sybase::CTlib module can be
 controled via global or connection specific attributes. The global

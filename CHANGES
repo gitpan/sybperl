@@ -1,4 +1,33 @@
-	@(#)CHANGES	1.10	02/04/97
+	%W%	%G%
+
+2.08	New Features:
+
+	Added dbpreptext(), dbreadtext(), dbmoretext(), dbsqlok()
+	and force_dbclose() to Sybase::DBlib.
+	Added dbspid() to Sybase::DBlib
+
+	Bug Fixes
+
+	Made some code adjustments to silence some perl 5.004
+	warnings.
+	Finally fixed the "'rpcInfo' is not a valid Sybase::DBlib
+	attribute" bug...
+	Fixed DBSETLPACKET() macro definition (for pre-system 10
+	libraries).
+	Fixed ct_config() so that integer values can be set and
+	retrived. This implied adding a 'type' argument which defaults
+	to CS_CHAR_TYPE, but must be set to CS_INT_TYPE if integer
+	values are passed or retrieved.
+	Fixed dbclose() in Sybperl.pm to *really* close connections.
+	Renamed config to config.pl to avoid problems under Win/NT.
+	ct_fetch() added an extra \0 at the end of TEXT/IMAGE data.
+	Fixed a reorder bug in BCP.pm.
+	Fixed Sybase::CTlib::ct_sql() to set $dbh->{RC} to CS_FAIL 
+	when an error occurs in the processing.
+	Sybase::DBlib::dbrpcxxx() calls where not returning any success
+	or failure information.
+	Sybase::CTlib::ct_col_types() returns CS_INT_TYPE for all integer
+	types.
 
 2.07	Bug Fixes
 

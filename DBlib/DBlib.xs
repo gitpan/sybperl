@@ -1,5 +1,5 @@
 /* -*-C-*-
- *	@(#)DBlib.xs	1.31	02/04/97
+ *	@(#)DBlib.xs	1.35	10/07/97
  */	
 
 
@@ -36,7 +36,7 @@
 #define DBGETTIME()		not_here("DBGETTIME")
 #endif
 #if !defined(DBSETLPACKET)
-#define DBSETLPACKET(i)		not_here("DBSETLPACKET")
+#define DBSETLPACKET(l, i)		not_here("DBSETLPACKET")
 #endif
 
 #if DBLIBVS < 1000
@@ -346,6 +346,7 @@ newdbh(dbproc, package, attr_ref)
     my_hv_store(thv, HV_dbproc, newSViv((IV)dbproc), 0);
     my_hv_store(thv, HV_dbstatus, newSViv(0), 0);
     my_hv_store(thv, HV_compute_id, newSViv(0), 0);
+    my_hv_store(thv, HV_rpcinfo, newSViv(0), 0);
     my_hv_store(thv, HV_pid, newSViv(getpid()), 0);
 #endif
 
@@ -805,7 +806,7 @@ initialize()
 	if((sv = perl_get_sv("Sybase::DBlib::Version", TRUE)))
 	{
 	    char buff[256];
-	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib version 1.31 02/04/97\n\nCopyright (c) 1991-1997 Michael Peppler\n\n",
+	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib version 1.35 10/07/97\n\nCopyright (c) 1991-1997 Michael Peppler\n\n",
 		    SYBPLVER);
 	    sv_setnv(sv, atof(SYBPLVER));
 	    sv_setpv(sv, buff);
@@ -3088,14 +3089,14 @@ CODE:
 	croak("no pid key in hash");
     if(SvIV(*svp) != getpid()) {
 	if(debug_level & TRACE_DESTROY)
-	    warn("Skipping Destroying %s", neatsvpv(dbp, 0));
+	    warn("Skipping Destroying %s (pid %d != getpid %d)", neatsvpv(dbp, 0), SvIV(*svp), getpid());
 	XSRETURN_EMPTY;
     }
  
     if(dirty && !dbproc)
     {
 	if(debug_level & TRACE_DESTROY)
-	    warn("Skipping Destroying %s", neatsvpv(dbp, 0));
+	    warn("Skipping Destroying %s (dirty)", neatsvpv(dbp, 0));
 	XSRETURN_EMPTY;
     }
 
@@ -3103,7 +3104,11 @@ CODE:
 	warn("Destroying %s", neatsvpv(dbp, 0));
     
     if(!dbproc)			/* it's already been closed! */
+    {
+	if(debug_level & TRACE_DESTROY)
+	    warn("Dbproc already closed %s", neatsvpv(dbp, 0));
 	return;
+    }
     bcp_data = (BCP_DATA*)dbgetuserdata(dbproc);
     if(bcp_data)
     {
@@ -3121,7 +3126,21 @@ debug(level)
 {
     debug_level = level;
 }
-    
+
+void
+force_dbclose(dbp)
+	SV *	dbp
+CODE:
+{
+  DBPROCESS *dbproc = getDBPROC(dbp);
+  HV *hv;
+
+  dbclose(dbproc);
+
+  hv = (HV *)SvRV(dbp);
+  my_hv_store(hv, HV_dbproc, newSViv((IV)0), 0);
+}
+
 
 int
 dbuse(dbp,db)
@@ -3165,6 +3184,22 @@ CODE:
 
     if(debug_level & TRACE_RESULTS)
 	warn("%s->dbsqlexec == %d",
+	     neatsvpv(dbp, 0), RETVAL);
+}
+ OUTPUT:
+RETVAL
+
+int
+dbsqlok(dbp)
+	SV *	dbp
+CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = dbsqlok(dbproc);
+
+    if(debug_level & TRACE_RESULTS)
+	warn("%s->dbsqlok == %d",
 	     neatsvpv(dbp, 0), RETVAL);
 }
  OUTPUT:
@@ -4045,6 +4080,58 @@ dbwritetext(dbp, colname, dbp2, colnum, text, log=0)
 }
  OUTPUT:
 RETVAL
+
+int
+dbpreptext(dbp, colname, dbp2, colnum, size, log=0)
+	SV *	dbp
+	char *	colname
+	SV *	dbp2
+	int	colnum
+	int	size
+	int	log
+  CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+    DBPROCESS *dbproc2 = getDBPROC(dbp2);
+
+    RETVAL = dbwritetext(dbproc, colname, dbtxptr(dbproc2, colnum),
+			 DBTXPLEN, dbtxtimestamp(dbproc2, colnum), (BOOL)log,
+			 size, NULL);
+}
+ OUTPUT:
+RETVAL
+
+int
+dbreadtext(dbp, buf, size)
+	SV *	dbp
+	char *	buf
+	int	size
+CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+ 
+    New(902, buf, size, char);
+
+    RETVAL = dbreadtext(dbproc, buf, size);
+}
+OUTPUT:
+RETVAL
+buf
+
+int
+dbmoretext(dbp, size, buf)
+	SV *	dbp
+	int	size
+	char*	buf
+CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = dbmoretext(dbproc, size, buf);
+}
+OUTPUT:
+RETVAL
+
 
 
 void
@@ -5038,6 +5125,18 @@ DBDEAD(dbp)
   OUTPUT:
 RETVAL
 
+int
+dbspid(dbp)
+	SV *	dbp
+CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = dbspid(dbproc);
+}
+  OUTPUT:
+RETVAL
+
 void
 open_commit(package="Sybase::DBlib",user=NULL,pwd=NULL,server=NULL,appname=NULL,attr=&sv_undef)
 	char *	package
@@ -5195,6 +5294,8 @@ dbrpcinit(dbp, rpcname, opt)
 
     RETVAL = dbrpcinit(dbproc, rpcname, opt);
 }
+  OUTPUT:
+RETVAL
 
 int
 dbrpcparam(dbp, parname, status, type, maxlen, datalen, value)
@@ -5276,6 +5377,8 @@ dbrpcparam(dbp, parname, status, type, maxlen, datalen, value)
     
     RETVAL = dbrpcparam(dbproc, parname, status, ptr->type, maxlen, datalen, ptr->value);
 }
+  OUTPUT:
+RETVAL
 
 int
 dbrpcsend(dbp)
@@ -5311,6 +5414,8 @@ dbrpcsend(dbp)
 	my_hv_store(hv, HV_rpcinfo, sv, 0);
     }
 }
+  OUTPUT:
+RETVAL
 
 int
 dbrpwset(srvname, pwd)
@@ -5322,6 +5427,8 @@ dbrpwset(srvname, pwd)
 	srvname = NULL;
     RETVAL = dbrpwset(login, srvname, pwd, strlen(pwd));
 }
+  OUTPUT:
+RETVAL
 
 void
 dbrpwclr()

@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# @(#)CTlib.pm	1.19	02/05/97
+# @(#)CTlib.pm	1.21	10/07/97
 
 # Copyright (c) 1995-1997
 #   Michael Peppler
@@ -270,7 +270,7 @@ sub n_div {
 package Sybase::CTlib;
 
 require Exporter;
-require AutoLoader;
+use AutoLoader;
 require DynaLoader;
 
 use Carp;
@@ -281,7 +281,7 @@ use subs qw(CS_SUCCEED CS_FAIL CS_CMD_DONE CS_ROW_COUNT
 
 use vars qw(%Att);
 
-@ISA = qw(Exporter AutoLoader DynaLoader);
+@ISA = qw(Exporter DynaLoader);
 # Items to export into callers namespace by default
 # (move infrequently used names to @EXPORT_OK below)
 @EXPORT = qw( ct_callback ct_config
@@ -839,16 +839,16 @@ tie %Att, Sybase::CTlib::Att;
 sub AUTOLOAD {
     local($constname);
     ($constname = $AUTOLOAD) =~ s/.*:://;
-    $val = constant($constname, @_ ? $_[0] : 0);
+    
+    # The second argument to constant() is never used...
+    $val = constant($constname, 0);
     if ($! != 0) {
 	if ($! =~ /Invalid/) {
 	    $AutoLoader::AUTOLOAD = $AUTOLOAD;
 	    goto &AutoLoader::AUTOLOAD;
 	}
 	else {
-	    ($pack,$file,$line) = caller;
-	    die "Your vendor has not defined Sybase::CTlib macro $constname, used at $file line $line ($pack).
-";
+	    croak "Your vendor has not defined Sybase::CTlib macro $constname";
 	}
     }
     eval "sub $AUTOLOAD { $val }";
@@ -889,21 +889,24 @@ sub ct_sql
     my($db, $cmd, $sub, $flag) = @_;
     my(@res, @data, $rc);
     local($res_type);  # it's local so that it can be examined by &$sub
-    my($count, $max);
+    my $fail = 0;
 
+    if($db->{'MaxRows'}) {
+	$db->ct_options(&CS_SET, &CS_OPT_ROWCOUNT, $max, &CS_INT_TYPE);
+    }
     ($db->ct_execute($cmd) == &CS_SUCCEED) || return undef;
 
-    $max = $db->{'MaxRows'};
     $res_type = 0;		# avoid 'unitialized variable' warnings...
     $flag = 0 unless $flag;
+
 
     while(($rc = $db->ct_results($res_type)) == &CS_SUCCEED) {
         $db->{'ROW_COUNT'} = $db->ct_res_info(&CS_ROW_COUNT)
             if $res_type == &CS_CMD_DONE;
+	$fail = 1 if ($res_type == &CS_CMD_FAIL);
 	next unless $fetchable{$res_type};
 
         while (@data = $db->ct_fetch($flag)) {
-	    last if($max && ++$count > $max);
             if (defined $sub) {
                 &$sub(@data);
             } else {
@@ -916,7 +919,10 @@ sub ct_sql
         }
 	$db->ct_cancel(&CS_CANCEL_CURRENT) if($max && $count > $max);
     }
-    $db->{RC} = $rc;
+    if($db->{'MaxRows'}) {
+	$db->ct_options(&CS_SET, &CS_OPT_ROWCOUNT, 0, &CS_INT_TYPE);
+    }
+    $db->{RC} = $fail ? CS_FAIL : $rc;
     wantarray ? @res : \@res;  # return the result array
 }
 

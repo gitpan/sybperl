@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# @(#)DBlib.pm	1.26	02/04/97
+# @(#)DBlib.pm	1.27	06/27/97
 
 # Copyright (c) 1991-1997
 #   Michael Peppler
@@ -215,7 +215,7 @@ sub m_div {
 package Sybase::DBlib;
 
 require Exporter;
-require AutoLoader;
+use AutoLoader;
 require DynaLoader;
 use Carp;
 
@@ -223,7 +223,7 @@ use subs qw(sql SUCCEED FAIL NO_MORE_RESULTS SYBESMSG INT_CANCEL);
 
 use vars qw(%Att);
 
-@ISA = qw(Exporter AutoLoader DynaLoader);
+@ISA = qw(Exporter DynaLoader);
 
 @EXPORT = qw( dbmsghandle dberrhandle dbrecftos dbexit
 	     BCP_SETL bcp_getl
