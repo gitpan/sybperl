@@ -1,4 +1,4 @@
-# @(#)ctutil.pl	1.1	10/18/95
+# @(#)ctutil.pl	1.2	1/30/96
 #
 # Copyright (c) 1995
 #   Michael Peppler
@@ -11,22 +11,25 @@
 # Some utility stuff for Sybase::CTlib
 #
 
+use Carp;
+
 sub msg_cb
 {
     my($layer, $origin, $severity, $number, $msg, $osmsg) = @_;
+    my($string);
 
-    printf STDERR "\nOpen Client Message:\n";
-    printf STDERR "Message number: LAYER = (%ld) ORIGIN = (%ld) ",
-         $layer, $origin;
-    printf STDERR "SEVERITY = (%ld) NUMBER = (%ld)\n",
-         $severity, $number;
-    printf STDERR "Message String: %s\n", $msg;
+    $string = "\nOpen Client Message:\n";
+    $string .= sprintf("Message number: LAYER = (%ld) ORIGIN = (%ld) ",
+		       $layer, $origin);
+    $string .= sprintf("SEVERITY = (%ld) NUMBER = (%ld)\n",
+		       $severity, $number);
+    $string .= "Message String: $msg\n";
     if (defined($osmsg))
     {
-	printf STDERR "Operating System Error: %s\n",
-	     $osmsg;
+	$string .= sprintf("Operating System Error: %s\n",
+			   $osmsg);
     }
-    
+    carp($string) if $string;
     CS_SUCCEED;
 }
     
@@ -34,31 +37,33 @@ sub srv_cb
 {
     my($cmd, $number, $severity, $state, $line, $server, $proc, $msg)
 	= @_;
+    my($string);
 
     # Don't print informational or status messages
     if($severity > 10)
     {
-        printf STDERR "Message number: %ld, Severity %ld, ",
-	$number, $severity;
-	printf STDERR "State %ld, Line %ld\n",
-               $state, $line;
+        $string = sprintf("Message number: %ld, Severity %ld, ",
+			  $number, $severity);
+	$string .= sprintf("State %ld, Line %ld\n",
+			   $state, $line);
 	       
 	if (defined($server))
 	{
-	    printf STDERR "Server '%s'\n", $server;
+	    $string .= sprintf("Server '%s'\n", $server);
 	}
     
 	if (defined($proc))
 	{
-	    printf STDERR " Procedure '%s'\n", $proc;
+	    $string .= sprintf(" Procedure '%s'\n", $proc);
 	}
 
-	printf STDERR "Message String: %s\n", $msg;
+	$string .= "Message String: $msg\n";
     }
     elsif ($number == 0)
     {
-	print STDERR $msg, "\n";
+	$string = "$msg\n";
     }
+    carp($string) if $string;
 
     CS_SUCCEED;
 }

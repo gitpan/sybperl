@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# @(#)DBlib.pm	1.19	1/5/96
+# @(#)DBlib.pm	1.21	1/31/96
 
 # Copyright (c) 1991-1995
 #   Michael Peppler
@@ -138,22 +138,37 @@ sub dbclose
 
 sub sql				# Submitted by Gisle Aas
 {
-    my($db, $cmd, $sub) = @_;
+    my($db, $cmd, $sub, $flag) = @_;
+    my @res;
+    my @data;
+
+    if($db->{'MaxRows'}) {
+	$db->dbsetopt(DBROWCOUNT, "$db->{'MaxRows'}");
+    }
 
     $db->dbcmd($cmd);
     $db->dbsqlexec || return undef; # The SQL command failed
 
-    my @res;
-    my @data;
+    $flag = 0 unless $flag;
+    
     while($db->dbresults != NO_MORE_RESULTS) {
-        while (@data = $db->dbnextrow) {
+        while (@data = $db->dbnextrow($flag)) {
             if (defined $sub) {
                 &$sub(@data);
             } else {
-                push(@res, [@data]);
+		if($flag) {
+		    push(@res, {@data});
+		} else {
+		    push(@res, [@data]);
+		}
             }
         }
     }
+    
+    if($db->{'MaxRows'}) {
+	$db->dbsetopt(DBROWCOUNT, "0");
+    }
+    
     wantarray ? @res : \@res;  # return the result array
 }
 

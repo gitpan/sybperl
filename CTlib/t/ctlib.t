@@ -1,11 +1,13 @@
 # -*-Perl-*-
-# @(#)ctlib.t	1.13	1/5/96
+# @(#)ctlib.t	1.14	1/10/96
 #
 # Small test script for Sybase::CTlib
 
-print "1..29\n";
-
+BEGIN {print "1..30\n";}
+END {print "not ok 1\n" unless $loaded;}
 use Sybase::CTlib qw(2.01);
+$loaded = 1;
+print "ok 1\n";
 
 $Version = $Sybase::CTlib::Version;
 
@@ -39,14 +41,14 @@ ct_callback(CS_CLIENTMSG_CB, \&msg_cb);
 ct_callback(CS_SERVERMSG_CB, "srv_cb");
 
 ( $X = Sybase::CTlib->ct_connect($Uid, $Pwd, $Srv) )
-    and print("ok 1\n")
-    or die "not ok 1
+    and print("ok 2\n")
+    or print "not ok 2
 -- The supplied login id/password combination may be invalid\n";
 
 
 (($rc = $X->ct_execute("use master")) == CS_SUCCEED)
-    and print "ok 2\n"
-    or warn "not ok 2 ($rc)\n";
+    and print "ok 3\n"
+    or print "not ok 3\n";
 while(($rc = $X->ct_results($res_type)) == CS_SUCCEED)
 {
     print "$res_type\n";
@@ -54,14 +56,14 @@ while(($rc = $X->ct_results($res_type)) == CS_SUCCEED)
 
 
 ($X->ct_execute("select * from sysusers") == CS_SUCCEED)
-    and print("ok 3\n")
-    or warn "not ok 3\n";
-($X->ct_results($res_type) == CS_SUCCEED)
     and print("ok 4\n")
-    or warn "not ok 4\n";
-($res_type == CS_ROW_RESULT)
+    or print "not ok 4\n";
+($X->ct_results($res_type) == CS_SUCCEED)
     and print("ok 5\n")
-    or warn "not ok 5\n";
+    or print "not ok 5\n";
+($res_type == CS_ROW_RESULT)
+    and print("ok 6\n")
+    or print "not ok 6\n";
 while(@dat = $X->ct_fetch) {
     foreach (@dat) {
 	if(defined($_))	{
@@ -74,14 +76,14 @@ while(@dat = $X->ct_fetch) {
     print "\n";
 }
 ($X->ct_results($res_type) == CS_SUCCEED)
-    and print("ok 6\n")
-    or warn "not ok 6\n";
-($res_type == CS_CMD_DONE)
     and print("ok 7\n")
-    or warn "not ok 7\n";
-($X->ct_results($res_type) == CS_END_RESULTS)
+    or print "not ok 7\n";
+($res_type == CS_CMD_DONE)
     and print("ok 8\n")
-    or warn "not ok 8\n";
+    or print "not ok 8\n";
+($X->ct_results($res_type) == CS_END_RESULTS)
+    and print("ok 9\n")
+    or print "not ok 9\n";
 
 # Test the DateTime routines:
 
@@ -92,22 +94,22 @@ while($X->ct_results($restype) == CS_SUCCEED)
     while(($date, $crdate) = $X->ct_fetch)
     {
 	(ref($date) eq 'Sybase::CTlib::DateTime')
-	    and print "ok 9\n"
-		or warn "not ok 9\n";
-	(ref($crdate) eq 'Sybase::CTlib::DateTime')
 	    and print "ok 10\n"
-		or warn "not ok 10\n";
+		or print "not ok 10\n";
+	(ref($crdate) eq 'Sybase::CTlib::DateTime')
+	    and print "ok 11\n"
+		or print "not ok 11\n";
 	
 	@data = $date->crack;
 	(@data == 10)
-	    and print "ok 11\n"
-		or warn "not ok 11\n";
-	("$date" eq $date->str)
 	    and print "ok 12\n"
-		or warn "not ok 12\n";
-	(($date cmp $crdate) == 1)
+		or print "not ok 12\n";
+	("$date" eq $date->str)
 	    and print "ok 13\n"
-		or warn "not ok 13\n";
+		or print "not ok 13\n";
+	(($date cmp $crdate) == 1)
+	    and print "ok 14\n"
+		or print "not ok 14\n";
     }
 }
 
@@ -116,39 +118,39 @@ $money1 = $X->newmoney(4.89);
 $money2 = $X->newmoney(8.56);
 $money3 = $X->newmoney;
 ($money3 == 0)
-    and print "ok 14\n"
-    or print "not ok 14\n";
+    and print "ok 15\n"
+    or print "not ok 15\n";
 
 $money3 += 0.0001;
 $money3 += 0.0001;
 $money3 += 0.0001;
 $money3 += 0.0001;
 ($money3 == 0.0004)
-    and print "ok 15\n"
-    or print "not ok 15\n";
-(ref($money3) eq 'Sybase::CTlib::Money')
     and print "ok 16\n"
     or print "not ok 16\n";
-
-$money3 = $money1 + $money2;
-($money3 == 13.45)
+(ref($money3) eq 'Sybase::CTlib::Money')
     and print "ok 17\n"
     or print "not ok 17\n";
 
-$money3 = $money1 - $money2;
-($money3 == -3.67)
+$money3 = $money1 + $money2;
+($money3 == 13.45)
     and print "ok 18\n"
     or print "not ok 18\n";
 
-$money3 /= $money2;
-($money3 == -0.4287)
+$money3 = $money1 - $money2;
+($money3 == -3.67)
     and print "ok 19\n"
     or print "not ok 19\n";
 
-$money3 = 3.53 - $money3;
-($money3 == 3.9587)
+$money3 /= $money2;
+($money3 == -0.4287)
     and print "ok 20\n"
     or print "not ok 20\n";
+
+$money3 = 3.53 - $money3;
+($money3 == 3.9587)
+    and print "ok 21\n"
+    or print "not ok 21\n";
 
 @tbal = ( 4.89, 8.92, 7.77, 11.11, 0.01 );
 
@@ -159,46 +161,46 @@ if(ref($money3) eq 'Sybase::CTlib::Money') {
 }
 
 (ref($money3) eq 'Sybase::CTlib::Money')
-    and print "ok 21\n"
-    or print "not ok 21\n";
+    and print "ok 22\n"
+    or print "not ok 2\n";
 
 for ( $cntr = 0 ; $cntr <= $#tbal ; $cntr++ ) {
     $money3 += $tbal[ $cntr ];
 }
 ($money3 == 32.70)
-    and print "ok 22\n"
-    or print "not ok 22\n";
+    and print "ok 23\n"
+    or print "not ok 23\n";
 
 $cntr = $#tbal + 1;
 
 $money3 /= $cntr;
 ($money3 == 6.54)
-    and print "ok 23\n"
-    or print "not ok 23\n";
-
-(($money3 <=> 6.55) == -1)
     and print "ok 24\n"
     or print "not ok 24\n";
-((6.55 <=> $money3) == 1)
+
+(($money3 <=> 6.55) == -1)
     and print "ok 25\n"
-    or print "not ok 25\n";
+    or print "not ok 2\n";
+((6.55 <=> $money3) == 1)
+    and print "ok 26\n"
+    or print "not ok 26\n";
 
 $num = $X->newnumeric(4.3321);
 (($money3 <=> $num) == 1)
-    and print "ok 26\n"
-    or print "not ok 26\n";
-(($num <=> $money3) == -1)
     and print "ok 27\n"
     or print "not ok 27\n";
+(($num <=> $money3) == -1)
+    and print "ok 28\n"
+    or print "not ok 28\n";
 
 $money = $X->newmoney(11.11);
 $num = $X->newnumeric(1.111);
 ($num < $money)
-    and print "ok 28\n"
-    or print "not ok 28\n";
-($money > $num)
     and print "ok 29\n"
     or print "not ok 29\n";
+($money > $num)
+    and print "ok 30\n"
+    or print "not ok 30\n";
 
 sub msg_cb
 {

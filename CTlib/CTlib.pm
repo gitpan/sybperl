@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# @(#)CTlib.pm	1.13	1/5/96
+# @(#)CTlib.pm	1.14	1/30/96
 
 # Copyright (c) 1995
 #   Michael Peppler
@@ -20,7 +20,6 @@ package Sybase::CTlib::DateTime;
 
 require Time::Local;
 
-require POSIX;
 
 # Here we set up overloading operators
 # for certain operations.
@@ -45,10 +44,19 @@ sub mktime {
     my $self = shift;
     my (@data, $ret);
 
+    # Wrapped in an eval() in case POSIX is not compiled in this
+    # copy of Perl.
+    eval {
+    require POSIX;		# This isn't very clean, but it speeds
+				# up loading for something that is rarely
+				# used...
+    
     @data = $self->crack;
 
     $ret = POSIX::mktime($data[7], $data[6], $data[5], $data[2],
-				  $data[1], $data[0]-1900);
+			 $data[1], $data[0]-1900);
+    };
+    $ret;
 }
 
 sub timelocal {
@@ -227,10 +235,10 @@ require DynaLoader;
 # This does not work with 5.001 (produces a lot of 'subroutine redefined'
 # warnings...
 if($] >= 5.002) {
-eval '
+    eval '
 use subs qw(CS_SUCCEED CS_ROW_RESULT CS_PARAM_RESULT CS_STATUS_RESULT
-	    CS_CURSOR_RESULT CS_COMPUTE_RESULT CS_CANCEL_CURRENT);
-'
+		    CS_CURSOR_RESULT CS_COMPUTE_RESULT CS_CANCEL_CURRENT);
+    '
 }
 
 @ISA = qw(Exporter AutoLoader DynaLoader);
@@ -251,9 +259,7 @@ use subs qw(CS_SUCCEED CS_ROW_RESULT CS_PARAM_RESULT CS_STATUS_RESULT
 	CS_ASYNC_NOTIFS
 	CS_BINARY_TYPE
 	CS_BIT_TYPE
-	CS_BLKDESC
 	CS_BLK_HAS_TEXT
-	CS_BLK_ROW
 	CS_BOUNDARY_TYPE
 	CS_BROWSE_INFO
 	CS_BULK_CONT
@@ -524,7 +530,6 @@ use subs qw(CS_SUCCEED CS_ROW_RESULT CS_PARAM_RESULT CS_STATUS_RESULT
 	CS_LC_TIME
 	CS_LOCALE
 	CS_LOC_PROP
-	CS_LOGINFO
 	CS_LOGIN_STATUS
 	CS_LOGIN_TIMEOUT
 	CS_LONGBINARY_TYPE
@@ -868,6 +873,21 @@ bootstrap Sybase::CTlib;
 
 *new = \&ct_connect;
 
+# Use a hash table for fast lookups:
+
+@fetchable{
+  &CS_ROW_RESULT,
+  &CS_PARAM_RESULT,
+  &CS_STATUS_RESULT,
+  &CS_CURSOR_RESULT,
+  &CS_COMPUTE_RESULT} = (1) x 5;
+
+sub ct_fetchable
+{
+    $fetchable{$_[1]};
+}
+
+
 
 1;
 __END__
@@ -875,37 +895,37 @@ __END__
 
 sub ct_sql
 {
-    my($db, $cmd, $sub) = @_;
-    my(@res, @data, $res_type, $rc);
+    my($db, $cmd, $sub, $flag) = @_;
+    my(@res, @data, $rc);
+    local($res_type);  # it's local so that it can be examined by &$sub
     my($count, $max);
 
     ($db->ct_execute($cmd) == CS_SUCCEED) || return undef;
 
     $max = $db->{'MaxRows'};
+    $res_type = 0;		# avoid 'unitialized variable' warnings...
+    $flag = 0 unless $flag;
 
     while(($rc = $db->ct_results($res_type)) == CS_SUCCEED) {
-	next if($db->ct_fetchable($res_type) == 0);
+        $db->{'ROW_COUNT'} = $db->ct_res_info(CS_ROW_COUNT)
+            if $res_type == CS_CMD_DONE;
+	next unless $fetchable{$res_type};
 
-        while (@data = $db->ct_fetch) {
+        while (@data = $db->ct_fetch($flag)) {
+	    last if($max && ++$count > $max);
             if (defined $sub) {
                 &$sub(@data);
             } else {
-		last if($max && ++$count > $max);
-                push(@res, [@data]);
+		if($flag) {
+		    push(@res, {@data});
+		} else {
+		    push(@res, [@data]);
+		}
             }
         }
 	$db->ct_cancel(CS_CANCEL_CURRENT) if($max && $count > $max);
     }
+    $db->{RC} = $rc;
     wantarray ? @res : \@res;  # return the result array
 }
 
-sub ct_fetchable
-{
-    my($db, $restype) = @_;
-    
-   ($restype == CS_ROW_RESULT ||
-    $restype == CS_PARAM_RESULT ||
-    $restype == CS_STATUS_RESULT ||
-    $restype == CS_CURSOR_RESULT ||
-    $restype == CS_COMPUTE_RESULT);
-}

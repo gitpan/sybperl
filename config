@@ -1,7 +1,9 @@
 # -*-Perl-*-
-#	@(#)config	1.6	1/5/96;
+#	@(#)config	1.7	1/30/96;
 #
 # Extract relevant info from the CONFIG and patchlevel.h files.
+
+use Config;
 
 my @dirs = ('.', '..', '../..', '../../..');
 
@@ -59,6 +61,8 @@ sub config
     $patchlvl{UNOFFICIAL} = '' if(!defined($patchlvl{UNOFFICIAL}));
 
     $sattr{VERSION} = "$patchlvl{VERSION}.$patchlvl{PATCHLEVEL}$patchlvl{UNOFFICIAL}";
+
+    $sattr{LINKTYPE} = 'static' if(!defined($Config{'usedl'}));
 
     \%sattr;
 }

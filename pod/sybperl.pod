@@ -1,4 +1,4 @@
-@(#)sybperl.pod	1.13	1/5/96
+@(#)sybperl.pod	1.15	1/31/96
 
 
 =head1 NAME
@@ -207,6 +207,25 @@ associative array with parameter name/value pairs.
 
 Retrieve the contents of the command buffer.
 
+=item $ret = $dbh->dbsetopt($opt [, $c_val [, $i_val]])
+
+Sets option $opt with optional character parameter $c_val and optional
+integer parameter $i_val. $opt is one of the option values defined in
+the Sybase DBlibrary manual (f.eg. DBSHOWPLAN, DBTEXTSIZE). For
+example, to set SHOWPLAN on, you would use
+
+    $dbh->dbsetopt(DBSHOWPLAN);
+
+See also dbclropt() and dbisopt() below.
+
+=item $ret = $dbh->dbclropt($opt [, $c_val])
+
+Clears the option $opt, previously set using dbsetopt().
+
+=item $ret = $dbh->dbisopt($opt [, $c_val])
+
+Returns TRUE if the option $opt is set.
+
 =item $string = $dbh->dbsafestr($string [,$quote_char])
 
 Convert $string to a 'safer' version by inserting single or double
@@ -217,13 +236,13 @@ The second argument to dbsafestr() (normally B<DBSINGLE>, B<DBDOUBLE> or
 B<DBBOTH>) has been replaced with a literal ' or " (meaning B<DBSINGLE> or
 B<DBDOUBLE>, respectively). Omitting this argument means B<DBBOTH>.
 
-=item $status = $dbh->dbwritetext($colname, $dbh_2, $colnum, $text)
+=item $status = $dbh->dbwritetext($colname, $dbh_2, $colnum, $text [, $log])
 
 Insert or update data in a TEXT or IMAGE column. The usage is a bit
 different from that of the C version:
 
-The calling sequence has been somewhat simplified, and logging is
-always off.
+The calling sequence is a little different from the C version, and
+logging is B<off> by default:
 
 B<$dbh_2> and B<$colnum> are the B<DBPROCESS> and column number of a
 currently active query. Example:
@@ -233,7 +252,7 @@ currently active query. Example:
    @data = $dbh_2->dbnextrow;
 
    $d->dbwritetext ("text_table.the_text", $dbh_2, 1,
-	"This is text which was added with Sybperl");
+	"This is text which was added with Sybperl", TRUE);
 
 =back
 
@@ -445,11 +464,6 @@ DB-library in the directory pointed to by the $SYBASE environment variable.
 
 Start recording all SQL sent to the server in file $filename.
 
-=item dbsetversion($version)
-
-For DB-library 10.0+, determines which behaviour to adopt relative to
-new datatypes (such as NUMERIC, DECIMAL).
-
 =item dbversion
 
 Returns a string identifying the version of DBlibrary that this copy
@@ -491,7 +505,7 @@ be consistent with other Perl extension modules. It is also an accepted
 name for allocating a new object in many Object Oriented environments,
 so I feel that it has it's place here.
 
-=item $ret|@ret = $dbh->sql($cmd [, \&rowcallback])
+=item $ret|@ret = $dbh->sql($cmd [, \&rowcallback [, $flag]])
 
 Runs the sql command and returns the result as a reference to an array
 of the rows. In a LIST context, return the array itself (instead of a
@@ -501,12 +515,32 @@ If you provide a second parameter it is taken as a procedure to call
 for each row.  The callback is called with the values of the row as
 parameters.
 
-See eg/sql.pl for an example.
+If you provide a third parameter, this is used in the call to
+dbnextrow() to retrieve associative arrays rather than 'normal' arrays
+for each row, and store them in the returned array. To pass the third
+parameter without passing the &rowcallback value you should pass the
+special value I<undef> as second parameter:
+
+	@rows = $dbh->sql("select * from sysusers", undef, TRUE);
+	foreach $row_ref (@rows) {
+	    if($$row_ref{'uid'} == 10) {
+	        ....
+	    }
+	}
+
+See also eg/sql.pl for an example.
 
 Contributed by Gisle Aas.
 
 B<NOTE:> This routine loads all the data into memory. It should not be
-run with a query that returns a large number of rows.
+run with a query that returns a large number of rows. To avoid the
+risk of overflowing memory, you can limit the number of rows that the
+query returns by setting the 'MaxRows' field of the $dbh attribute
+field:
+
+	$dbh->{'MaxRows'} = 100;
+
+This value is B<not> set by default.
 
 =back
 
@@ -571,7 +605,7 @@ clause is currently being processed.
 
 =head1 Examples
 
-B<BCP from program variables>
+=item BCP from program variables
 
    &BCP_SETL(TRUE);
    $dbh = Sybase::DBlib->dblogin(User, Password);
@@ -586,7 +620,7 @@ B<BCP from program variables>
    }
    $ret = $dbh->bcp_done;
 
-B<Using the sql() routine>
+=item Using the sql() routine
 
    $dbh = new Sybase::DBlib;
    $ret = $dbh->sql("select * from sysprocesses");
@@ -599,6 +633,68 @@ B<Using the sql() routine>
    $ret = $dbh->sql("select * from sysusers", sub { print "@_"; });
    # This will select all the info from sysusers, and print it
 
+=item Getting SHOWPLAN and STATISTICS information within a script
+
+You can get B<SHOWPLAN> and B<STATISTICS> information when you run a
+B<sybperl> script. To do so, you must first turn on the respective
+options, using dbsetopt(), and then you need a special message handler
+that will filter the B<SHOWPLAN> and/or B<STATISTICS> messages sent
+from the server.
+
+The following message handler differentiates the B<SHOWPLAN> or
+B<STATICSTICS> messages from other messages:
+
+    # Message number 3612-3615 are statistics time / statistics io
+    # message. Showplan messages are numbered 6201-6225.
+    # (I hope I haven't forgotten any...)
+    @sh_msgs = (3612 .. 3615, 6201 .. 6225);
+    @showplan_msg{@sh_msgs} = (1) x scalar(@sh_msgs);
+
+    sub showplan_handler {
+	my ($db, $message, $state, $severity, $text,
+	    $server, $procedure, $line)	= @_;
+    
+        # Don't display 'informational' messages:
+	if ($severity > 10) {
+	    print STDERR ("Sybase message ", $message, ",
+	       Severity ", $severity, ", state ", $state);
+	    print STDERR ("\nServer `", $server, "'") if defined ($server);
+	    print STDERR ("\nProcedure `", $procedure, "'")
+		  if defined ($procedure);
+	    print STDERR ("\nLine ", $line) if defined ($line);
+	    print STDERR ("\n    ", $text, "\n\n");
+        }
+        elsif($showplan_msg{$message}) {
+	# This is a HOWPLAN or STATISTICS message, so print it out:
+	    print STDERR ($text, "\n");
+        }
+        elsif ($message == 0) {
+	    print STDERR ($text, "\n");
+        }
+    
+        0;
+    }
+
+This could then be used like this:
+
+    use Sybase::DBlib;
+    dbmsghandle(\&showplan_handler);
+
+    $dbh = new Sybase::DBlib  'mpeppler', $password, 'TROLL';
+
+    $dbh->dbsetopt(DBSHOWPLAN);
+    $dbh->dbsetopt(DBSTAT, "IO");
+    $dbh->dbsetopt(DBSTAT, "TIME");
+
+    $dbh->dbcmd("select * from xrate where date = '951001'");
+    $dbh->dbsqlexec;
+    while($dbh->dbresults != NO_MORE_RESULTS) {
+	while(@dat = $dbh->dbnextrow) {
+	    print "@dat\n";
+        }
+    }
+
+Et voila!
 
 =head1 BUGS
 
@@ -773,11 +869,28 @@ CS_INT_TYPE.
 
 See eg/ct_param.pl for an example.
 
-=item $ret|@ret = $dbh->ct_sql($cmd [, \&rowcallback])
+=item $dbh2 = $dbh->ct_cmd_alloc
+
+Allocate a new I<CS_COMMAND> structure. The new $dbh2 shares the
+I<CS_CONNECTION> with the original $dbh, so this is really only
+usefull for interleaving cursor operations (see ct_cursor() above, and
+the section on cursors in Chapter 2 of the I<Open Client
+Client-Library/C Reference manual>.
+
+=item $rc = $dbh->ct_cmd_realloc
+
+Drops the current I<CS_COMMAND> structure, and reallocs a new
+one. Returns CS_SUCCEED on successfull completion.
+
+=item $ret|@ret = $dbh->ct_sql($cmd [, \&rowcallback [, $doAssoc]])
 
 Runs the sql command and returns the result as a reference to an array
 of the rows.  Each row is a reference to an array of scalars. In a
 LIST context, ct_sql returns an array of references to each row.
+
+If the $doAssoc parameter is B<CS_TRUE>, then each row is a reference
+to an associative array (keyed on the column names) rather than a
+normal array (see ct_fetch(), above).
 
 If you provide a second parameter it is taken as a procedure to call
 for each row.  The callback is called with the values of the row as
@@ -792,7 +905,12 @@ Examples can be found in eg/ct_sql.pl.
 
 B<NOTE:> This routine loads all the data into memory. Memory
 consumption can therefore become quite important for a query that
-returns a large number of rows.
+returns a large number of rows, unless the B<MaxRows> attribute has
+been set.
+
+Two additional attributes are set after calling ct_sql(): B<ROW_COUNT>
+holds the number of rows affected by the command, and B<RC> holds the
+return code of the last call to ct_execute().
 
 =item $ret = $dbh->ct_fetchable($restype)
 

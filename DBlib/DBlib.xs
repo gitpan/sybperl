@@ -1,5 +1,5 @@
 /* -*-C-*-
- *	@(#)DBlib.xs	1.24	12/22/95
+ *	@(#)DBlib.xs	1.26	1/31/96
  */	
 
 
@@ -335,6 +335,9 @@ initialize()
 	
 	if(dbinit() == FAIL)
 	    croak("Can't initialize dblibrary...");
+#if DBLIBVS >= 1000
+	dbsetversion(DBVERSION_100);
+#endif
 	dberrhandle(err_handler);
 	dbmsghandle(msg_handler);
 	login = dblogin();
@@ -363,7 +366,7 @@ initialize()
 	if((sv = perl_get_sv("Sybase::DBlib::Version", TRUE)))
 	{
 	    char buff[256];
-	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib version 1.24 12/22/95\n\nCopyright (c) 1991-1995 Michael Peppler\n\n",
+	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib version 1.26 1/31/96\n\nCopyright (c) 1991-1995 Michael Peppler\n\n",
 		    SYBPLVER);
 	    sv_setnv(sv, atof(SYBPLVER));
 	    sv_setpv(sv, buff);
@@ -582,6 +585,12 @@ int arg;
     case 'C':
 	break;
     case 'D':
+	if (strEQ(name, "DBAUTH"))
+#ifdef DBAUTH
+	    return DBAUTH;
+#else
+	    goto not_there;
+#endif
 	if (strEQ(name, "DBARITHABORT"))
 #ifdef DBARITHABORT
 	    return DBARITHABORT;
@@ -600,12 +609,15 @@ int arg;
 #else
 	    goto not_there;
 #endif
-	if (strEQ(name, "DBLIBVS"))
-#ifdef DBLIBVS
-	    return DBLIBVS;
-#else
-	    goto not_there;
+	if (strEQ(name, "DBBROWSE"))
+#if 0
+	    /* I think that this option is unusable in sybperl... */
+/*#ifdef DBBROWSE
+	    return DBBROWSE;
+#else*/
 #endif
+	    goto not_there;
+/*#endif*/
 	if (strEQ(name, "DBBUFFER"))
 #ifdef DBBUFFER
 	    return DBBUFFER;
@@ -618,15 +630,69 @@ int arg;
 #else
 	    goto not_there;
 #endif
+	if (strEQ(name, "DBCHAINXACTS"))
+#ifdef DBCHAINXACTS
+	    return DBCHAINXACTS;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "DBCONFIRM"))
+#ifdef DBCONFIRM
+	    return DBCONFIRM;
+#else
+	    goto not_there;
+#endif
 	if (strEQ(name, "DBDATEFORMAT"))
 #ifdef DBDATEFORMAT
 	    return DBDATEFORMAT;
 #else
 	    goto not_there;
 #endif
+	if (strEQ(name, "DBDATEFIRST"))
+#ifdef DBDATEFIRST
+	    return DBDATEFIRST;
+#else
+	    goto not_there;
+#endif
 	if (strEQ(name, "DBDOUBLE"))
 #ifdef DBDOUBLE
 	    return DBDOUBLE;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "DBERRLVL"))
+#ifdef DBERRLVL
+	    return DBERRLVL;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "DBESTIMATE"))
+#ifdef DBESTIMATE
+	    return DBESTIMATE;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "DBFIPSFLAG"))
+#ifdef DBFIPSFLAG
+	    return DBFIPSFLAG;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "DBIDENTITY"))
+#ifdef DBIDENTITY
+	    return DBIDENTITY;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "DBISOLATION"))
+#ifdef DBISOLATION
+	    return DBISOLATION;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "DBLIBVS"))
+#ifdef DBLIBVS
+	    return DBLIBVS;
 #else
 	    goto not_there;
 #endif
@@ -651,6 +717,12 @@ int arg;
 	if (strEQ(name, "DBNOEXEC"))
 #ifdef DBNOEXEC
 	    return DBNOEXEC;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "DBNOIDCOL"))
+#ifdef DBNOIDCOL
+	    return DBNOIDCOL;
 #else
 	    goto not_there;
 #endif
@@ -2663,6 +2735,54 @@ CODE:
     dbfreebuf(dbproc);
 }
 
+int
+dbsetopt(dbp, option, c_val=NULL, i_val=-1)
+	SV *	dbp
+	int	option
+	char *	c_val
+	int	i_val
+  CODE:
+{
+    DBPROCESS *dbproc = NULL;
+
+    if(dbp != &sv_undef)
+	dbproc = getDBPROC(dbp);
+
+    RETVAL = dbsetopt(dbproc, option, c_val, i_val);
+}
+ OUTPUT:
+RETVAL
+
+int
+dbclropt(dbp, option, c_val=NULL)
+	SV *	dbp
+	int	option
+	char *	c_val
+  CODE:
+{
+    DBPROCESS *dbproc = NULL;
+
+    if(dbp != &sv_undef)
+	dbproc = getDBPROC(dbp);
+
+    RETVAL = dbclropt(dbproc, option, c_val);
+}
+ OUTPUT:
+RETVAL
+
+int
+dbisopt(dbp, option, c_val=NULL)
+	SV *	dbp
+	int	option
+	char *	c_val
+  CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = dbisopt(dbproc, option, c_val);
+}
+ OUTPUT:
+RETVAL
 
 int
 DBCURROW(dbp)
@@ -3216,6 +3336,7 @@ PPCODE:
 		break;
 #endif
 #endif
+
 	      default:
 		/* 
 		 * WARNING!
@@ -3358,12 +3479,13 @@ DESTROY(dbp)
 }
 
 int
-dbwritetext(dbp, colname, dbp2, colnum, text)
+dbwritetext(dbp, colname, dbp2, colnum, text, log=0)
 	SV *	dbp
 	char *	colname
 	SV *	dbp2
 	int	colnum
 	SV *	text
+	int	log
   CODE:
 {
     DBPROCESS *dbproc = getDBPROC(dbp);
@@ -3374,7 +3496,7 @@ dbwritetext(dbp, colname, dbp2, colnum, text)
     ptr = SvPV(text, len);
 
     RETVAL = dbwritetext(dbproc, colname, dbtxptr(dbproc2, colnum),
-			 DBTXPLEN, dbtxtimestamp(dbproc2, colnum), 0,
+			 DBTXPLEN, dbtxtimestamp(dbproc2, colnum), (BOOL)log,
 			 len, (BYTE *)ptr);
 }
  OUTPUT:
@@ -3464,9 +3586,6 @@ void
 dbrecftos(fname)
 	char *	fname
 
-void
-dbsetversion(version)
-	int	version
 
 char *
 dbversion()

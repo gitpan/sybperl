@@ -1,4 +1,62 @@
-	@(#)CHANGES	1.3	1/5/96
+	@(#)CHANGES	1.5	1/31/96
+
+2.03	Bug fixes to Sybase::DBlib.
+
+	Retrieving large numeric/decimal/identity values caused
+	floating point values in exponential notation to be
+	returned. This was due to the default behaviour of DBlibrary
+	to be compatible with release 4.6.1. This version
+	AUTOMATICALLY calls dbsetversion() to enable System 10
+	handling of numeric/decimal/identity data if you build against
+	a System 10 version of DBlibrary.
+
+	Logging for dbwritetext() has been enabled by adding an
+	additional (optional) $log parameter. I'm not very happy with
+	the calling sequence (it's getting further and further from
+	the C version), but that's the cost of not doing it right from
+	the start, I guess...
+
+	BugId	   Description
+
+	155	   Retrieving large integers (of numeric or decimal
+		   data types) creates floating point data in
+		   exponential notation.
+	156	   dbsetversion() does not work.
+	123	   Allow logging for dbwritetext().
+	
+
+2.02    Updates & Improvements to the CTlib and DBlib modules.
+
+	New Features:
+
+	Sybase::CTlib::ct_sql() can now return an array of references
+	to associative arrays (one for each row).
+	Sybase::CTlib::ct_fetchable() uses a precomputed hash to check
+	the fetchable status (suggested by Gisle Aas).
+	Added Sybase::CTlib::ct_cmd_alloc to allow multiple CS_COMMAND
+	structures with a single connection.
+	Added Sybase::CTlib::ct_cmd_realloc to drop and realloc the
+	current CS_COMMAND structure.
+
+	Added Sybase::DBlib::db*opt() calls. The dbsetopt() call was
+	implemented in version 1.0xx but somehow did not get recoded
+	in 2.x.
+	Sybase::DBlib::sql() can now return an array of references to
+	associative arrays (one for each row).
+
+	Bug Fixes:
+
+	BugId	   Description
+
+	146	   Need multiple CS_COMMAND structures for ct_cursor
+		   operations.
+	147	   $date->calc() changes both the original $date and
+		   the new date.
+	148	   Sybperl.pm does not export $DB_IN, $DB_OUT.
+	151	   Sybperl.pm does not define &dbwritetext().
+	152	   Sybperl.pm defines $main::ComputeID, sybperl 1.0xx
+		   used $main::ComputeId.
+
 
 2.01	For use with either Perl 5.001m or Perl 5.002.
 

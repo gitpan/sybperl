@@ -1,5 +1,5 @@
 /* -*-C-*-
- *	@(#)CTlib.xs	1.17	1/5/96
+ *	@(#)CTlib.xs	1.18	1/30/96
  */
 
 
@@ -58,7 +58,13 @@ typedef enum
     CON_EED_CMD,
 } ConType;
 
-    
+typedef struct RefCon
+{
+    CS_CONNECTION *connection;
+    int refcount;
+} RefCon;
+
+/*typedef struct conInfo ConInfo;    */
 typedef struct conInfo
 {
     ConType type;
@@ -66,7 +72,8 @@ typedef struct conInfo
     
     ColData *coldata;
     CS_DATAFMT *datafmt;
-    CS_CONNECTION *connection;
+    RefCon *connection;
+/*    CS_CONNECTION *connection; */
     CS_COMMAND *cmd;
     CS_INT lastResult;
 } ConInfo;
@@ -488,7 +495,7 @@ static CS_CONNECTION
 {
     ConInfo *info = get_ConInfo(dbp);
 
-    return info->connection;
+    return info->connection->connection;
 }
 
 static CS_COMMAND
@@ -1079,6 +1086,9 @@ CS_SERVERMSG	*srvmsg;
 	    
 	if (srvmsg->status & CS_HASEED)
 	{
+	    SV **svp;
+	    RefCon *refCon;
+	    
 	    if (ct_con_props(connection, CS_GET, CS_EED_CMD,
 			     &cmd, CS_UNUSED, NULL) != CS_SUCCEED)
 	    {
@@ -1089,8 +1099,20 @@ CS_SERVERMSG	*srvmsg;
 	    hv = SvSTASH(SvRV(dbp));
 	    package = HvNAME(hv);
 #endif
+
+	    /* FIXME:
+	       This stuff is not tested!
+	       I have no idea at the moment if this works the way I think it
+	       does, or if there are hidden problems! */
 	    New(902, info, 1, ConInfo);
-	    info->connection = connection;
+	    if((hv = perl_get_hv("Sybase::CTlib::_refCon", FALSE)))
+	    {
+		if((svp = hv_fetch(hv, (char*)connection, sizeof(connection), 0)))
+		{
+		    refCon = (RefCon*)SvIV(*svp);
+		    info->connection = refCon;
+		}
+	    }
 	    info->cmd = cmd;
 	    info->numCols = 0;
 	    info->coldata = NULL;
@@ -1238,7 +1260,7 @@ initialize()
     if((sv = perl_get_sv("Sybase::CTlib::Version", TRUE)))
     {
 	char buff[256];
-	sprintf(buff, "This is sybperl, version %s\n\nSybase::CTlib version 1.17 1/5/96\tBeta\n\nCopyright (c) 1995 Michael Peppler\nPortions Copyright (c) 1995 Sybase, Inc.\n\n",
+	sprintf(buff, "This is sybperl, version %s\n\nSybase::CTlib version 1.18 1/30/96\tBeta\n\nCopyright (c) 1995 Michael Peppler\nPortions Copyright (c) 1995 Sybase, Inc.\n\n",
 		SYBPLVER);
 	sv_setnv(sv, atof(SYBPLVER));
 	sv_setpv(sv, buff);
@@ -1369,21 +1391,9 @@ int arg;
 #else
 		goto not_there;
 #endif
-		if (strEQ(name, "CS_BLKDESC"))
-#ifdef CS_BLKDESC
-		    return CS_BLKDESC;
-#else
-		goto not_there;
-#endif
 		if (strEQ(name, "CS_BLK_HAS_TEXT"))
 #ifdef CS_BLK_HAS_TEXT
 		    return CS_BLK_HAS_TEXT;
-#else
-		goto not_there;
-#endif
-		if (strEQ(name, "CS_BLK_ROW"))
-#ifdef CS_BLK_ROW
-		    return CS_BLK_ROW;
 #else
 		goto not_there;
 #endif
@@ -3022,12 +3032,6 @@ int arg;
 		if (strEQ(name, "CS_LOC_PROP"))
 #ifdef CS_LOC_PROP
 		    return CS_LOC_PROP;
-#else
-		goto not_there;
-#endif
-		if (strEQ(name, "CS_LOGINFO"))
-#ifdef CS_LOGINFO
-		    return CS_LOGINFO;
 #else
 		goto not_there;
 #endif
@@ -4911,6 +4915,7 @@ ct_connect(package="Sybase::CTlib", user=NULL, pwd=NULL, server=NULL, appname=NU
   CODE:
 {
     ConInfo *info;
+    RefCon *refCon;
     CS_CONNECTION *connection = NULL;
     CS_COMMAND *cmd;
     CS_RETCODE retcode;
@@ -4970,14 +4975,27 @@ ct_connect(package="Sybase::CTlib", user=NULL, pwd=NULL, server=NULL, appname=NU
 	else
 	{
 	    New(902, info, 1, ConInfo);
+	    New(902, refCon, 1, RefCon);
+	    refCon->connection = connection;
+	    refCon->refcount = 1;
 	    info->type = CON_CONNECTION;
-	    info->connection = connection;
+	    info->connection = refCon; /*connection; */
 	    info->cmd = cmd;
 	    info->numCols = 0;
 	    info->coldata = NULL;
 	    info->datafmt = NULL;
+/*	    info->root = NULL;
+	    info->num_cmd = 1; */
 
 	    Att = perl_get_hv("Sybase::CTlib::Att", FALSE);
+
+	    hv = perl_get_hv("Sybase::CTlib::_refCon", TRUE);
+	    sv = newSViv((IV)refCon);
+	    hv_store(hv, (char *)connection, sizeof(connection), sv, 0);
+	    hv = perl_get_hv("Sybase::CTlib::_conInfo", TRUE);
+	    sv = newSViv((IV)info);
+	    hv_store(hv, (char *)cmd, sizeof(cmd), sv, 0);
+
 	
 	    hv = (HV*)sv_2mortal((SV*)newHV());
 	    sv = newSViv((IV)info);
@@ -5000,6 +5018,55 @@ ct_connect(package="Sybase::CTlib", user=NULL, pwd=NULL, server=NULL, appname=NU
     }
 }
 
+void
+ct_cmd_alloc(dbp)
+	SV *	dbp
+  CODE:
+{
+    ConInfo *info, *o_info = get_ConInfo(dbp);
+    CS_CONNECTION *connection = o_info->connection->connection;
+    CS_COMMAND *cmd;
+    CS_RETCODE retcode;
+    CS_INT len;
+    SV *rv;
+    SV *sv;
+    HV *hv;
+    HV *stash;
+    char *package;
+
+    if((retcode = ct_cmd_alloc(connection, &cmd)) != CS_SUCCEED)
+	ST(0) = sv_newmortal();
+    else
+    {
+	hv = SvSTASH(SvRV(dbp));
+	package = HvNAME(hv);
+	
+	New(902, info, 1, ConInfo);
+	info->connection = o_info->connection;
+	info->cmd = cmd;
+	info->numCols = 0;
+	info->coldata = NULL;
+	info->datafmt = NULL;
+	info->type = CON_CMD;
+#if 0
+	info->root = get_ConInfo(dbp);
+	info->root->num_cmd++;	/* keep track of how many cmd_structures are allocated for this connection */
+#else
+	++info->connection->refcount;
+#endif
+	
+	hv = perl_get_hv("Sybase::CTlib::_conInfo", TRUE);
+	sv = newSViv((IV)info);
+	hv_store(hv, (char *)cmd, sizeof(cmd), sv, 0);
+	
+	hv = (HV*)sv_2mortal((SV*)newHV());
+	sv = newSViv((I32)info);
+	my_hv_store(hv, HV_coninfo, sv, 0);
+	rv = newRV((SV*)hv);
+	stash = gv_stashpv(package, TRUE);
+	ST(0) = sv_2mortal(sv_bless(rv, stash));
+    }
+}
 
 
 void
@@ -5008,24 +5075,35 @@ DESTROY(dbp)
   CODE:
 {
     ConInfo *info = get_ConInfo(dbp);
+    RefCon *refCon = info->connection;
     CS_RETCODE	retcode;
     CS_INT	close_option;
+    HV *hv;
+    SV **svp;
 
     /* FIXME:
        must check for pending results, and maybe cancel those before
        dropping the cmd structure. */
 
+    if((hv = perl_get_hv("Sybase::CTlib::_conInfo", FALSE)))
+	hv_delete(hv, (char *)info->cmd, sizeof(info->cmd), 0);
+    
     ct_cmd_drop(info->cmd);
+    --refCon->refcount;
 
-    if(info->type == CON_CONNECTION)
+    if(refCon->refcount == 0)
     {
 	close_option = CS_FORCE_CLOSE;
-	if((retcode = ct_close(info->connection, close_option)) != CS_SUCCEED)
+	if((retcode = ct_close(refCon->connection, close_option)) != CS_SUCCEED)
 	    warn("ct_close() failed");
 	else
-	    if((retcode = ct_con_drop(info->connection)) != CS_SUCCEED)
+	    if((retcode = ct_con_drop(refCon->connection)) != CS_SUCCEED)
 		warn("ct_con_drop() failed");
+	if((hv = perl_get_hv("Sybase::CTlib::_refCon", FALSE)))
+	    hv_delete(hv, (char *)refCon->connection, sizeof(refCon->connection), 0);
+	Safefree(refCon);
     }
+    
     if(info->numCols)
     {
 	Safefree(info->coldata);
@@ -5033,6 +5111,32 @@ DESTROY(dbp)
     }
     Safefree(info);
 }
+
+int
+ct_cmd_realloc(dbp)
+	SV *	dbp
+  CODE:
+{
+    ConInfo *info = get_ConInfo(dbp);
+    CS_COMMAND *cmd;
+    HV *hv;
+    
+    if((RETVAL = ct_cmd_alloc(info->connection->connection, &cmd)) == CS_SUCCEED)
+    {
+	if((hv = perl_get_hv("Sybase::CTlib::_conInfo", FALSE)))
+	    hv_delete(hv, (char *)info->cmd, sizeof(info->cmd), 0);
+	if((RETVAL = ct_cmd_drop(info->cmd)) == CS_SUCCEED)
+	{
+	    info->cmd = cmd;
+	    hv_store(hv, (char*)info->cmd, sizeof(info->cmd), newSViv((IV)info), 0);
+	}
+	else
+	    ct_cmd_drop(cmd);
+    }
+}
+ OUTPUT:
+RETVAL
+
 
 int
 ct_execute(dbp, query)
@@ -5239,7 +5343,7 @@ PPCODE:
       case CS_FAIL:		/* ohmygod */
 	/* FIXME: Should we call ct_cancel() here, or should we let
 	   the programmer handle it? */
-	if(ct_cancel(info->connection, NULL, CS_CANCEL_ALL) == CS_FAIL)
+	if(ct_cancel(info->connection->connection, NULL, CS_CANCEL_ALL) == CS_FAIL)
 	    croak("ct_cancel() failed - dying");
 	/* FallThrough to next case! */
       case CS_END_DATA:		/* we've seen all the data for this
@@ -5758,16 +5862,17 @@ calc(valp, days, msecs = 0)
 	int	msecs
   CODE:
 {
-    CS_DATETIME *ptr;
+    CS_DATETIME *ptr, tmp;
     if (sv_isa(valp, DateTimePkg)) {
 	IV tmp = SvIV((SV*)SvRV(valp));
 	ptr = (CS_DATETIME *) tmp;
     }
     else
 	croak("valp is not of type %s", DateTimePkg);
-    ptr->dtdays += days;
-    ptr->dttime += msecs;
-    ST(0) = sv_2mortal(newdate(ptr));
+    tmp = *ptr;			/* make a copy: we don't want to change the original! */
+    tmp.dtdays += days;
+    tmp.dttime += msecs;
+    ST(0) = sv_2mortal(newdate(&tmp));
 }
 
 

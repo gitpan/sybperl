@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# @(#)Sybperl.pm	1.21	12/22/95
+# @(#)Sybperl.pm	1.22	1/30/96
 #
 # Copyright (c) 1994-1995
 #   Michael Peppler
@@ -66,7 +66,7 @@ tie $dbBin0x, Sybase::Sybperl::Attribs, 'dbBin0x', 0;
 @EXPORT = qw(dblogin dbcmd dbsqlexec dbresults dbnextrow dbstrcpy
 	     dbuse dbopen dbclose
 	     $SUCCEED $FAIL $NO_MORE_RESULTS $NO_MORE_ROWS
-	     $MORE_ROWS $REG_ROW $DBTRUE $DBFALSE
+	     $MORE_ROWS $REG_ROW $DBTRUE $DBFALSE $DB_IN $DB_OUT
 	     $dbNullIsUndef $dbKeepNumeric $dbBin0x
 	     bcp_init bcp_meminit bcp_sendrow bcp_batch bcp_done
 	     bcp_control bcp_columns bcp_colfmt bcp_collen bcp_exec
@@ -91,7 +91,8 @@ tie $dbBin0x, Sybase::Sybperl::Attribs, 'dbBin0x', 0;
 	     dbmnymul dbmnyminus dbmnydivide dbmnyadd dbmny4zero
 	     dbmny4cmp dbmny4sub dbmny4mul dbmny4minus dbmny4divide
 	     dbmny4add sql
-	     dbrpcinit dbrpcparam dbrpcsend);
+	     dbrpcinit dbrpcparam dbrpcsend
+	     dbwritetext);
 
 
 # Internal routine to check that a parameter passed as $dbproc to one
@@ -244,7 +245,7 @@ sub dbnextrow
     
     @row = $dbproc->dbnextrow(@params);
     
-    $main::ComputeID = $dbproc->{'ComputeID'};
+    $main::ComputeId = $dbproc->{'ComputeID'};
     $main::DBstatus = $dbproc->{'DBstatus'};
 
     @row;
@@ -324,6 +325,28 @@ sub dbfreebuf
 
     $dbproc->dbfreebuf;
 }
+
+sub dbsetopt
+{
+    my($dbproc, @param) = @_;
+
+    $dbproc->dbsetopt(@param);
+}
+
+sub dbclropt
+{
+    my($dbproc, @param) = @_;
+
+    $dbproc->dbclropt(@param);
+}
+
+sub dbisopt
+{
+    my($dbproc, @param) = @_;
+
+    $dbproc->dbisopt(@param);
+}
+
 
 sub DBCURCMD
 {
@@ -1085,6 +1108,16 @@ sub dbrpcinit
     }
 
     $dbproc->dbrpcinit(@param);
+}
+
+sub dbwritetext
+{
+    my(@params) = @_;
+    my($dbproc);
+
+    $dbproc = shift(@params);
+
+    $dbproc->dbwritetext(@params);
 }
 
 1;

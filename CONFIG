@@ -27,7 +27,8 @@ EXTRA_LIBS=
 # Additional #defines.
 # With Perl 5.001m, you will need -DUNDEF_BUG.
 # With Perl 5.002, none are normally needed.
-EXTRA_DEFS=-DUNDEF_BUG
+#EXTRA_DEFS=-DUNDEF_BUG
+EXTRA_DEFS=
 
 # LINKTYPE
 # If you wish to link Sybase::DBlib and/or Sybase::CTlib statically

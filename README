@@ -1,4 +1,4 @@
-		     @(#)README	1.19	1/5/96
+		     @(#)README	1.21	1/31/96
 
 			   sybperl 2.0
 	
@@ -105,11 +105,40 @@ Once you have answered these two questions, you can proceed:
       
    2) Edit CONFIG
       See comments under b) above regarding dynamic vs static loading.
-      
+      Some systems require extra libraries to build (Solaris 2.x
+      requires -lnsl, for example). You should check your Sybase
+      OpenClient Supplement for your OS and add any special libraries
+      to the EXTRA_LIBS line. The required information can be found on
+      the web at http://cobweb.sybase.com:8000/con10022/tctsg (you'll
+      need to dig around a bit, though), or via AnswerBase.
+
+      The DBLIBVS and CTLIBVS variables need to be set correctly for
+      the version of OpenClient that is available at your site. Below
+      is a table which lists which versions of Open Client were
+      shipped with the different Sybase Server releases:
+
+      Sybase version		   DBLIBVS   CTLIBVS
+      - 4.0			       400	   0
+      - 4.2 (includes MSSQL 4.2)       420         0
+      - 4.8, 4.9.x                     461         0
+      - 10.0.x                        1000       100
+
+      You can check for the DB-Library version by looking at the top
+      of the sybdb.h include file (it should be located in
+      $SYBASE/include/sybdb.h, where $SYBASE is your Sybase
+      installation directory.)
 
    3) Type: perl Makefile.PL
       
    4) Type: make
+
+      If you get errors (such as undefined variables) it may be
+      because your DBLIBVS or CTLIBVS does not correspond rto the Open
+      Client versions that are in fact installed at your site. Check
+      them again. In the case of the Sybase::DBlib module, it doesn't
+      hurt to build with DBLIBVS set to 400 as this is pretty well
+      guarateed to work (provided you have *some* version of
+      DB-Library!)
 
    6) Edit PWD
       Enter the user id and password that you want to use to run the
@@ -137,6 +166,14 @@ Once you have answered these two questions, you can proceed:
       using dynamic linking as the existing Perl binary will load the
       new code dynamically when required.
 
+   9) Read the manual :-)
+
+      Look for it in the pod/ directory. You can create .man or .html
+      versions from the .pod file by using pod2man or pod2html, both
+      of which come with Perl.
+      The manual may not be perfect yet, but it comes to 16 PostScript
+      pages here, which is "respectable", I guess.
+
 
 In case of problems:
 ====================
@@ -149,21 +186,16 @@ what doesn't work, including version numbers of Perl and sybperl, the
 hardware and OS version, and the Sybase Open Client version you are
 using.
 
-
 The regression tests don't attempt to test *everything*, but they do
 test all of the basic functions, and should work cleanly.
 
 There are quite a few small example scripts in eg/ which illustrate
 the use of both the DBlib and CTlib modules.
 
-Documentation (in the pod/ directory) has grown to something which I
-hope is better, though I agree that it could still be improved quite a
-bit.
-
 There is a mailing list for discussing sybperl related questions
 (sybperl-l@trln.lib.unc.edu). Send a message to
-sybperl-l-request@trln.lib.unc.edu with 'add "your name"
-<your@email.address>' in the body to subscribe to the list.
+sybperl-l-request@trln.lib.unc.edu with 'subscribe your name'
+in the body to subscribe to the list.
 
 
 

@@ -1,8 +1,7 @@
 		  SYBPERL Frequently Asked Questions
 
-		  @(#)FAQ	1.7	1/3/96
+		  @(#)FAQ	1.8	1/30/96
 
-NOTE: This FAQ is still very much under construction!!!
 
 Contents:
 1)   Sybperl? What is that?
@@ -94,8 +93,6 @@ Contents:
    http://arch-http.hq.eso.org/bfrasmus/wdb/wdb.html
    http://arch-http.hq.eso.org/bfrasmus/wdb/distribution/install.html
    ftp://ftp.demon.co.uk/pub/perl/db/perl4/sybperl/
-   ftp://ftp.demon.co.uk/pub/perl/db/mod/Sybase/
-   ftp://ftp.cis.ufl.edu/pub/perl/
    ftp://ftp.perl.com/
 
 1.2) Where can I get Sybperl?
@@ -367,7 +364,7 @@ Contents:
 
    Send a message to sybperl-l-REQUEST@trln.lib.unc.edu with
 
-	add "your name" <your@email.address>
+	subscribe Your Name
 
    to subscribe.
 

@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# @(#)Makefile.PL	1.10	1/5/96
+# @(#)Makefile.PL	1.11	1/30/96
 
 
 use ExtUtils::MakeMaker;
@@ -21,7 +21,7 @@ $linktype = defined($$sattr{LINKTYPE}) ? $$sattr{LINKTYPE} : 'dynamic';
 # Extra flags to pass to CPP
 $inc_string = "-I$SYBASE/include";
 $def_string = "-DCTLIBVS=$CTLIBVS -DSYBPLVER='\"\${VERSION}\"' $$sattr{EXTRA_DEFS}";
-$lib_string = "-L$SYBASE/lib -lct -lcs -ltcl -lcomn -lintl -ltli -linsck $$sattr{EXTRA_LIBS} -ldl -lm";
+$lib_string = "-L$SYBASE/lib -lct -lcs -ltcl -lcomn -lintl -linsck $$sattr{EXTRA_LIBS} -lm";
 
 #####
 ### Configure End
