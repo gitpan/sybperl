@@ -1,4 +1,4 @@
-<--@(#)sybperl.pod	1.16	2/29/96-->
+<--@(#)sybperl.pod	1.18	02/04/97-->
 
 =head1 NAME
 
@@ -1043,6 +1043,31 @@ The attributes values are copied from $dbh to $dbh2.
 
 Drops the current I<CS_COMMAND> structure, and reallocs a new
 one. Returns CS_SUCCEED on successfull completion.
+
+=item $ret = ct_config($action, $property, $value)
+
+Calls ct_config() to change some basic parameter, like the
+<B>interfaces</B> file location.
+
+$action can be <B>CS_SET</B> or <B>CS_GET</B>.
+
+$property is one of the properties that is settable via ct_config()
+(see your OpenClient man page on ct_config() for a complete list).
+
+$value is the input value if $action is <B>CS_GET</B>, and the output
+value if $action is <B>CS_GET</B>.
+
+$ret is the return status of the ct_config() call.
+
+Example:
+
+	$ret = ct_config(CS_SET, CS_IFILE, "/home/mpeppler/foo");
+	print "$ret\n";
+
+	$ret = ct_config(CS_GET, CS_IFILE, $out);
+	print "$ret - $out\n";  #prints 1 - /home/mpeppler/foo
+
+
 
 =item $ret|@ret = $dbh->ct_sql($cmd [, \&rowcallback [, $doAssoc]])
 

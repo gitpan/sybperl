@@ -1,6 +1,6 @@
-#	@(#)BCP.pm	1.7	03/22/96
+#	@(#)BCP.pm	1.10	02/04/97
 
-# Copyright (c) 1996
+# Copyright (c) 1996-1997
 #   Michael Peppler
 #
 #   You may copy this under the terms of the GNU General Public License,
@@ -261,7 +261,7 @@ plain bcp.
 
 =head1 AUTHOR
 
-Michael Peppler F<E<lt>mpeppler@itf.chE<gt>>. Contact the sybperl mailing
+Michael Peppler F<E<lt>mpeppler@bix.comE<gt>>. Contact the sybperl mailing
 list C<mailto:sybperl-l@trln.lib.unc.edu> if you have any questions.
 
 =cut
@@ -280,11 +280,12 @@ use vars qw(@ISA @EXPORT $VERSION $Version);
 
 use strict;
 
-$VERSION = '0.03';
-$Version = '1.7 03/22/96';
+$VERSION = '0.05';
+$Version = '1.10 02/04/97';
 
 my @g_keys = qw(INPUT OUTPUT ERRORS SEPARATOR FIELDS BATCH_SIZE
-	     NULL DATE REORDER CALLBACK TAB_INFO DIRECTION CONDITION);
+	     NULL DATE REORDER CALLBACK TAB_INFO DIRECTION CONDITION
+             LOGGER);
 my @f_keys = qw(CALLBACK SKIP);
 my %g_keys = map { $_ => 1 } @g_keys;
 my %f_keys = map { $_ => 1 } @f_keys;
@@ -392,6 +393,7 @@ sub do_in {
     my $date_fmt = $self->{Global}->{DATE};
     my %cols 	= defined($self->{Cols}) ? %{$self->{Cols}} : undef;
     my $g_cb 	= $self->{Global}->{CALLBACK};
+    my $logger  = $self->{Global}->{LOGGER} || \&carp;
     my %reorder = defined($self->{Global}->{REORDER}) ?
 	%{$self->{Global}->{REORDER}} : undef;
     my @tabinfo = @{$self->{Global}->{TAB_INFO}};
@@ -453,9 +455,6 @@ sub do_in {
     local $" = $sep;			# Set the output field separator."
 
     while(@data = &$in_sub($sep)) {
-#	chop;
-#	@data = split(/\Q$sep\E/o);
-
 	if(defined(%reorder)) {
 	    foreach $i (keys(%reorder)) {
 		$t_data[$reorder{$i}-1] = $data[$i-1];
@@ -508,7 +507,7 @@ sub do_in {
         if((++$count % $batch_size) == 0) {
 	    if($self->bcp_batch <= 0) {
 		my $r_count = 0;
-		carp "bcp_batch failed - redoing";
+		&$logger("bcp_batch failed - redoing");
 		# The batch failed, so re-run it one row at a time.
 		foreach $row (@rows) {
 		    if($self->bcp_sendrow($row) == FAIL) {
@@ -523,14 +522,14 @@ sub do_in {
 			++$r_count;
 		    }
 		}
-		printf STDERR ("bcp sent %d rows to the server (%d failed)\n",
-			       $r_count, $batch_size - $r_count);
+		&$logger (sprintf("bcp sent %d rows to the server (%d failed)\n",
+			  $r_count, $batch_size - $r_count));
 		$t_rows += $r_count;
 	    }
 	    else
 	    {
 		$t_rows += scalar(@rows);
-		print STDERR "bcp sent $batch_size rows to the server...\n";
+		&$logger("bcp sent $batch_size rows to the server...\n");
 	    }
 	    @rows = ();		# The batch was successfull, flush the row cache.
 	}
@@ -538,7 +537,7 @@ sub do_in {
     # Commit any outstanding rows.
     if(scalar(@rows)) {
 	if($self->bcp_batch <= 0) {
-	    carp "bcp_batch failed - redoing";
+	    &$logger("bcp_batch failed - redoing");
 	    foreach $row (@rows) {
 		if($self->bcp_sendrow($row) == FAIL) {
 		    print LOG "@$row\n";
@@ -546,15 +545,11 @@ sub do_in {
 		}
 		if($self->bcp_batch != 1) { # batch each row, so that we can find which is wrong...
 		    print LOG "@$row\n";
-		}
-		else
-		{
+		} else {
 		    ++$t_rows;
 		}
 	    }
-	}
-        else
-        {
+	} else {
 	    $t_rows += scalar(@rows);
 	}
     }
@@ -571,10 +566,11 @@ sub _readln {
     my $ln; my @d;
     if($ln = <IN>) {
 	chop $ln;
-	@d = split(/\Q$sep\E/o, $ln);
+	@d = split(/\Q$sep\E/o, $ln, -1);
     }
     @d;
 }
+
 
 
 # Extracts information about the column names and column types from

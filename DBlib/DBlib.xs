@@ -1,9 +1,9 @@
 /* -*-C-*-
- *	@(#)DBlib.xs	1.30	11/14/96
+ *	@(#)DBlib.xs	1.31	02/04/97
  */	
 
 
-/* Copyright (c) 1991-1996
+/* Copyright (c) 1991-1997
    Michael Peppler
 
    You may copy this under the terms of the GNU General Public License,
@@ -111,6 +111,11 @@ static char *hash_keys[] = {
     "rpcInfo", "UseDateTime", "UseMoney", "MaxRows",
     "__PID__", "__conInfo__"
 };
+
+typedef struct bcp_data {
+    int numcols;
+    BYTE **colPtr;
+} BCP_DATA;
 
 #if 0
 typedef struct {
@@ -800,7 +805,7 @@ initialize()
 	if((sv = perl_get_sv("Sybase::DBlib::Version", TRUE)))
 	{
 	    char buff[256];
-	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib version 1.30 11/14/96\n\nCopyright (c) 1991-1996 Michael Peppler\n\n",
+	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib version 1.31 02/04/97\n\nCopyright (c) 1991-1997 Michael Peppler\n\n",
 		    SYBPLVER);
 	    sv_setnv(sv, atof(SYBPLVER));
 	    sv_setpv(sv, buff);
@@ -3074,7 +3079,7 @@ DESTROY(dbp)
 CODE:
 {
     DBPROCESS *dbproc = getDBPROC(dbp);
-    BYTE **colPtr;
+    BCP_DATA *bcp_data;
     HV *hv;
     SV **svp;
     
@@ -3099,9 +3104,12 @@ CODE:
     
     if(!dbproc)			/* it's already been closed! */
 	return;
-    colPtr = (BYTE**)dbgetuserdata(dbproc);
-    if(colPtr) /* avoid a potential memory leak */
-	Safefree(colPtr);
+    bcp_data = (BCP_DATA*)dbgetuserdata(dbproc);
+    if(bcp_data)
+    {
+	Safefree(bcp_data->colPtr);
+	Safefree(bcp_data);
+    }
     
     dbclose(dbproc);
 }
@@ -4226,15 +4234,19 @@ bcp_meminit(dbp,numcols)
 {
     DBPROCESS *dbproc = getDBPROC(dbp);
     int j;
-    BYTE **colPtr;
+    BCP_DATA *bcp_data;
     BYTE dummy;
     
     /* make sure we free the pointer in the case where bcp_meminit()
        is called several times... */
-    if((colPtr = (BYTE**)dbgetuserdata(dbproc)))
-	Safefree(colPtr);
-    New (902, colPtr, numcols, BYTE*);
-    dbsetuserdata(dbproc, (BYTE*)colPtr);
+    if((bcp_data = (BCP_DATA*)dbgetuserdata(dbproc))) {
+	Safefree(bcp_data->colPtr);
+    } else {
+	New (902, bcp_data, 1, BCP_DATA);
+    }
+    New (902, bcp_data->colPtr, numcols, BYTE*);
+    bcp_data->numcols = numcols;
+    dbsetuserdata(dbproc, (BYTE*)bcp_data);
     
     for(j = 1; j <= numcols; ++j)
 	bcp_bind(dbproc, &dummy, 0, 1, (BYTE *)NULL, 0, SYBCHAR, j);
@@ -4251,12 +4263,15 @@ bcp_sendrow(dbp, ...)
 {
     SV *sv;
     DBPROCESS *dbproc = getDBPROC(dbp);
-    BYTE **colPtr;
+    BCP_DATA *bcp_data;
     int j;
     STRLEN slen;
 
-    if(!(colPtr = (BYTE**)dbgetuserdata(dbproc)))
+    if(!(bcp_data = (BCP_DATA*)dbgetuserdata(dbproc)))
 	croak("You must call bcp_meminit before calling bcp_sendrow (Sybase::DBlib).");
+    
+    if(items - 2  > bcp_data->numcols)
+	croak("More columns passed to bcp_sendrow than were allocated with bcp_meminit");
     
     for(j = 1; j < items; ++j)
     {
@@ -4268,24 +4283,26 @@ bcp_sendrow(dbp, ...)
 	    int i;
 	    SV **svp;
 
+	    if(len > bcp_data->numcols)
+		croak("More columns passed to bcp_sendrow than were allocated with bcp_meminit");
 	    for(i = 0; i <= len; ++i)
 	    {
 		svp = av_fetch(av, i, 0);
-		colPtr[i] = (BYTE*)SvPV(*svp, slen);
+		bcp_data->colPtr[i] = (BYTE*)SvPV(*svp, slen);
 		if(*svp == &sv_undef)
 		    bcp_collen(dbproc, 0, i+1);
 		else
 		    bcp_collen(dbproc, slen, i+1);
-		bcp_colptr(dbproc, (BYTE*)colPtr[i], i+1);
+		bcp_colptr(dbproc, (BYTE*)bcp_data->colPtr[i], i+1);
 	    }
 	    break;
 	}
-	colPtr[j-1] = (BYTE*)SvPV(sv, slen);
+	bcp_data->colPtr[j-1] = (BYTE*)SvPV(sv, slen);
 	if(sv == &sv_undef)	/* it's a null data value */
 	    bcp_collen(dbproc, 0, j);
 	else
 	    bcp_collen(dbproc, slen, j);
-	bcp_colptr(dbproc, (BYTE*)colPtr[j-1], j);
+	bcp_colptr(dbproc, (BYTE*)bcp_data->colPtr[j-1], j);
     }
     RETVAL = bcp_sendrow(dbproc);
 }

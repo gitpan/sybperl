@@ -1,4 +1,13 @@
-	@(#)CHANGES	1.8	11/14/96
+	@(#)CHANGES	1.10	02/04/97
+
+2.07	Bug Fixes
+
+	Added ct_config() call to CTlib.
+	Fixed memory leak when using TEXT data with the CTlib module.
+	Fixed some data handling and column splitting problems in the
+	BCP module.
+	Improved data handling and data integrity in the bcp_*() calls
+	in DBlib.
 
 2.06	Bug Fixes
 

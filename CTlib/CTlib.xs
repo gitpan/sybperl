@@ -1,9 +1,9 @@
 /* -*-C-*-
- *	@(#)CTlib.xs	1.20	11/14/96
+ *	@(#)CTlib.xs	1.24	02/05/97
  */
 
 
-/* Copyright (c) 1995-1996
+/* Copyright (c) 1995-1997
    Michael Peppler
 
    Parts of this file are
@@ -709,7 +709,8 @@ cleanUp(info)
 {
     int i;
     for(i = 0; i < info->numCols; ++i)
-	if(info->coldata[i].type == CS_CHAR_TYPE)
+	if(info->coldata[i].type == CS_CHAR_TYPE ||
+	   info->coldata[i].type == CS_TEXT_TYPE)
 	    Safefree(info->coldata[i].value.c);
     
     if(info->datafmt)
@@ -1461,7 +1462,7 @@ initialize()
     if((sv = perl_get_sv("Sybase::CTlib::Version", TRUE)))
     {
 	char buff[256];
-	sprintf(buff, "This is sybperl, version %s\n\nSybase::CTlib version 1.20 11/14/96\tBeta\n\nCopyright (c) 1995-1996 Michael Peppler\nPortions Copyright (c) 1995 Sybase, Inc.\n\n",
+	sprintf(buff, "This is sybperl, version %s\n\nSybase::CTlib version 1.24 02/05/97\n\nCopyright (c) 1995-1997 Michael Peppler\nPortions Copyright (c) 1995 Sybase, Inc.\n\n",
 		SYBPLVER);
 	sv_setnv(sv, atof(SYBPLVER));
 	sv_setpv(sv, buff);
@@ -1768,12 +1769,6 @@ int arg;
 #else
 		goto not_there;
 #endif
-		if (strEQ(name, "CS_COMMAND"))
-#ifdef CS_COMMAND
-		    return CS_COMMAND;
-#else
-		goto not_there;
-#endif
 		if (strEQ(name, "CS_COMMBLOCK"))
 #ifdef CS_COMMBLOCK
 		    return CS_COMMBLOCK;
@@ -1828,12 +1823,6 @@ int arg;
 #else
 		goto not_there;
 #endif
-		if (strEQ(name, "CS_CONNECTION"))
-#ifdef CS_CONNECTION
-		    return CS_CONNECTION;
-#else
-		goto not_there;
-#endif
 		if (strEQ(name, "CS_CONNECTNAME"))
 #ifdef CS_CONNECTNAME
 		    return CS_CONNECTNAME;
@@ -1849,12 +1838,6 @@ int arg;
 		if (strEQ(name, "CS_CONSTAT_DEAD"))
 #ifdef CS_CONSTAT_DEAD
 		    return CS_CONSTAT_DEAD;
-#else
-		goto not_there;
-#endif
-		if (strEQ(name, "CS_CONTEXT"))
-#ifdef CS_CONTEXT
-		    return CS_CONTEXT;
 #else
 		goto not_there;
 #endif
@@ -3221,12 +3204,6 @@ int arg;
 		if (strEQ(name, "CS_LC_TIME"))
 #ifdef CS_LC_TIME
 		    return CS_LC_TIME;
-#else
-		goto not_there;
-#endif
-		if (strEQ(name, "CS_LOCALE"))
-#ifdef CS_LOCALE
-		    return CS_LOCALE;
 #else
 		goto not_there;
 #endif
@@ -5710,6 +5687,37 @@ PPCODE:
 	    XPUSHs(sv_2mortal(newSVpv(buff, 0)));
     }
 }
+
+int
+ct_config(action, property, buffer)
+	int	action
+	int	property
+	char *	buffer
+CODE:
+{
+    char buff[256];
+    CS_INT outlen;
+    CS_RETCODE retcode;
+
+    if(action == CS_GET)
+    {
+	buffer = &buff[0];
+	retcode = ct_config(context, action, property, buffer, 255,
+			    &outlen);
+    }
+    else if(action == CS_SET)
+    {
+	retcode = ct_config(context, action, property, buffer, CS_NULLTERM,
+			    NULL);
+    }
+    RETVAL = retcode;
+    /* This is a hack: */
+    if(action == CS_GET)
+	sv_setpv((SV*)ST(2), buffer);
+}
+ OUTPUT:
+RETVAL
+
 
 int
 ct_res_info(dbp, info_type)

@@ -1,5 +1,5 @@
 # -*-Perl-*-
-#	@(#)Makefile.PL	1.19	03/22/96
+#	@(#)Makefile.PL	1.20	11/19/96
 require 5.002;
 use ExtUtils::MakeMaker;
 use Config;
@@ -19,16 +19,20 @@ sub MY::libscan
 
 foreach (@INC) {
     next if(/site_perl/);
+    next if(/blib/);
     if(-d "$_/Sybase") {
 	warn <<"MSG_EOF";
 *** WARNING ***
 An installed copy of the Sybase modules found in $_
 This can cause a version conflict as this version installs in
     $Config{installprivlib}/site_perl
-which comes later in Perl 5.002's include directory list.
+which comes later in Perl $]'s include directory list.
 
 You may need to manually remove these older Sybase directories if
-sybperl 2.05 does not run correctly.
+sybperl $sattr{VERSION} does not run correctly.
+
+One way to do so would be to run the following command
+    mv $_/Sybase $_/Sybase.old
 
 MSG_EOF
 	

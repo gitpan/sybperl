@@ -1,10 +1,10 @@
-		     @(#)README	1.23	11/14/96
+		     @(#)README	1.24	01/19/97
 
 			   sybperl 2.0
 	
 	  This is sybperl, the Sybase extensions for Perl5.
 
-       Copyright (c) 1991,1992,1993,1994,1995  Michael Peppler
+	      Copyright (c) 1991-1997,  Michael Peppler
 			 All rights reserved.
 			 
   This program is free software; you can redistribute it and/or modify

@@ -1,7 +1,7 @@
 # -*-Perl-*-
-# @(#)DBlib.pm	1.25	11/14/96
+# @(#)DBlib.pm	1.26	02/04/97
 
-# Copyright (c) 1991-1996
+# Copyright (c) 1991-1997
 #   Michael Peppler
 #
 #   You may copy this under the terms of the GNU General Public License,
@@ -384,4 +384,10 @@ sub r_sql {
             if (defined $sub) {
                 &$sub(@data);
             } else {
-     
+                push(@res, [@data]);
+            }
+        }
+    }
+    @res;  # return the result array
+}
+

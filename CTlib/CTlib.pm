@@ -1,7 +1,7 @@
 # -*-Perl-*-
-# @(#)CTlib.pm	1.16	11/14/96
+# @(#)CTlib.pm	1.19	02/05/97
 
-# Copyright (c) 1995
+# Copyright (c) 1995-1997
 #   Michael Peppler
 #
 #   Parts of this file are
@@ -284,7 +284,7 @@ use vars qw(%Att);
 @ISA = qw(Exporter AutoLoader DynaLoader);
 # Items to export into callers namespace by default
 # (move infrequently used names to @EXPORT_OK below)
-@EXPORT = qw( ct_callback
+@EXPORT = qw( ct_callback ct_config
 	CS_12HOUR
 	CS_ABSOLUTE
 	CS_ACK
@@ -327,7 +327,6 @@ use vars qw(%Att);
 	CS_CMD_NUMBER
 	CS_CMD_SUCCEED
 	CS_COLUMN_DATA
-	CS_COMMAND
 	CS_COMMBLOCK
 	CS_COMPARE
 	CS_COMPLETION_CB
@@ -337,11 +336,9 @@ use vars qw(%Att);
 	CS_COMP_COLID
 	CS_COMP_ID
 	CS_COMP_OP
-	CS_CONNECTION
 	CS_CONNECTNAME
 	CS_CONSTAT_CONNECTED
 	CS_CONSTAT_DEAD
-	CS_CONTEXT
 	CS_CONTINUE
 	CS_CONV_ERR
 	CS_CON_INBAND
@@ -567,7 +564,6 @@ use vars qw(%Att);
 	CS_LC_MONETARY
 	CS_LC_NUMERIC
 	CS_LC_TIME
-	CS_LOCALE
 	CS_LOC_PROP
 	CS_LOGIN_STATUS
 	CS_LOGIN_TIMEOUT
