@@ -1,5 +1,5 @@
 # -*-Perl-*-
-#	$Id: Makefile.PL,v 1.12 2004/04/13 20:03:05 mpeppler Exp $
+#	$Id: Makefile.PL,v 1.13 2004/09/23 09:33:57 mpeppler Exp $
 require 5.002;
 use ExtUtils::MakeMaker;
 use Config;
@@ -46,7 +46,7 @@ MSG_EOF
 
 WriteMakefile('DISTNAME' => "sybperl",
 	      'NAME' => 'Sybase',
-	      'VERSION_FROM' => 'patchlevel',
+	      'VERSION' => $$sattr{VERSION},
 	      'dist' => {'TARFLAGS' => "cvf", 'COMPRESS' => "gzip"},
 	      'clean' => { FILES => $written_pwd_file },
 	      'LINKTYPE' => $linktype,

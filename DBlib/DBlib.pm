@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# $Id: DBlib.pm,v 1.48 2004/06/23 14:02:18 mpeppler Exp $
+# $Id: DBlib.pm,v 1.49 2004/08/03 14:14:00 mpeppler Exp $
 #
 # From:
 # 	@(#)DBlib.pm	1.35	03/26/99
@@ -308,8 +308,6 @@ bootstrap Sybase::DBlib;
 # Preloaded methods go here.  Autoload methods go after __END__, and are
 # processed by the autosplit program.
 
-# Alias dblogin to new:
-*new = \&dblogin;
 
 
 

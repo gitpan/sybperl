@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# $Id: Makefile.PL,v 1.27 2003/12/29 01:08:41 mpeppler Exp $
+# $Id: Makefile.PL,v 1.29 2004/09/23 09:28:45 mpeppler Exp $
 #	@(#)Makefile.PL	1.19	03/26/99
 
 require 5.002;
@@ -17,9 +17,9 @@ my $DBLIBVS = $$sattr{DBLIBVS};
 my $SYBASE = $$sattr{SYBASE};
 my $VERSION = $$sattr{VERSION};
 
-if($ENV{SYBASE_OCS}) {
-    $SYBASE .= "/$ENV{SYBASE_OCS}";
-}
+#if($ENV{SYBASE_OCS}) {
+#    $SYBASE .= "/$ENV{SYBASE_OCS}";
+#}
 
 if(!-e "DBlib.pmi") {
     rename("DBlib.pm", "DBlib.pmi");
@@ -104,7 +104,7 @@ else
     my %opts = ('LIBS' => [$lib_string],
 		'NAME' => "Sybase::DBlib",
 		'INC' => $inc_string,
-		'VERSION_FROM' => '../patchlevel',
+		'VERSION' => $VERSION,
 		'DEFINE' => $def_string,
 		'XSPROTOARG' => '-prototypes',
 		'clean' => { FILES => 'DBlib.pmi' },

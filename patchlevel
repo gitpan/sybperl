@@ -1,5 +1,5 @@
-#	$Id: patchlevel,v 1.33 2004/06/23 14:02:18 mpeppler Exp $
+#	$Id: patchlevel,v 1.35 2004/09/23 09:28:45 mpeppler Exp $
 
-$VERSION = 2.17
+$VERSION = 2.17_3
 
 

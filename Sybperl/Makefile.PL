@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# $Id: Makefile.PL,v 1.16 2003/12/27 01:33:13 mpeppler Exp $
+# $Id: Makefile.PL,v 1.17 2004/09/23 09:28:45 mpeppler Exp $
 #
 #	@(#)Makefile.PL	1.13	03/26/99
 
@@ -31,7 +31,7 @@ if($DBLIBVS == 0)
 else
 {
     WriteMakefile('NAME' => "Sybase::Sybperl",
-		  'VERSION_FROM' => '../patchlevel',
+		  'VERSION' => $$sattr{VERSION},
 		  ($] >= 5.005 ?
 		   (ABSTRACT   => 'Sybperl 1.xx compatibility module',
 		    AUTHOR     => 'Michael Peppler (mpeppler@peppler.org)') : ()),

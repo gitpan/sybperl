@@ -1,6 +1,6 @@
 /* -*-C-*-
  *
- * $Id: CTlib.xs,v 1.67 2004/06/11 13:04:09 mpeppler Exp $
+ * $Id: CTlib.xs,v 1.68 2004/08/03 14:14:00 mpeppler Exp $
  *	@(#)CTlib.xs	1.37	03/26/99
  */
 
@@ -116,12 +116,12 @@ typedef struct _col_data
 	CS_DATETIME dt;
 	CS_MONEY mn;
 	CS_NUMERIC num;
+        CS_VOID *p;
     } value;
+    int         v_alloc;
     CS_INT	valuelen;
 
-    char *ptr;
-
-/*    CS_IODESC *iodesc; */
+    char       *ptr;
 } ColData;
 
 typedef enum
@@ -303,7 +303,7 @@ static CS_RETCODE CS_PUBLIC servermsg_cb _((CS_CONTEXT*, CS_CONNECTION*, CS_SERV
 static CS_RETCODE CS_PUBLIC notification_cb _((CS_CONNECTION*, CS_CHAR*, CS_INT));
 static CS_RETCODE CS_PUBLIC completion_cb _((CS_CONNECTION*, CS_COMMAND*, CS_INT, CS_RETCODE));
 static CS_RETCODE CS_PUBLIC cslibmsg_cb _((CS_CONTEXT *, CS_CLIENTMSG *));
-static CS_RETCODE get_cs_msg(CS_CONTEXT *context, CS_CONNECTION *connection);
+static CS_RETCODE get_cs_msg(CS_CONTEXT *context, CS_CONNECTION *connection, char *msg);
 
 static void initialize _((void));
 static int not_here _((char*));
@@ -672,6 +672,44 @@ neatsvpv(sv, maxlen) /* return a tidy ascii value, for debugging only */
 	    v[len] = '.';
     }
     return v;
+}
+
+/* Allocate a buffer of the appropriate size for "datatype". Only
+   works for fixed-size datatypes */
+static void * alloc_datatype(CS_INT datatype, int *len)
+{
+  void *ptr;
+  int bytes;
+
+  switch(datatype) {
+  case CS_TINYINT_TYPE: bytes = sizeof(CS_TINYINT); break;
+  case CS_SMALLINT_TYPE: bytes = sizeof(CS_SMALLINT); break;
+  case CS_INT_TYPE: bytes = sizeof(CS_INT); break;
+  case CS_REAL_TYPE: bytes = sizeof(CS_REAL); break;
+  case CS_FLOAT_TYPE: bytes = sizeof(CS_FLOAT); break;
+  case CS_BIT_TYPE: bytes = sizeof(CS_BIT); break;
+  case CS_DATETIME_TYPE: bytes = sizeof(CS_DATETIME); break;
+  case CS_DATETIME4_TYPE: bytes = sizeof(CS_DATETIME4); break;
+  case CS_MONEY_TYPE: bytes = sizeof(CS_MONEY); break;
+  case CS_MONEY4_TYPE: bytes = sizeof(CS_MONEY4); break;
+  case CS_NUMERIC_TYPE: bytes = sizeof(CS_NUMERIC); break;
+  case CS_DECIMAL_TYPE: bytes = sizeof(CS_DECIMAL); break;
+  case CS_LONG_TYPE: bytes = sizeof(CS_LONG); break;
+#if 0
+  case CS_SENSITIVITY_TYPE: bytes = sizeof(CS_SENSITIVITY); break;
+  case CS_BOUNDARY_TYPE: bytes = sizeof(CS_BOUNDARY); break;
+#endif
+  case CS_USHORT_TYPE: bytes = sizeof(CS_USHORT); break;
+#if defined(CS_DATE_TYPE)
+  case CS_DATE_TYPE: bytes = sizeof(CS_DATE); break;
+  case CS_TIME_TYPE: bytes = sizeof(CS_TIME); break;
+#endif
+  default: warn("alloc_datatype: unkown type: %d", datatype); return NULL;
+  }
+
+  Newz(902, ptr, bytes, char);
+
+  return ptr;
 }
 
 static int
@@ -1123,13 +1161,10 @@ blkCleanUp(info)
 {
     int i;
 
-#if 0
     for(i = 0; i < info->numCols; ++i)
-	if(info->coldata[i].value.c &&
-	   info->coldata[i].type == CS_CHAR_TYPE ||
-	   info->coldata[i].type == CS_TEXT_TYPE)
-	    Safefree(info->coldata[i].value.c);
-#endif
+      if(info->coldata[i].value.p && info->coldata[i].v_alloc)
+	Safefree(info->coldata[i].value.p);
+
     if(info->datafmt)
 	Safefree(info->datafmt);
     if(info->coldata)
@@ -1782,16 +1817,64 @@ fetch2sv(info, doAssoc, wantref)
 
 
 static CS_RETCODE
-get_cs_msg(CS_CONTEXT *context, CS_CONNECTION *connection)
+get_cs_msg(CS_CONTEXT *context, CS_CONNECTION *connection, char *msg)
 {
-  CS_CLIENTMSG msg;
+  CS_CLIENTMSG errmsg;
   CS_INT lastmsg = 0;
+  CS_RETCODE retval;
 
-  memset((void*)&msg, 0, sizeof(msg));
+  memset((void*)&errmsg, 0, sizeof(errmsg));
   cs_diag(context, CS_STATUS, CS_CLIENTMSG_TYPE, CS_UNUSED,
 	  &lastmsg);
-  cs_diag(context, CS_GET, CS_CLIENTMSG_TYPE, lastmsg, &msg);
-  return clientmsg_cb(context, connection, &msg);
+  cs_diag(context, CS_GET, CS_CLIENTMSG_TYPE, lastmsg, &errmsg);
+
+  if(cslib_cb.sub)
+    {
+      dSP;
+      int retval, count;
+      
+      ENTER;
+      SAVETMPS;
+      PUSHMARK(sp);
+      
+      XPUSHs(sv_2mortal(newSViv(CS_LAYER(errmsg.msgnumber))));
+      XPUSHs(sv_2mortal(newSViv(CS_ORIGIN(errmsg.msgnumber))));
+      XPUSHs(sv_2mortal(newSViv(CS_SEVERITY(errmsg.msgnumber))));
+      XPUSHs(sv_2mortal(newSViv(CS_NUMBER(errmsg.msgnumber))));
+      XPUSHs(sv_2mortal(newSVpv(errmsg.msgstring, 0)));
+      if (errmsg.osstringlen > 0)
+	XPUSHs(sv_2mortal(newSVpv(errmsg.osstring, 0)));
+      else
+	XPUSHs(&PL_sv_undef);
+      if (msg)
+	XPUSHs(sv_2mortal(newSVpv(msg, 0)));
+      else
+	XPUSHs(&PL_sv_undef);
+      
+      PUTBACK;
+      if((count = perl_call_sv(cslib_cb.sub, G_SCALAR)) != 1)
+	croak("A cslib handler cannot return a LIST");
+      SPAGAIN;
+      retval = POPi;
+      
+      PUTBACK;
+      FREETMPS;
+      LEAVE;
+      
+      return retval;
+    }
+
+    fprintf(stderr, "\nCS Library Message:\n");
+    fprintf(stderr, "Message number: LAYER = (%ld) ORIGIN = (%ld) ",
+	    CS_LAYER(errmsg.msgnumber), CS_ORIGIN(errmsg.msgnumber));
+    fprintf(stderr, "SEVERITY = (%ld) NUMBER = (%ld)\n",
+	    CS_SEVERITY(errmsg.msgnumber), CS_NUMBER(errmsg.msgnumber));
+    fprintf(stderr, "Message String: %s\n", errmsg.msgstring);
+    if(msg)
+      fprintf(stderr, "User Message: %s\n", msg);
+    fflush(stderr);
+
+    return CS_FAIL;
 }
 
 
@@ -2228,7 +2311,7 @@ initialize()
 	if((p = strchr(ocVersion, '\n')))
 	    *p = 0;
 	
-	sprintf(buff, "This is sybperl, version %s\n\nSybase::CTlib $Revision: 1.67 $ $Date: 2004/06/11 13:04:09 $\n\nCopyright (c) 1995-2001 Michael Peppler\nPortions Copyright (c) 1995 Sybase, Inc.\n\nOpenClient version: %s\n",
+	sprintf(buff, "This is sybperl, version %s\n\nSybase::CTlib $Revision: 1.68 $ $Date: 2004/08/03 14:14:00 $\n\nCopyright (c) 1995-2004 Michael Peppler\nPortions Copyright (c) 1995 Sybase, Inc.\n\nOpenClient version: %s\n",
 		SYBPLVER, ocVersion);
 	sv_setnv(sv, atof(SYBPLVER));
 	sv_setpv(sv, buff);
@@ -5917,6 +6000,8 @@ ct_connect(package="Sybase::CTlib", user=NULL, pwd=NULL, server=NULL, appname=NU
 	char *	server
 	char *	appname
 	SV *	attr
+ALIAS:
+     new    = 1
   CODE:
 {
     ConInfo *info = NULL;
@@ -7683,40 +7768,50 @@ CODE:
 	    info->coldata[i].ptr = SvPV(*svp, slen);
 	    info->coldata[i].indicator = 0;
 
-	    /* special handling for NUMERIC/DECIMAL needed because
-	       of conversion errors that occur when the precision/scale is
-	       out of range of the target datatype */
 	    switch(info->datafmt[i].datatype) {
-	      case CS_NUMERIC_TYPE:
-	      case CS_DECIMAL_TYPE:
-		if(_convert(&info->coldata[i].value.num,  
-			    info->coldata[i].ptr, info->locale, 
-			    &info->datafmt[i], &vlen) != CS_SUCCEED) {
-		  /* If the error handler returns CS_FAIL, then FAIL this
-		     row! */
-#if !defined(USE_CSLIB_CB)
-		  if(get_cs_msg(context, info->connection->connection) 
-		     != CS_SUCCEED)
-		    goto FAIL;
-#else
-		  warn("_convert() failed");
-#endif
-		}
-		info->coldata[i].valuelen = (vlen != CS_UNUSED ? vlen : sizeof(info->coldata[i].value.num));
-		ptr = &info->coldata[i].value.num;
-		break;
 	      case CS_BINARY_TYPE:
 	      case CS_LONGBINARY_TYPE:
 	      case CS_LONGCHAR_TYPE:
 	      case CS_TEXT_TYPE:
 	      case CS_IMAGE_TYPE:
+ 	      case CS_CHAR_TYPE:
+#if defined(CS_UNICHAR_TYPE)
+	      case CS_UNICHAR_TYPE:
+#endif
+		/* For these types send data "as is" */
 		ptr = info->coldata[i].ptr;
 		info->coldata[i].valuelen = slen;
 		break;
 	      default:
-		info->datafmt[i].datatype = CS_CHAR_TYPE;
-		ptr = info->coldata[i].ptr;
-		info->coldata[i].valuelen = slen;
+		/* for all others, call cs_convert() before sending */
+		if(!info->coldata[i].v_alloc) {
+		  info->coldata[i].value.p = 
+		    alloc_datatype(info->datafmt[i].datatype, &info->coldata[i].v_alloc);
+		}
+		if(_convert(info->coldata[i].value.p,  
+			    info->coldata[i].ptr, info->locale, 
+			    &info->datafmt[i], &vlen) != CS_SUCCEED) {
+		  char msg[255];
+		  /* If the error handler returns CS_FAIL, then FAIL this
+		     row! */
+#if !defined(USE_CSLIB_CB)
+		  sprintf(msg, 
+			  "cs_convert failed:column %d: (_convert(%s, %d))", 
+			  i + 1, info->coldata[i].ptr, 
+			  info->datafmt[i].datatype);
+		  ret = get_cs_msg(context, info->connection->connection, msg);
+		  if(ret == CS_FAIL)
+		     goto FAIL;
+#else
+		  warn("cs_convert failed:column %d: (_convert(%s, %d))", 
+		       i + 1, info->coldata[i].ptr, info->datafmt[i].datatype);
+		  ret = CS_FAIL;
+		  goto FAIL;
+#endif
+		}
+		info->coldata[i].valuelen = 
+		  (vlen != CS_UNUSED ? vlen : info->coldata[i].v_alloc);
+		ptr = info->coldata[i].value.p;
 		break;
 	    }
 	}

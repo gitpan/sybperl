@@ -1,5 +1,5 @@
 /* -*-C-*-
- * $Id: DBlib.xs,v 1.59 2004/06/11 13:04:09 mpeppler Exp $
+ * $Id: DBlib.xs,v 1.60 2004/08/03 14:14:00 mpeppler Exp $
  *
  * From
  *	@(#)DBlib.xs	1.47	03/26/99
@@ -946,7 +946,7 @@ initialize()
 	if((sv = perl_get_sv("Sybase::DBlib::Version", TRUE|GV_ADDMULTI)))
 	{
 	    char buff[2048];
-	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib $Revision: 1.59 $ $Date: 2004/06/11 13:04:09 $ \n\nCopyright (c) 1991-2001 Michael Peppler\n\nDB-Library version: %s\n",
+	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib $Revision: 1.60 $ $Date: 2004/08/03 14:14:00 $ \n\nCopyright (c) 1991-2001 Michael Peppler\n\nDB-Library version: %s\n",
 		    SYBPLVER, dbversion());
 	    sv_setnv(sv, atof(SYBPLVER));
 	    sv_setpv(sv, buff);
@@ -3179,6 +3179,8 @@ dblogin(package="Sybase::DBlib",user=NULL,pwd=NULL,server=NULL,appname=NULL,attr
 	char *	server
 	char *	appname
 	SV *	attr
+ALIAS:
+     new    = 1
   CODE:
 {
     DBPROCESS *dbproc;

@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# $Id: Makefile.PL,v 1.33 2004/04/13 20:03:05 mpeppler Exp $
+# $Id: Makefile.PL,v 1.35 2004/09/23 09:28:45 mpeppler Exp $
 # @(#)Makefile.PL	1.19	03/26/99
 
 
@@ -22,9 +22,9 @@ my $CTLIBVS = $$sattr{CTLIBVS};
 my $SYBASE = $$sattr{SYBASE};
 my $VERSION = $$sattr{VERSION};
 
-if($ENV{SYBASE_OCS}) {
-    $SYBASE .= "/$ENV{SYBASE_OCS}";
-}
+#if($ENV{SYBASE_OCS}) {
+#    $SYBASE .= "/$ENV{SYBASE_OCS}";
+#}
 
 if(!-e "CTlib.pmi") {
     rename("CTlib.pm", "CTlib.pmi");
@@ -67,6 +67,14 @@ if($^O eq 'MSWin32') {
 
     $lib_string =~ s/-l/-lsyb_/g if $^O eq 'VMS';
     $lib_string .= " $$sattr{EXTRA_LIBS} -lm";
+
+    # MacOSX, and OCS 15.0 uses -lsybct instead of -lct, etc.
+    if($newlibnames) {
+	foreach (qw(ct cs tcl comn intl blk)) {
+	    $lib_string =~ s/-l$_/-lsyb$_/;
+	}
+    }
+
 
 
 
@@ -152,7 +160,7 @@ if($CTLIBVS == 0)
 else
 {
     my %opts = ('NAME'	=> 'Sybase::CTlib',
-		  'VERSION_FROM'	=> '../patchlevel',
+		  'VERSION'	=> $VERSION,
 		  'LIBS'	=> [$lib_string],
 		  'DEFINE'	=> $def_string,
 		  'INC'	=> $inc_string,

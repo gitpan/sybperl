@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# $Id: CTlib.pm,v 1.42 2004/06/11 13:04:09 mpeppler Exp $
+# $Id: CTlib.pm,v 1.44 2004/09/22 11:35:32 mpeppler Exp $
 # @(#)CTlib.pm	1.27	03/26/99
 
 # Copyright (c) 1995-2004
@@ -84,10 +84,6 @@ package Sybase::CTlib::DateTime;
 
 # Sybase DATETIME handling.
 
-# For converting to Unix time:
-
-require Time::Local;
-
 
 # Here we set up overloading operators
 # for certain operations.
@@ -131,6 +127,10 @@ sub timelocal {
     my $self = shift;
     my (@data, $ret);
 
+    # For converting to Unix time:
+
+    require Time::Local;
+
     @data = $self->crack;
 
     $ret = Time::Local::timelocal($data[7], $data[6], $data[5], $data[2],
@@ -143,6 +143,9 @@ sub timegm {
 
     @data = $self->crack;
 
+    # For converting to Unix time:
+
+    require Time::Local;
     $ret = Time::Local::timegm($data[7], $data[6], $data[5], $data[2],
 			       $data[1], $data[0]-1900);
 }
@@ -274,7 +277,7 @@ use subs qw(CS_SUCCEED CS_FAIL CS_CMD_DONE CS_ROW_COUNT
   CS_COMPUTE_RESULT CS_CANCEL_CURRENT);
 
 use vars qw(%Att @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $AUTOLOAD 
-	    $res_type %fetchable);
+	    $res_type);
 use vars qw($DB_ERROR $nsql_strip_whitespace $nsql_deadlock_retrycount
 	   $nsql_deadlock_retrysleep $nsql_deadlock_verbose);
 
@@ -865,11 +868,10 @@ bootstrap Sybase::CTlib;
 # Preloaded methods go here.  Autoload methods go after __END__, and are
 # processed by the autosplit program.
 
-# Alias ct_connect to new:
-
-*new = \&ct_connect;
 
 # Use a hash table for fast lookups:
+
+my %fetchable;
 
 @fetchable{
   &CS_ROW_RESULT,
@@ -1850,6 +1852,53 @@ Returns CS_SUCCEED or CS_FAIL.
 Free internal resources after a Bulk-copy operation has been performed.
 
 =back
+
+=head2 Handling data conversion errors with the BLK routines
+
+The BLK API is much more picky about the data that it accepts
+and so it is more likely to get data conversion errors when the
+row is sent to the server via C<blk_rowxfer()>.
+
+By default B<ALL> data conversion errors (other than string truncation for
+char/varchar data) are flagged as failures, and the row will not get
+uploaded, with an error message written to STDERR.
+
+This behavior can be modified by registering a CS_MESSAGE_CB callback,
+which will be called in the event of a data conversion error.
+
+A typical CS_MESSAGE_CB subroutine might look like this:
+
+  sub msg_cb {
+    my ($layer, $origin, $severity, $number, $msg, $osmsg, $usermsg) = @_;
+
+    print "$layer $origin $severity $number: $msg ($usermsg)\n";
+
+    if($number == 36) {
+      return CS_SUCCEED;
+    }
+
+    return CS_FAIL;
+  }
+
+and you would install it with a call to ct_callback():
+
+  ct_callback(CS_MESSAGE_CB, \&msg_cb);
+
+If the CS_MESSAGE_CB handler returns CS_SUCCEED then the conversion error
+is ignored by the Sybase::CTlib code, and the row is sent to the BLK API
+for processing. If the handler returns CS_FAIL then the row is skipped
+and blk_rowxfer() will return CS_FAIL as well. Obviously you can't force
+the BLK API to accept really bad data (such as "Feb 30 2000" for a date),
+so even if your CS_MESSAGE_CB handler returns CS_SUCCEED the row can still
+fail.
+
+In my example above I decided to accept error number 36, which flags
+truncation/scale errors (e.g. trying to load a value of 123.456 to a 
+numeric(6,2) column, which results in 123.45 being loaded.), and to fail
+all other conversion errors. 
+
+It should be noted that when numeric values are truncated due to overflow
+the values are B<truncated>, not rounded (so 123.456 is stored as 123.45.)
 
 =head2 EXPERIMENTAL Asynchronous Routines
 

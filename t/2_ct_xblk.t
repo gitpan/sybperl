@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# $Id: 2_ct_xblk.t,v 1.4 2004/05/25 15:12:01 mpeppler Exp $
+# $Id: 2_ct_xblk.t,v 1.5 2004/08/03 14:14:00 mpeppler Exp $
 #
 # From
 # @(#)ctlib.t	1.17	03/05/98
@@ -24,6 +24,7 @@ use vars qw($Pwd $Uid $Srv $Db);
 
 #ct_callback(CS_SERVERMSG_CB, \&srv_cb);
 ct_callback(CS_CLIENTMSG_CB, \&clt_cb);
+ct_callback(CS_MESSAGE_CB, \&msg_cb);
 
 ( $X = Sybase::CTlib->ct_connect($Uid, $Pwd, $Srv, '', {CON_PROPS => {CS_BULK_LOGIN => CS_TRUE}}) )
     and print("ok 2\n")
@@ -76,7 +77,7 @@ $X->blk_drop;
 @data = ([undef, "one b", 123, 123.4, 'feb 29 2001 11:00', 'Oct 11 2001', 23.456789, 44.23, 'deadbeef', 'x' x 100],
 	 [undef, "two b", 123456789123456, 123.456, 'Oct 12 2001 11:23', 'Oct 11 2001', 44444444444.34, 44353.44, '0a0a0a0a', 'a' x 100],
 	 [undef, "three b", undef, 123456.78, 'Oct 11 2001 11:00', 'Oct 11 2001', 343434.3333, 34.23, '20202020', 'z' x 100],
-	 [undef, "four b", undef, 126.78, 'Oct 11 2001 11:00', 'Oct 11 2001', 343434.3333, 34343434343434343434.23, '21212121', 'z' x 100],
+	 [undef, "four b", undef, 126.78, 'Oct 11 2001 11:00', 'Oct 11 2001', 343434.3333, "34343434343434343434.23", '21212121', 'z' x 100],
 	);
 
 foreach (@data) {
@@ -110,6 +111,7 @@ $X->blk_drop;
 
 foreach (@data) {
   $_->[8] = pack('H*', $_->[8]);
+  print $_->[1], "\n";
     ($X->blk_rowxfer($_) == CS_SUCCEED)
 	and print "ok $i\n"
 	    or print "not ok $i\n";
@@ -142,4 +144,16 @@ sub clt_cb {
     print "@_\n";
 
     CS_SUCCEED;
+}
+
+sub msg_cb {
+  my ($layer, $origin, $severity, $number, $msg, $osmsg, $usermsg) = @_;
+
+  print "$layer $origin $severity $number: $msg ($usermsg)\n";
+
+  if($number == 36) {
+    return CS_SUCCEED;
+  }
+
+  return CS_FAIL;
 }

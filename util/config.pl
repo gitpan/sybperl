@@ -1,5 +1,5 @@
 # -*-Perl-*-
-#	$Id: config.pl,v 1.12 2004/04/13 20:03:06 mpeppler Exp $
+#	$Id: config.pl,v 1.14 2004/09/23 09:28:45 mpeppler Exp $
 #
 # Extract relevant info from the CONFIG files.
 
@@ -11,15 +11,7 @@ use strict;
 my @dirs = ('.', '..', '../..', '../../..');
 
 my $syb_version;
-use vars qw($VERSION);
-
-#use vars q($MM_VERSION);
-
-#if(defined($ExtUtils::MakeMaker::VERSION)) {
-#    $MM_VERSION = $ExtUtils::MakeMaker::VERSION;
-#} else {
-#    $MM_VERSION = $ExtUtils::MakeMaker::Version;
-#}
+use vars qw($VERSION $newlibnames $SYBASE);
 
 sub config
 {
@@ -53,7 +45,7 @@ sub config
 	    $config = "$dir/patchlevel";
 	    last if(-f $config);
 	}
-	do $config;
+	$VERSION = getPkgVersion($config);
     }
     $sattr{VERSION} = $VERSION;
 
@@ -64,20 +56,41 @@ sub config
     my $sybase_dir = $ENV{SYBASE};
 
     if(!$sybase_dir) {
-	$sybase_dir = (getpwnam('sybase'))[7];
+	eval q{
+	    $sybase_dir = (getpwnam('sybase'))[7];
+	};
     }
 
-    $sattr{SYBASE} = $sybase_dir if(!exists($sattr{SYBASE})
-				    || !-d $sattr{SYBASE} 
-				    || !-d "$sattr{SYBASE}/lib"
-				    || !-d "$sattr{SYBASE}/include"
-				   );
+    if($sattr{SYBASE} && -d $sattr{SYBASE}) {
+	$SYBASE = $sattr{SYBASE};
+    } else {
+	$SYBASE = $sybase_dir;
+    }
 
-    die "Can't find any Sybase libraries under $sattr{SYBASE}/lib.\nPlease set the SYBASE environment correctly, or edit CONFIG and set SYBASE\ncorrectly there." unless checkLib($sattr{SYBASE});
+    $SYBASE = VMS::Filespec::unixify($SYBASE) if $^O eq 'VMS';
+
+    if(!$SYBASE || $SYBASE =~ /^\s*$/) {
+	die "Please set SYBASE in CONFIG, or set the \$SYBASE environment variable";
+    }
+
+    # System 12.0 has a different directory structure...
+    if(defined($ENV{SYBASE_OCS})) {
+	$SYBASE .= "/$ENV{SYBASE_OCS}";
+    }
+
+    if(! -d "$SYBASE/lib") {
+	die "Can't find the lib directory under $SYBASE!";
+    }
+	
+    die "Can't find any Sybase libraries in $SYBASE/lib" unless checkLib($SYBASE);
+
+    my $version = getLibVersion($SYBASE);
 
     if($^O ne 'MSWin32' && $^O ne 'VMS') {
-	$sattr{EXTRA_LIBS} = getExtraLibs($sattr{SYBASE}, $sattr{EXTRA_LIBS});
+	$sattr{EXTRA_LIBS} = getExtraLibs($SYBASE, $sattr{EXTRA_LIBS}, $version);
     }
+
+    $sattr{SYBASE} = $SYBASE;
 
     \%sattr;
 }
@@ -107,42 +120,47 @@ sub MY::const_config {
 EOF_EVAL
 }
 
+sub getLibVersion {
+    my $dir = shift;
+
+    my $lib = "$dir/lib";
+    opendir(DIR, $lib);
+    my @files = reverse(grep(/lib(syb)?ct\./, readdir(DIR)));
+    closedir(DIR);
+    my $file;
+    foreach (@files) {
+	$file = "$lib/$_";
+	last if -e $file;
+    }
+
+    open(IN, $file) || die "Can't open $file: $!";
+    binmode(IN);
+    my $version;
+    while(<IN>) {
+      if(/Sybase Client-Library\/([^\/]+)\//) {
+	$version = $1;
+	last;
+      }
+    }
+    close(IN);
+    if(!$version) {
+      print "Unknown Client Library version - assuming FreeTDS.\n";
+    } else {
+      print "Sybase OpenClient $version found.\n";
+    }
+
+    return $version;
+}
+
+
 sub getExtraLibs {
     my $dir = shift;
     my $cfg = shift;
+    my $syb_version = shift;
 
     my $lib = "$dir/lib";
-    if($ENV{SYBASE_OCS}) {
-	$lib = "$dir/$ENV{SYBASE_OCS}/lib";
-    }
-    if(!defined($syb_version)) {
-	my $libct;
 
-	my @libs = qw(libct.a libct.so libct.sl libct64.a libct64.so libct64.sl);
-	foreach (@libs) {
-	    $libct = "$lib/$_";
-	    last if -e $libct;
-	}
-	if(!defined($libct)) {
-	    @libs = map { s/libct/libsybct/ } @libs;
-	    foreach (@libs) {
-		$libct = "$lib/$_";
-		last if -e $libct;
-	    }
-	}
-	if(!defined($libct)) {
-	    warn "Can't find a Client-Library file anywhwere...";
-	}
-
-	my $version = `strings $libct`;
-	if($version =~ /Sybase Client-Library\/([^\/]+)\//) {
-	    $syb_version = $1;
-	    print "Sybase OpenClient $syb_version found.\n";
-	} else {
-	    $syb_version = 0;
-	    print "Unknown OpenClient version found - may be FreeTDS.\n";
-	}
-    }
+    #print "Checking extra libs for version $syb_version in $lib\n";
 
     opendir(DIR, "$lib") || die "Can't access $lib: $!";
     my %files = map { $_ =~ s/lib([^\.]+)\..*/$1/; $_ => 1 } grep(/lib/ && -f "$dir/lib/$_", readdir(DIR));
@@ -176,13 +194,15 @@ sub getExtraLibs {
 sub checkLib {
     my $dir = shift;
 
-    if($ENV{SYBASE_OCS}) {
-	$dir .= "/$ENV{SYBASE_OCS}";
+    opendir(DIR, "$dir/lib") || die "Can't access $dir/lib: $!";
+    my @files = grep(/libct|libsybct/i, readdir(DIR));
+    closedir(DIR);
+    if(grep(/libsybct/, @files)) {
+	$newlibnames = 1;
+    } else {
+	$newlibnames = 0;
     }
 
-    opendir(DIR, "$dir/lib") || die "Can't access $dir/lib: $!";
-    my @files = grep(/libct|libsybdb/i, readdir(DIR));
-    closedir(DIR);
 
     scalar(@files);
 }
@@ -221,7 +241,26 @@ BEGIN {
 
     $data;
 }
-    
+
+sub getPkgVersion {
+    my $file = shift;
+
+    my $ver;
+
+    open(IN, $file) || die "Can't open $file: $!";
+    while(<IN>) {
+	chomp;
+	if(/VERSION\s*=\s*(\S+)/) {
+	    $ver = $1;
+	}
+    }
+    close(IN);
+
+    #warn "Got version $ver from $file\n";
+    warn "Can't find VERSION in $file!\n" unless $ver;
+
+    return $ver;
+}
 
 
 1;
