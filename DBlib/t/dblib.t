@@ -1,10 +1,10 @@
 #!./perl
 
-#	@(#)dblib.t	1.13	10/16/95
+#	@(#)dblib.t	1.14	12/22/95
 
 print "1..16\n";
 
-use Sybase::DBlib;
+use Sybase::DBlib qw(2.0);
 
 # This test file is still under construction...
 $Version = $SybperlVer;
@@ -90,7 +90,7 @@ while(@row = $X->dbnextrow)
 
 # Now we make a syntax error, to test the callbacks:
 
-dbmsghandle ("msg_handler"); # different handler to check callbacks
+dbmsghandle (\&msg_handler); # different handler to check callbacks
 
 ($X->dbcmd("select * from systypes\nwhere") == &SUCCEED)
     and print("ok 14\n")

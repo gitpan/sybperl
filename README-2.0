@@ -16,6 +16,15 @@ Improvements over previous 2b versions:
       NUMERIC/DECIMAL datatypes. This is done transparently, using
       operator overloading.
 
+!!Behaviour change!!
+
+   - The behaviour of the Sybase::DBlib::sql subroutine changed in
+     2b3. In 2b2 (and before) saying @data = $d->sql(...) returned an
+     array of rows, where each row is joined into a single line using
+     a separator. In 2b3 (and later), @data is an array of references
+     to rows, and each row is now an array, as returned by
+     dbnextrow().
+     
 Do you need to upgrade?
 
    - If you have 2b3, and you are using the DBlib &/or Sybperl

@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# @(#)Sybperl.pm	1.20	9/30/95
+# @(#)Sybperl.pm	1.21	12/22/95
 #
 # Copyright (c) 1994-1995
 #   Michael Peppler
@@ -55,6 +55,7 @@ $DBFALSE = Sybase::DBlib::FALSE;
 $DB_IN = Sybase::DBlib::DB_IN;
 $DB_OUT = Sybase::DBlib::DB_OUT;
 
+$VERSION = $Sybase::DBlib::VERSION;
 # Set defaults.
 tie $dbNullIsUndef, Sybase::Sybperl::Attribs, 'dbNullIsUndef', 1;
 tie $dbKeepNumeric, Sybase::Sybperl::Attribs, 'dbKeepNumeric', 1;

@@ -1,6 +1,6 @@
 # -*-Perl-*-
-#	%W%	%G%
-use ExtUtils::MakeMaker qw(WriteMakefile $Verbose %att);
+#	@(#)Makefile.PL	1.16	1/5/96
+use ExtUtils::MakeMaker;
 require 5.001;
 
 require './config';
@@ -9,14 +9,20 @@ $sattr = &config;
 
 $linktype = defined($$sattr{LINKTYPE}) ? $$sattr{LINKTYPE} : 'dynamic';
 
-WriteMakefile(DISTNAME => "sybperl",
-	      NAME => Sybase, 
-	      VERSION => $$sattr{VERSION},
-	      dist => {'TARFLAGS' => "cvfF", 'COMPRESS' => "gzip"},
-	      LINKTYPE => $linktype,
-	      'linkext' => {LINKTYPE => ''}
-	      );
-
+# Make sure we can handle both MakeMaker version 4.x and 5.x
+#
+# $MM_VERSION is set in the 'config' file.
+if($MM_VERSION > 5) {
+    eval <<'EOF_EVAL';
+sub MY::libscan
+{
+    my($self, $path) = @_;
+    return '' if $path =~ m:/SCCS/:;
+    $path;
+}
+EOF_EVAL
+} else {
+    eval <<'EOF_EVAL';
 
 sub MY::libscan
 {
@@ -27,7 +33,7 @@ sub MY::libscan
 sub MY::staticmake
 {
     my($self, %attribs) = @_;
-
+    my(%att) = %ExtUtils::MakeMaker::att;
     my(%searchdirs)=($att{PERL_ARCHLIB} => 1,  $att{INST_ARCHLIB} => 1);
     my(@searchdirs)=keys %searchdirs;
     my @static;
@@ -47,3 +53,25 @@ sub MY::staticmake
 			     );
 }
     
+EOF_EVAL
+}
+
+
+if($MM_VERSION > 5) {
+    WriteMakefile('DISTNAME' => "sybperl",
+		  'NAME' => Sybase, 
+		  'VERSION' => $$sattr{VERSION},
+		  'dist' => {'TARFLAGS' => "cvfF", 'COMPRESS' => "gzip"},
+		  'LINKTYPE' => $linktype,
+		  'XSPROTOARG' => '-prototypes'
+		  );
+} else {
+    WriteMakefile(DISTNAME => "sybperl",
+		  NAME => Sybase, 
+		  VERSION => $$sattr{VERSION},
+		  dist => {'TARFLAGS' => "cvfF", 'COMPRESS' => "gzip"},
+		  LINKTYPE => $linktype,
+		  'linkext' => {LINKTYPE => ''}
+		  );
+}
+

@@ -1,6 +1,6 @@
 #!./perl
 
-#	@(#)sybperl.t	1.10	10/16/95
+#	@(#)sybperl.t	1.11	12/22/95
 
 print "1..28\n";
 
@@ -37,9 +37,10 @@ $dummy = $dbNullIsUndef;
 $Sybase::DBlib::Version = $Sybase::DBlib::Version;
 
 ( ($dbproc = &dblogin($Uid, $Pwd, $Srv)) != -1 )
-    and print("ok 1\n")		# 
+    and print("ok 1\n")
     or die "not ok 1
 -- You may need to edit t/sybperl.t to add login names and passwords\n";
+#print "$dbproc\n";
 
 ( &dbuse($dbproc, 'master') == $SUCCEED )
     and print("ok 2\n")

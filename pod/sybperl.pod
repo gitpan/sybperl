@@ -1,4 +1,4 @@
-@(#)sybperl.pod	1.10	10/27/95
+@(#)sybperl.pod	1.13	1/5/96
 
 
 =head1 NAME
@@ -104,6 +104,10 @@ know what this is you probably don't need it :-)
 Force the closing of a connection. Note that connections are
 automatically closed when the $dbh goes out of scope.
 
+=item $dbh->DBDEAD
+
+Returns TRUE if the B<DBPROCESS> has been marked I<DEAD> by I<DBlibrary>.
+
 =item $status = $dbh->DBCURCMD
 
 Returns the number of the currently executing command in the command
@@ -163,8 +167,8 @@ What is the name of column $colid in the current result set.
 
 =item @dat = $dbh->dbnextrow([$doAssoc])
 
-Retrieve one row. dbnextrow returns an array of scalars, one for each
-column value. If $doAssoc is non-0, then dbnextrow returns a hash (aka
+Retrieve one row. dbnextrow() returns an array of scalars, one for each
+column value. If $doAssoc is non-0, then dbnextrow() returns a hash (aka
 associative array) with column name/value pairs. This relieves the
 programmer from having to call dbbind() or dbdata(). The return value
 of the C version of dbnextrow() can be accessed via the Perl DBPROCESS
@@ -175,7 +179,7 @@ attribute field, as in:
      take some appropriate action...
    }
 
-When the results row is a COMPUTE row, the ComputeID field of the
+When the results row is a COMPUTE row, the B<ComputeID> field of the
 DBPROCESS is set:
 
    @arr = $dbh->dbnextrow;		# read results
@@ -183,7 +187,7 @@ DBPROCESS is set:
      take some appropriate action...
    }
 
-dbnextrow can also return a hash keyed on the column name:
+dbnextrow() can also return a hash keyed on the column name:
 
    $dbh->dbcmd("select Name=name, Id = id from test_table");
    $dbh->dbsqlexec; $dbh->dbresults;
@@ -195,7 +199,7 @@ dbnextrow can also return a hash keyed on the column name:
 
 =item @dat = $dbh->dbretdata[$doAssoc])
 
-Retrieve value of the parameters marked as 'OUTPUT' in a stored
+Retrieve the value of the parameters marked as 'OUTPUT' in a stored
 procedure. If $doAssoc is non-0, then retrieve the data as an
 associative array with parameter name/value pairs.
 
@@ -209,7 +213,7 @@ Convert $string to a 'safer' version by inserting single or double
 quotes where appropriate, so that it can be passed to the dataserver
 without syntax errors. 
 
-The second argument to dbsafestr (normally B<DBSINGLE>, B<DBDOUBLE> or
+The second argument to dbsafestr() (normally B<DBSINGLE>, B<DBDOUBLE> or
 B<DBBOTH>) has been replaced with a literal ' or " (meaning B<DBSINGLE> or
 B<DBDOUBLE>, respectively). Omitting this argument means B<DBBOTH>.
 
@@ -245,7 +249,7 @@ handle) which sets the BCP IN flag to TRUE/FALSE.
 It is necessary to call BCP_SETL(TRUE) before opening the
 connection with which one wants to run a BCP IN operation.
 
-=item $state = bcp_getl()
+=item $state = bcp_getl
 
 Retrieve the current BCP flag status.
 
@@ -262,7 +266,7 @@ setting up translation
 information for each of the columns of the table being updated,
 obviating the use of the bcp_colfmt call.
 
-See examples, below.
+See EXAMPLES, below.
 
 =item $status = $dbh->bcp_sendrow(LIST)
 
@@ -348,12 +352,12 @@ the following exception:
 The routines which in the C version take pointers to arguments
 (in order to return values) return these values in an array instead:
 
-   status = dbmnyadd(dbproc, m1, m2, result) becomes
+   status = dbmnyadd(dbproc, m1, m2, &result) becomes
    ($status, $result) = $dbproc->dbmnyadd($m1, $m2)
 
 =back
 
-B<RPC Routines>
+B<RPC Routines:>
 
 B<NOTE:> Check out eg/rpc-example.pl for an example on how to use
 these calls.
@@ -370,7 +374,7 @@ DB-library manual for valid values for $option.
 Add a parameter to an RPC call initiated with dbrpcinit(). Please see
 the DB-library manual page for details & values for the parameters.
 
-B<NOTE:> All floaing point types (MONEY, FLOAT, REAL, DECIMAL, etc.)
+B<NOTE:> All floating point types (MONEY, FLOAT, REAL, DECIMAL, etc.)
 are converted to FLOAT before being sent to the RPC.
 
 =item $dbh->dbrpcsend
@@ -384,7 +388,7 @@ call $dbh->dbresults direcly after calling $dbh->dbrpcsend.
 
 Set the password for connecting to a remote server.
 
-=item dbrpwclr()
+=item dbrpwclr
 
 Clear all remote server passwords.
 
@@ -410,6 +414,8 @@ B<Two Phase Commit Routines:>
 
 =item $string = Sybase::DBlib::build_xact_string($xact_name, $service_name, $id)
 
+=item $status = $dbh->remove_xact($id, $site_count)
+
 Please see the Sybase documentation for this.
 
 B<NOTE:> These routines have not been thouroughly tested!
@@ -420,9 +426,9 @@ B<Exported Routines:>
 
 =over 8
 
-=item dberrhandle($err_handle)
+=item $old_handler = dberrhandle($err_handle)
 
-=item dbmsghandle($msg_handle)
+=item $old_handler = dbmsghandle($msg_handle)
 
 Register an error (or message) handler for DB-library to use. Handler
 examples can be found in B<sybutil.pl> in the Sybperl
@@ -444,7 +450,7 @@ Start recording all SQL sent to the server in file $filename.
 For DB-library 10.0+, determines which behaviour to adopt relative to
 new datatypes (such as NUMERIC, DECIMAL).
 
-=item dbversion()
+=item dbversion
 
 Returns a string identifying the version of DBlibrary that this copy
 of Sybperl was built with.
@@ -453,7 +459,7 @@ of Sybperl was built with.
 
 =item DBSETLNATLANG($language)
 
-=item $time = DBGETTIME()
+=item $time = DBGETTIME
 
 =item $time = dbsettime($seconds)
 
@@ -462,7 +468,7 @@ of Sybperl was built with.
 These utility routines are probably very seldom used. See the
 DB-library manual for an explanation of their use.
 
-=item dbexit()
+=item dbexit
 
 Tell DB-library that we're done. Once this call has been made, no
 further activity requiring DB-library can be performed in the current
@@ -480,10 +486,10 @@ certain strenghts of Perl.
 
 =item $dbh = new Sybase::DBlib user, pwd,...
 
-This is a synonym for Sybase::DBlib->dblogin(...), which we provide to
-be coherent with other Perl extension modules. It is also an accepted
+This is a synonym for Sybase::DBlib->dblogin(...), which I provide to
+be consistent with other Perl extension modules. It is also an accepted
 name for allocating a new object in many Object Oriented environments,
-so we feel that it has it's place here.
+so I feel that it has it's place here.
 
 =item $ret|@ret = $dbh->sql($cmd [, \&rowcallback])
 
@@ -504,18 +510,20 @@ run with a query that returns a large number of rows.
 
 =back
 
-B<Constants>
+B<Constants:>
+
+Most of the #defines from sybdb.h can be accessed as
+B<Sybase::DBlib::NAME> (eg B<Sybase::DBlib::STDEXIT>) Additional constants are:
 
 =over 8
 
-Most of the #defines from sybdb.h can be accessed as
-B<Sybase::DBlib::NAME> (eg B<Sybase::DBlib::STDEXIT>)
-Additional constants are
+=item $Sybase::DBlib::Version
 
-   $Sybase::DBlib::Version
-		The Sybperl version. Can be interpreted as a string or
-		as a number.
-   DBLIBVS      The version of I<DBlibrary> that sybperl was built against
+The Sybperl version. Can be interpreted as a string or as a number.
+
+=item DBLIBVS
+
+The version of I<DBlibrary> that sybperl was built against.
 
 =back
 
@@ -524,45 +532,59 @@ B<Status Variables:>
 A number of status variables and attributes are associated with each
 DBPROCESS. They can be accessed using the Perl hash table syntax:
 
-   $dbproc->{'Attribute Name'};
+   $dbh->{'Attribute Name'};
 
 The following attributes are currently defined:
 
-    dbNullIsUndef - If set, NULL results are returned as
-                    the Perl value 'undef' otherwise as the string "NULL".
-                    Default: set.
-    dbKeepNumeric - If set, numeric results are not
-                    converted to strings before returning the data to
-                    Perl.
-		    Default: set.
-    dbBin0x       - If set, BINARY results are preceeded
-		    by '0x' in the result.
-		    Default: unset.
+=over 8
+
+=item dbNullIsUndef
+
+If set, NULL results are returned as the Perl 'undef' value, otherwise
+as the string "NULL". B<Default:> set.
+
+=item dbKeepNumeric
+
+If set, numeric results are not converted to strings before returning
+the data to Perl. B<Default:> set.
+
+=item dbBin0x
+
+If set, BINARY results are preceeded by '0x' in the result. B<Default:> unset.
+
+=back
 
 The following status variables are defined:
 
-    DBstatus      - The return status of the last call
-		    to dbnextrow.
-    ComputeID     - The compute id of the current returned
-		    row. Is 0 if no compute by clause is currently being
-                    processed.
+=over 8
+
+=item DBstatus
+
+The return status of the last call to I<dbnextrow>.
+
+=item ComputeID
+
+The compute id of the current returned row. Is 0 if no I<compute by>
+clause is currently being processed.
+
+=back
 
 =head1 Examples
 
 B<BCP from program variables>
 
-   &BCP_SETL($DBTRUE);
-   $dbproc = Sybase::DBlib::dblogin();
-   $dbproc->bcp_init("test.dbo.t2", '', 'bcp.err', $DB_IN);
-   $dbproc->bcp_meminit(3);   # we wish to copy three columns into
+   &BCP_SETL(TRUE);
+   $dbh = Sybase::DBlib->dblogin(User, Password);
+   $dbh->bcp_init("test.dbo.t2", '', 'bcp.err', DB_IN);
+   $dbh->bcp_meminit(3);   # we wish to copy three columns into
 			   # the 't2' table
    while(<>)
    {
 	chop;
 	@dat = split(' ', $_);
-	$dbproc->bcp_sendrow(@dat);
+	$dbh->bcp_sendrow(@dat);
    }
-   $ret = &bcp_done($dbproc);
+   $ret = $dbh->bcp_done;
 
 B<Using the sql() routine>
 
@@ -592,7 +614,7 @@ older versions of sybperl is essential.
 
 The sybperl 1.0xx man page is included in this package in pod/sybperl-1.0xx.man
 
-This package is layered on top of the Sybase::DBlib package, and could
+Sybase::Sybperl is layered on top of the Sybase::DBlib package, and could
 therefore suffer a small performance penalty.
 
 =head1 Sybase::CTlib
@@ -600,11 +622,15 @@ therefore suffer a small performance penalty.
 The CT-library module has been written in colaboration with Sybase. It
 is still in Beta.
 
-In this version, the Sybase DATETIME and MONEY datatypes are kept in
-their native format. This means that it is not necessary to call
-cs_calc() to add two MONEY values together, for example. See the
+In this version, the Sybase DATETIME, MONEY and NUMERIC datatypes
+B<can> be kept in their native format. This means that certain
+properties that are inherent in the Sybase represenation (such as the
+precision of NUMERIC or MONEY data items) are preserved, and that such
+variables can be manipulated without losing any information. This
+behaviour is controlled via specific attributes that can be set
+globally for all connections or on a per connection basis. See the
 description of the Sybase::CTlib::DateTime and Sybase::CTlib::Money
-classes below.
+classes below, and the Attributes section below.
 
 =head1 DESCRIPTION
 
@@ -638,7 +664,7 @@ B<NOTE:> You should only need to call ct_command()/ct_send() directly
 if you want to do RPCs or cursor operations. For straight queries you
 should use ct_execute() or ct_sql() instead.
 
-=item $status = $dbh->ct_send()
+=item $status = $dbh->ct_send
 
 Send the current command buffer to the server for execution.
 
@@ -661,7 +687,7 @@ See also the description of ct_fetchable() below.
 The $status value takes the following values: CS_SUCCEED,
 CS_END_RESULTS, CS_FAIL, CS_CANCELED.
 
-=item @names = $dbh->ct_col_names()
+=item @names = $dbh->ct_col_names
 
 Retrieve the column names of the current query. If the current query
 is not a select statement, then an empty array is returned.
@@ -682,15 +708,15 @@ An empty array is returned if there is no data to fetch.
 =item $dbh->ct_cancel($type)
 
 Issue an attention signal to the server about the current
-transaction. If $type == CS_CANCEL_ALL, then cancels the currend
+transaction. If $type == CS_CANCEL_ALL, then cancels the current
 command immediately. If $type == CS_CANCEL_ATTN, then discard all
 results when next time the application reads from the server.
 
-=item ct_callback($type, $cb_func)
+=item $old_cb = ct_callback($type, $cb_func)
 
 Install a callback routine. Valid callback types are CS_CLIENTMSG_CB
 and CS_SERVERMSG_CB. Returns a reference to the previously installed
-callback of the specified type, or undef if no callback of that type
+callback of the specified type, or I<undef> if no callback of that type
 exists. Passing undef as $cb_func unsets the callback for that type.
 
 =item $res_info = $dbh->ct_res_info($info_type)
@@ -719,10 +745,10 @@ CS_CHAR_TYPE if $param is a string
 
 Initiate a cursor command. Usage is similar to the CTlibrary
 ct_cursor() call, except that when in C you would pass NULL as the
-value for $name or $text you pass the special Perl value undef
+value for $name or $text you pass the special Perl value I<undef>
 instead.
 
-See Sybase/eg/ct_cursor.pl for an example.
+See eg/ct_cursor.pl for an example.
 
 =item $ret = $dbh->ct_param(\%datafmt)
 
@@ -741,11 +767,11 @@ The hash should be used like this:
 
   $dbh->ct_param(\%param);
 
-Note that $dbh->ct_param() converts all parameter types to either
+Note that ct_param() converts all parameter types to either
 CS_CHAR_TYPE, CS_FLOAT_TYPE, CS_DATETIME_TYPE, CS_MONEY_TYPE or
 CS_INT_TYPE.
 
-See Sybase/eg/ct_param.pl for an example.
+See eg/ct_param.pl for an example.
 
 =item $ret|@ret = $dbh->ct_sql($cmd [, \&rowcallback])
 
@@ -784,7 +810,7 @@ Use like this:
 
 =back
 
-=head1 EXAMPLE
+=head1 EXAMPLES
 
     #!/usr/local/bin/perl
 
@@ -850,9 +876,58 @@ Use like this:
 	printf STDERR "Message String: %s\n", $msg;  CS_SUCCEED;
     }
 
-    
+=head1 ATTRIBUTES
+
+The behaviour of certain aspects of the Sybase::CTlib module can be
+controled via global or connection specific attributes. The global
+attributes are stored in the %Sybase::CTlib::Att variable, and the
+connection specific attributes are stored in the $dbh. To set a global
+attribute, you would code
+
+     $Sybase::CTlib::Att{'AttributeName'} = value;
+
+and to set a connection specific attribute you would code
+
+     $dbh->{"AttributeName'} = value;
+
+B<NOTE!!!> Global attribute setting changes do not affect existing
+connections, and changing an attribute inside a ct_fetch() does B<not>
+change the behaviour of the data retrieval during that ct_fetch()
+loop.
+
+The following attributes are currently defined:
+
+=over 8
+
+=item UseDateTime
+
+If TRUE, then keep B<DATETIME> data retrieved via ct_fetch() in native
+format instead of converting the data to a character string. Default:
+FALSE.
+
+=item UseMoney
+
+If TRUE, keep B<MONEY> data retrieved via ct_fetch() in native format
+instead of converting the data to double precision floating
+point. Default: FALSE.
+
+=item UseNumeric
+
+If TRUE, keep B<NUMERIC> or B<DECIMAL> data retrieved via ct_fetch()
+in native format, instead of converting to double precision floating
+point. Default: FALSE.
+
+=item MaxRows
+
+If non-0, limit the number of data rows that can be retrieve via
+ct_sql(). Default: 0.
+
+=back
+        
 =head1 Special handling of DATETIME, MONEY & NUMERIC/DECIMAL values
 
+B<NOTE:> This feature is turned off by default for performance
+reasons. See the preceeding section on how to turn it on.
 
 The Sybase::CTlib module includes special features to handle
 B<DATETIME>, B<MONEY>, and B<NUMERIC/DECIMAL> values in their native
@@ -887,36 +962,52 @@ of these types you call:
 
 The B<DateTime> class defines the following methods:
 
-    $date->str		   Convert to string
-    @arr = $date->crack	   'Crack' the date into its components
-    $date->cmp($date2)	   Compare $date with $date2.
-    $date2 = $date->calc($days, $msecs)
-		           Add or substract $days and $msecs from
-			   $date, and returns the new date.
-    ($days, $msecs) = $date->diff($date2)
-			   Compute the difference, in $days and
-			   $msecs between $date and $date2.
-    $val = $date->info($datepart)
-			   Calls cs_dt_info to return the string
-			   representation for a datepart. Valid
-			   dateparts are CS_MONTH, CS_SHORTMONTH
-			   and CS_DAYNAME.
-    $time = $date->mktime
-    $time = $date->timelocal
-    $time = $date->timegm
-			   Converts a Sybase B<DATETIME> value to a
-			   Unix B<time_t> value. The B<mktime> and
-			   B<timelocal> methods assumes the date is
-			   stored in local time, B<timegm> assumes
-			   GMT. The B<mktime> method uses the POSIX
-			   module.
-			   
+=over 8
+
+=item $date->str
+
+Convert to string (calls cs_convert()).
+
+=item @arr = $date->crack
+
+'Crack' the date into its components.
+
+=item $date->cmp($date2)
+
+Compare $date with $date2.
+
+=item $date2 = $date->calc($days, $msecs)
+
+Add or substract $days and $msecs from $date, and returns the new
+date.
+
+=item ($days, $msecs) = $date->diff($date2)
+
+Compute the difference, in $days and $msecs between $date and $date2.
+
+=item $val = $date->info($datepart)
+
+Calls cs_dt_info to return the string representation for a
+datepart. Valid dateparts are CS_MONTH, CS_SHORTMONTH and CS_DAYNAME.
+
+=item $time = $date->mktime
+
+=item $time = $date->timelocal
+
+=item $time = $date->timegm
+
+Converts a Sybase B<DATETIME> value to a Unix B<time_t> value. The
+B<mktime> and B<timelocal> methods assumes the date is stored in local
+time, B<timegm> assumes GMT. The B<mktime> method uses the POSIX
+module.
+
+=back
     
 Both the B<str> and the B<cmp> methods will be called transparently
 when they are needed, so that
 
     print "$date"
-    
+
 will print the date string correctly, and
 
     $date1 cmp $date2
@@ -943,13 +1034,30 @@ Open Server Common Libraries Reference Manual, chap. 2>.
 
 The B<Money> and B<Numeric> classes define these methods
 
-    $mny->str		      Convert to string
-    $mny->num		      Convert to a floating point number
-    $mny->cmp($mny2)	      Compare two Money or Numeric values
-    $mny->set($number)	      Set the value of $mny to $number
-    $mny->calc($mny2, $op)    Perform the calculation specified by $op
-			      on $mny and $mny2. $op is one of '+',
-			      '-', '*' or '/'.
+=over 8
+
+=item $mny->str
+
+Convert to string (calls cs_convert()).
+
+=item $mny->num
+
+Convert to a floating point number (calls cs_convert()).
+
+=item $mny->cmp($mny2)
+
+Compare two Money or Numeric values.
+
+=item $mny->set($number)
+
+Set the value of $mny to $number.
+
+=item $mny->calc($mny2, $op)
+
+Perform the calculation specified by $op on $mny and $mny2. $op is one
+of '+', '-', '*' or '/'.
+
+=back
 
 As with the B<DateTime> class, the B<str> and B<cmp> methods will be
 called automatically for you when required. In addition, you can
@@ -974,17 +1082,19 @@ initializing value. For example, $num = $dbh->newnumeric(11.111) will
 produce an item with a I<SCALE> of 3 and a I<PRECISION> of 5. This is
 totally transparent to the user.
 
+=head1 ACKNOWLEDGEMENTS
 
+Larry Wall - for Perl :-)
 
-=head1 ACKNOWLEDGEMENT
-
-    Larry Wall - for Perl :-)
-    Tim Bunce & Andreas Koenig - for all the work on MakeMaker
+Tim Bunce & Andreas Koenig - for all the work on MakeMaker
 
 =head1 AUTHORS
 
-    Michael Peppler (mpeppler@itf.ch)
-    Dave Bowen & Amy Lin for Sybase::CTlib
-    Jeffrey Wong for the DBMONEY routines
-    Numerous folks have contributed ideas and bug fixes for which
-    they have my undying thanks :-)
+Michael Peppler E<lt>F<mpeppler@itf.ch>E<gt>
+
+Dave Bowen & Amy Lin for help with Sybase::CTlib.
+
+Jeffrey Wong for the Sybase::DBlib DBMONEY routines.
+
+Numerous folks have contributed ideas and bug fixes for which they
+have my undying thanks :-) 

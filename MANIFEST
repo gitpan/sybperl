@@ -1,3 +1,4 @@
+CHANGES
 CONFIG
 CTlib/CTlib.pm
 CTlib/CTlib.xs
@@ -11,13 +12,11 @@ DBlib/README
 DBlib/t/dblib.t
 FAQ
 MANIFEST
-MANIFEST.SKIP
 Makefile.PL
 PWD
 README
 README-2.0
 SPR
-Sybase.xs
 Sybperl/Makefile.PL
 Sybperl/README
 Sybperl/Sybperl.pm
@@ -51,5 +50,5 @@ pod/Makefile
 pod/README
 pod/sybperl.pod
 pod/sybperl-1.0xx.man
-static.test
+
 

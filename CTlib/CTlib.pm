@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# @(#)CTlib.pm	1.10	10/27/95
+# @(#)CTlib.pm	1.13	1/5/96
 
 # Copyright (c) 1995
 #   Michael Peppler
@@ -70,7 +70,7 @@ sub timegm {
     $ret = Time::Local::timegm($data[7], $data[6], $data[5], $data[2],
 			       $data[1], $data[0]-1900);
 }
-    
+
 
 package Sybase::CTlib::Money;
 
@@ -180,6 +180,42 @@ sub n_div {
     $left->calc($right, '/', $order);
 }
 
+package Sybase::CTlib::Att;
+
+use Carp;
+
+sub TIEHASH { bless {UseDateTime => 0,
+		 UseMoney => 0,
+		 UseNumeric => 0,
+		 MaxRows => 0}
+	  }
+sub FETCH { 
+    return $_[0]->{$_[1]} if (exists $_[0]->{$_[1]});
+    return undef;
+}
+ 
+sub FIRSTKEY {
+    each %{$_[0]};
+}
+
+sub NEXTKEY {
+    each %{$_[0]};
+}
+
+sub EXISTS{ 
+     exists($_[0]->{$_[1]});
+}
+
+sub STORE {
+    croak("'$_[1]' is not a valid Sybase::CTlib attribute") if(!defined($_[0]->{$_[1]}));
+    $_[0]->{$_[1]} = $_[2];
+}
+
+sub readonly { croak "\%Sybase::CTlib::Att is read-only\n" }
+
+sub DELETE{ &readonly }
+sub CLEAR { &readonly }
+
 
 
 package Sybase::CTlib;
@@ -187,6 +223,15 @@ package Sybase::CTlib;
 require Exporter;
 require AutoLoader;
 require DynaLoader;
+
+# This does not work with 5.001 (produces a lot of 'subroutine redefined'
+# warnings...
+if($] >= 5.002) {
+eval '
+use subs qw(CS_SUCCEED CS_ROW_RESULT CS_PARAM_RESULT CS_STATUS_RESULT
+	    CS_CURSOR_RESULT CS_COMPUTE_RESULT CS_CANCEL_CURRENT);
+'
+}
 
 @ISA = qw(Exporter AutoLoader DynaLoader);
 # Items to export into callers namespace by default
@@ -788,6 +833,13 @@ require DynaLoader;
 @EXPORT_OK = qw(
 );
 
+#%Att = (UseDateTime => 0,
+#	UseMoney => 0,
+#	UseNumeric => 0,
+#	MaxRows => 0);
+
+tie %Att, Sybase::CTlib::Att;
+
 sub AUTOLOAD {
     local($constname);
     ($constname = $AUTOLOAD) =~ s/.*:://;
@@ -812,12 +864,9 @@ bootstrap Sybase::CTlib;
 # Preloaded methods go here.  Autoload methods go after __END__, and are
 # processed by the autosplit program.
 
-sub new
-{
-    my($x) = ct_connect(@_);
+# Alias ct_connect to new:
 
-    $x;
-}
+*new = \&ct_connect;
 
 
 1;
@@ -828,19 +877,24 @@ sub ct_sql
 {
     my($db, $cmd, $sub) = @_;
     my(@res, @data, $res_type, $rc);
+    my($count, $max);
 
-    ($db->ct_execute($cmd) == &CS_SUCCEED) || return undef;
+    ($db->ct_execute($cmd) == CS_SUCCEED) || return undef;
 
-    while(($rc = $db->ct_results($res_type)) == &CS_SUCCEED) {
+    $max = $db->{'MaxRows'};
+
+    while(($rc = $db->ct_results($res_type)) == CS_SUCCEED) {
 	next if($db->ct_fetchable($res_type) == 0);
 
         while (@data = $db->ct_fetch) {
             if (defined $sub) {
                 &$sub(@data);
             } else {
+		last if($max && ++$count > $max);
                 push(@res, [@data]);
             }
         }
+	$db->ct_cancel(CS_CANCEL_CURRENT) if($max && $count > $max);
     }
     wantarray ? @res : \@res;  # return the result array
 }
@@ -849,9 +903,9 @@ sub ct_fetchable
 {
     my($db, $restype) = @_;
     
-   ($restype == &CS_ROW_RESULT ||
-    $restype == &CS_PARAM_RESULT ||
-    $restype == &CS_STATUS_RESULT ||
-    $restype == &CS_CURSOR_RESULT ||
-    $restype == &CS_COMPUTE_RESULT);
+   ($restype == CS_ROW_RESULT ||
+    $restype == CS_PARAM_RESULT ||
+    $restype == CS_STATUS_RESULT ||
+    $restype == CS_CURSOR_RESULT ||
+    $restype == CS_COMPUTE_RESULT);
 }

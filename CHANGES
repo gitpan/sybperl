@@ -1,0 +1,59 @@
+	@(#)CHANGES	1.3	1/5/96
+
+2.01	For use with either Perl 5.001m or Perl 5.002.
+
+	New Features:
+
+	CTlib DateTime, Money and Numeric data handling is now done
+	either in native mode (ie the data is converted to char
+	strings or floating precision only when needed which is
+	sometimes slow) or in 'convert' mode (all data is retrieved in
+	string or floating point format). The default is to retrieve
+	data in 'convert' mode. See the 'Attributes' sub-section in
+	the CTlib section of the manual (pod/sybperl.pod)
+
+	Bug Fixes
+
+	BugId	   Description
+
+	140	   CTlib uses excessive amounts of memory.
+
+	The Makefile.PLs have been updated so that they work both with
+	5.001m (the version I recommend for production use at this
+	point) and 5.002 beta.
+	
+2.0b	Updated to work with Perl 5.002 beta. This version *requires*
+	Perl 5.002beta1f, and MakeMaker.pm 5.14.
+
+	Bug fixes:
+
+	BugId	    Description
+
+	132	    Bizarre copy of CODE in subroutine entry at
+		    t/dblib.t line 93.
+	138	    Problems installing sybperl after upgrading to
+		    5.002 beta 1f.
+
+	In addition, the 'undef' bug that I uncovered in sybperl 2b3
+	has been fixed, so the -DUNDEF_BUG is not necessary anymore.
+
+	The MakeMaker utility has progressed, making the existence of
+	the infamous empty Sybase.xs file unnecessary.
+
+2.0a	Bug fixes:
+
+	BugId	    Description
+
+	130	    CTlib/t/ctlib.t test fails on AIX
+	136	    CTlib fails test on an Onyx running Irix
+	137	    dbnextrow core dumps when retrieve row with binary
+		    length > 140
+	135	    Behaviour change of DBlib::sql not documented in README
+	133	    MakeMaker 5.03 doesn't work with Sybperl.
+
+	Additional functionality:
+
+	DBlib::DBDEAD and DBlib::remove_xact have been added (thanks
+	to Joel Truher).
+
+2.0	Base release.

@@ -1,4 +1,4 @@
-		     @(#)README	1.17	10/30/95
+		     @(#)README	1.19	1/5/96
 
 			   sybperl 2.0
 	
@@ -25,12 +25,10 @@
 Please read the UPGRADE file if your previous version of sybperl was
 1.0xx.
 
-This version requires Perl5.001. The 'official' unofficial patches 1a
-through 1m are recommended (sybperl may fail to build cleanly without
-these patches).
-You can get a pre-patched version of Perl5.001m from most Perl source
-archives (for example:
-ftp://ftp.delphi.com/pub/mirrors/packages/perl/ftp.perl.com/src).
+Please read the CHANGES file if you are upgrading from a previous
+version of sybperl 2.x.
+
+This version requires Perl 5.001m, and works fine with 5.002.
 
 There are three modules in this distribution: Sybase::DBlib,
 Sybase::Sybperl and Sybase::CTlib.
@@ -55,18 +53,19 @@ Installation:
 
 Before you start, you have to consider the following issues:
 
-a) Is Perl 5.001 (or later) already installed at your site?
+a) Is Perl 5.001m (or later) already installed at your site?
 
-   If Perl 5.001 is the default production version of Perl at your
-   site, then i recommend that you unpack the sybperl distribution
-   outside of the Perl source tree. The sybperl build process will
-   normally be able to find the pieces it needs this is the case, and
-   it will be easier for you to manage upgrades to Perl and/or to the
-   add-on extensions that you may have if they are kept separate.
+   If Perl 5.001m (or later) is the default production version of Perl
+   at your site, then I recommend that you unpack the sybperl
+   distribution outside of the Perl source tree. The sybperl build
+   process will normally be able to find the pieces it needs if this
+   is the case, and it will be easier for you to manage upgrades to
+   Perl and/or to the add-on extensions that you may have if they are
+   kept separate.
 
-   If Perl 5.001 is not yet the default version of Perl, then you
-   should unpack the sybperl distribution in the ext/ directory of the
-   Perl 5.001 source tree.
+   If the Perl 5.001m (or later) is not yet the default version of
+   Perl, then you should unpack the sybperl distribution in the ext/
+   directory of the Perl 5.001m (or 5.002) source tree.
 
 b) Do you want the Sybase modules to be dynamically loadable?
 
@@ -96,43 +95,21 @@ Once you have answered these two questions, you can proceed:
    1) Unpack the package.
       See comments under a) above.
       
-      Note that even if you don't want to install Perl 5.001 as a
+      Note that even if you don't want to install Perl 5.002 as a
       production version right now, you can still install it in some
       other place, and access that version by setting your PATH
-      variable accordingly (I have a production version Perl5.001m
-      under /usr/local/{bin,lib} and a debug version of Perl5.001m
+      variable accordingly (I have a production version Perl5.002
+      under /usr/local/{bin,lib} and a debug version of Perl5.002
       under /f2/{bin, lib} and change my path when I need to test
       things with debugging turned on).
       
    2) Edit CONFIG
       See comments under b) above regarding dynamic vs static loading.
       
-      
-      NOTE: I have discovered what I think is a bug in Perl 5.001m
-      which shows up when logically testing an array where all the
-      elements are 'undef'. This bug can show up when you retrieve
-      rows using dbsqlexec() or ct_fetch() using a while loop: if you
-      retrieve a row where all the column values are NULL then the
-      while loop exits. The short-term workaround (which I admit is
-      pretty crude) consist in adding an additional non-null element
-      to the results array when all the column values are NULL. This
-      workaround is enabled by defining UNDEF_BUG (which is enabled by
-      default in the CONFIG file).
-      This bug does NOT show up if you retrieve the columns using
-      associative arrays instead of normal arrays.
 
    3) Type: perl Makefile.PL
-      If you are building against a vanilla (unpatched) Perl5.001
-      release you will get the following warning:
-	  'dist is not a known MakeMaker parameter name.
-      This can safely be ignored.
       
    4) Type: make
-      Again, if you are building against a vanilla Perl5.001 release
-      you will get a couple of redefinition warnings:
-	  Subroutine mkbootstrap redefined at Makefile.PL line 4
-	  Subroutine mksymlists redefined at Makefile.PL line 4
-      This can be ignored.
 
    6) Edit PWD
       Enter the user id and password that you want to use to run the
@@ -167,8 +144,8 @@ In case of problems:
 First, read the FAQ file in the sybperl distribution.
 
 Second, fire off an e-mail to me (mpeppler@itf.ch) or to the Sybperl
-mailing list (sybperl-list@itf.ch) with a *full* description of what
-doesn't work, including version numbers of Perl and sybperl, the
+mailing list (sybperl-l@trln.lib.unc.edu) with a *full* description of
+what doesn't work, including version numbers of Perl and sybperl, the
 hardware and OS version, and the Sybase Open Client version you are
 using.
 
@@ -184,8 +161,9 @@ hope is better, though I agree that it could still be improved quite a
 bit.
 
 There is a mailing list for discussing sybperl related questions
-(sybperl-list@itf.ch). Send a message to sybperl-list-request@itf.ch
-with the word 'subscribe' in the body to subscribe to the list.
+(sybperl-l@trln.lib.unc.edu). Send a message to
+sybperl-l-request@trln.lib.unc.edu with 'add "your name"
+<your@email.address>' in the body to subscribe to the list.
 
 
 
@@ -208,5 +186,5 @@ script in the Perl source directory.
 Comments, criticism, et.al. VERY welcome!
 
 Michael Peppler - mpeppler@itf.ch	Phone: +4122 818 3021
-ITF Management SA			Fax:   +4122 312 1325
+ITF Management SA			Fax:   +4122 312 1322
 

@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# @(#)DBlib.pm	1.17	10/27/95
+# @(#)DBlib.pm	1.19	1/5/96
 
 # Copyright (c) 1991-1995
 #   Michael Peppler
@@ -17,6 +17,14 @@ require Exporter;
 require AutoLoader;
 require DynaLoader;
 use Carp;
+
+# This does not work with 5.001 (produces a lot of 'subroutine redefined'
+# warnings...
+if($] >= 5.002) {
+    eval '
+use subs qw(SUCCEED FAIL NO_MORE_RESULTS);
+'
+}
 
 @ISA = qw(Exporter AutoLoader DynaLoader);
 
@@ -99,13 +107,8 @@ bootstrap Sybase::DBlib;
 # Preloaded methods go here.  Autoload methods go after __END__, and are
 # processed by the autosplit program.
 
-# convenience routine...
-sub new
-{
-    my($x) = dblogin(@_);
-
-    $x;
-}
+# Alias dblogin to new:
+*new = \&dblogin;
 
 
 1;
@@ -117,21 +120,19 @@ sub dbsucceed
     my($abort) = shift;
     my($ret);
     
-    if(($ret = $self->dbsqlexec) == &SUCCEED)
+    if(($ret = $self->dbsqlexec) == SUCCEED)
     {
 	$ret = $self->dbresults;
     }
 
-    croak "dbsucceed failed\n" if($abort && $ret == &FAIL);
+    croak "dbsucceed failed\n" if($abort && $ret == FAIL);
 
     $ret;
 }
 
 sub dbclose
 {
-    my $self = shift;
-
-    undef($self);
+    undef($_[0]);
 }
 
 
@@ -144,7 +145,7 @@ sub sql				# Submitted by Gisle Aas
 
     my @res;
     my @data;
-    while($db->dbresults != &NO_MORE_RESULTS) {
+    while($db->dbresults != NO_MORE_RESULTS) {
         while (@data = $db->dbnextrow) {
             if (defined $sub) {
                 &$sub(@data);
@@ -164,7 +165,7 @@ sub r_sql {
 
     my @res;
     my @data;
-    while($db->dbresults != &NO_MORE_RESULTS) {
+    while($db->dbresults != NO_MORE_RESULTS) {
         while (@data = $db->dbnextrow) {
             if (defined $sub) {
                 &$sub(@data);

@@ -1,5 +1,5 @@
 /* -*-C-*-
- *	@(#)CTlib.xs	1.13	10/31/95
+ *	@(#)CTlib.xs	1.17	1/5/96
  */
 
 
@@ -71,21 +71,6 @@ typedef struct conInfo
     CS_INT lastResult;
 } ConInfo;
 
-typedef struct dateInfo
-{
-    ConInfo *info;		/* This is not needed! */
-    CS_DATETIME date;
-} DateInfo;
-
-typedef struct moneyInfo
-{
-    CS_MONEY mn_val;
-} MoneyInfo;
-
-typedef struct numericInfo
-{
-    CS_NUMERIC mn_val;
-} NumericInfo;
 
 typedef struct
 {
@@ -98,15 +83,55 @@ static CallBackInfo client_cb 	= { 0 } ;
 typedef enum hash_key_id
 {
     HV_coninfo,
+    HV_use_datetime,
+    HV_use_money,
+    HV_use_numeric,
+    HV_max_rows,
     HV_compute_id,
 } hash_key_id;
 
 static char *hash_keys[] =
-{ "__coninfo__", "ComputeId",};
+{ "__coninfo__", "UseDateTime", "UseMoney", "UseNumeric",
+      "MaxRows", "ComputeId", };
 
 static CS_CONTEXT *context;
 
 static char scriptName[255];
+
+static char DateTimePkg[]="Sybase::CTlib::DateTime";
+static char MoneyPkg[]="Sybase::CTlib::Money";
+static char NumericPkg[]="Sybase::CTlib::Numeric";
+
+static SV **my_hv_fetch _((HV*, hash_key_id, int));
+static SV **my_hv_store _((HV*, hash_key_id, SV*, int));
+static ConInfo *get_ConInfo _((SV*));
+static CS_DATETIME to_datetime _((char*));
+static char *from_datetime _((CS_DATETIME*));
+static SV *newdate _((CS_DATETIME*));
+static CS_MONEY to_money _((char *));
+static char *from_money _((CS_MONEY*));
+static CS_FLOAT money2float _((CS_MONEY *));
+static SV *newmoney _((CS_MONEY*));
+static CS_NUMERIC to_numeric _((char*));
+static char *from_numeric _((CS_NUMERIC*));
+static CS_FLOAT numeric2float _((CS_NUMERIC *));
+static SV *newnumeric _((CS_NUMERIC*));
+static CS_CONNECTION *get_con _((SV*));
+static CS_COMMAND *get_cmd _((SV*));
+static void cleanUp _((ConInfo *));
+static char *GetAggOp _((CS_INT));
+static CS_INT display_dlen _((CS_DATAFMT *));
+static CS_RETCODE display_header _((CS_INT, CS_DATAFMT*));
+static CS_RETCODE describe _((ConInfo *, SV*, int));
+static CS_RETCODE fetch_data _((CS_COMMAND*));
+static CS_RETCODE clientmsg_cb _((CS_CONTEXT*, CS_CONNECTION*, CS_CLIENTMSG*));
+static CS_RETCODE servermsg_cb _((CS_CONTEXT*, CS_CONNECTION*, CS_SERVERMSG*));
+static CS_RETCODE notification_cb _((CS_CONNECTION*, CS_CHAR*, CS_INT));
+static void initialize _((void));
+static int not_here _((char*));
+static double constant _((char*,int));
+
+
 
 
 static SV
@@ -211,33 +236,26 @@ from_datetime(dt)
 
 
 static SV
-*newdate(dbp, dt)
-    SV *dbp;
+*newdate(dt)
     CS_DATETIME *dt;
 {
-    ConInfo *info = get_ConInfo(dbp);
-    SV *rv;
     SV *sv;
-    HV *stash;
-    DateInfo *value;
-    char *package="Sybase::CTlib::DateTime";
+    CS_DATETIME *ptr;
+    char *package=DateTimePkg;
 
-    New(902, value, 1, DateInfo);
-    value->info = info;
+    New(902, ptr, 1, CS_DATETIME);
+
     if(dt)
-	value->date = *(CS_DATETIME *)dt;
+	*ptr = *(CS_DATETIME *)dt;
     else
     {
 	/* According to the Sybase docs I can initialize the
            CS_DATETIME entry to be Jan 1 1900 00:00 by setting all the
            fields to 0. */
-	memset(&value->date, 0, sizeof(CS_DATETIME));
+	memset(ptr, 0, sizeof(CS_DATETIME));
     }
-    sv = newSViv((IV)value);
-    rv = newRV((SV*)sv);
-    stash = gv_stashpv(package, TRUE);
-    sv = sv_2mortal(sv_bless(rv, stash));
-
+    sv = newSV(0);
+    sv_setref_pv(sv, package, (void*)ptr);
     return sv;
 }
 
@@ -330,27 +348,19 @@ money2float(mn)
 }
 
 static SV
-*newmoney(dbp, mn)
-    SV *dbp;
+*newmoney(mn)
     CS_MONEY *mn;
 {
-    SV *rv;
     SV *sv;
-    HV *stash;
-    MoneyInfo *value;
-    char *package="Sybase::CTlib::Money";
+    CS_MONEY *value;
+    char *package=MoneyPkg;
 
-    New(902, value, 1, MoneyInfo);
+    Newz(902, value, 1, CS_MONEY);
     if(mn)
-	value->mn_val = *(CS_MONEY *)mn;
-    else
-    {
-	memset(&value->mn_val, 0, sizeof(CS_MONEY));
-    }
-    sv = newSViv((IV)value);
-    rv = newRV((SV*)sv);
-    stash = gv_stashpv(package, TRUE);
-    sv = sv_2mortal(sv_bless(rv, stash));
+	*value = *mn;
+
+    sv = newSV(0);
+    sv_setref_pv(sv, package, (void*)value);
 
     return sv;
 }
@@ -388,10 +398,6 @@ to_numeric(str)
     else
 	destfmt.scale = 0;
     destfmt.precision = strlen(str);
-#if 0
-    warn("input string: %s, scale %d precision %d", str, destfmt.scale,
-	 destfmt.precision);
-#endif
     
     if (cs_convert(context, &srcfmt, str, &destfmt,
 		   &mn, &reslen) != CS_SUCCEED)
@@ -455,85 +461,21 @@ numeric2float(mn)
     return 0.0;
 }
 
-#if 0
-static CS_MONEY *
-numeric2money(mn)
-    CS_NUMERIC *mn;
-{
-    CS_DATAFMT srcfmt, destfmt;
-    CS_MONEY ret;
-    
-    memset(&srcfmt, 0, sizeof(srcfmt));
-    srcfmt.datatype  = CS_NUMERIC_TYPE;
-    srcfmt.locale    = NULL;
-    srcfmt.maxlength = sizeof(CS_NUMERIC);
-	    
-    memset(&destfmt, 0, sizeof(destfmt));
-	    
-    destfmt.maxlength = sizeof(CS_MONEY);
-    destfmt.datatype  = CS_MONEY_TYPE;
-    destfmt.format    = CS_FMT_NULLTERM;
-    destfmt.locale    = NULL;
-	    
-    if (cs_convert(context, &srcfmt, mn, &destfmt,
-		   &ret, NULL) == CS_SUCCEED)
-	return &ret;
-
-    return NULL;
-}
-
-static CS_NUMERIC *
-money2numeric(mn)
-    CS_MONEY *mn;
-{
-    CS_DATAFMT srcfmt, destfmt;
-    CS_NUMERIC ret;
-    
-    memset(&srcfmt, 0, sizeof(srcfmt));
-    srcfmt.datatype  = CS_MONEY_TYPE;
-    srcfmt.locale    = NULL;
-    srcfmt.maxlength = sizeof(CS_MONEY);
-	    
-    memset(&destfmt, 0, sizeof(destfmt));
-	    
-    destfmt.scale = 4;
-    destfmt.precision = 20;
-    
-    destfmt.maxlength = sizeof(CS_NUMERIC);
-    destfmt.datatype  = CS_NUMERIC_TYPE;
-    destfmt.format    = CS_FMT_NULLTERM;
-    destfmt.locale    = NULL;
-	    
-    if (cs_convert(context, &srcfmt, mn, &destfmt,
-		   &ret, NULL) == CS_SUCCEED)
-	return &ret;
-
-    return NULL;
-}
-#endif
 
 static SV
-*newnumeric(dbp, mn)
-    SV *dbp;
+*newnumeric(mn)
     CS_NUMERIC *mn;
 {
-    SV *rv;
     SV *sv;
-    HV *stash;
-    NumericInfo *value;
-    char *package="Sybase::CTlib::Numeric";
+    CS_NUMERIC *value;
+    char *package=NumericPkg;
 
-    New(902, value, 1, NumericInfo);
+    Newz(902, value, 1, CS_NUMERIC);
     if(mn)
-	value->mn_val = *(CS_NUMERIC *)mn;
-    else
-    {
-	memset(&value->mn_val, 0, sizeof(CS_NUMERIC));
-    }
-    sv = newSViv((IV)value);
-    rv = newRV((SV*)sv);
-    stash = gv_stashpv(package, TRUE);
-    sv = sv_2mortal(sv_bless(rv, stash));
+	*value = *mn;
+
+    sv = newSV(0);
+    sv_setref_pv(sv, package, (void*)value);
 
     return sv;
 }
@@ -706,82 +648,6 @@ CS_DATAFMT	columns[];
     
     return CS_SUCCEED;
 }
-#if 0
-static CS_RETCODE
-display_column(context, colfmt, data, datalength, indicator)
-CS_CONTEXT	*context;
-CS_DATAFMT	*colfmt;
-CS_VOID 	*data;
-CS_INT		datalength;
-CS_SMALLINT	indicator;
-{
-    char		*null = "NULL";
-    char		*nc   = "NO CONVERT";
-    char		*cf   = "CONVERT FAILED";
-    CS_DATAFMT	srcfmt;
-    CS_DATAFMT	destfmt;
-    CS_INT		olen;
-    CS_CHAR		wbuf[MAX_CHAR_BUF];
-    CS_BOOL		res;
-    CS_INT		i;
-    CS_INT		disp_len;
-
-    if (indicator == CS_NULLDATA)
-    {
-	olen = strlen(null);
-	strcpy(wbuf, null);
-    }
-    else
-    {
-	cs_will_convert(context, colfmt->datatype, CS_CHAR_TYPE, &res);
-	if (res != CS_TRUE)
-	{
-	    olen = strlen(nc);
-	    strcpy(wbuf, nc);
-	}
-	else
-	{
-	    srcfmt.datatype  = colfmt->datatype;
-	    srcfmt.format    = colfmt->format;
-	    srcfmt.locale    = colfmt->locale;
-	    srcfmt.maxlength = datalength;
-	    
-	    memset(&destfmt, 0, sizeof(destfmt));
-	    
-	    destfmt.maxlength = MAX_CHAR_BUF;
-	    destfmt.datatype  = CS_CHAR_TYPE;
-	    destfmt.format    = CS_FMT_NULLTERM;
-	    destfmt.locale    = NULL;
-	    
-	    if (cs_convert(context, &srcfmt, data, &destfmt,
-			   wbuf, &olen) != CS_SUCCEED)
-	    {
-		olen = strlen(cf);
-		strcpy(wbuf, cf);
-	    }
-	    else
-	    {
-		/*
-		 ** output length include null
-		 ** termination
-		 */
-		olen -= 1;
-	    }
-	}
-    }
-    fprintf(stdout, "%s", wbuf);
-    fflush(stdout);
-    
-    disp_len = display_dlen(colfmt);
-    for (i = 0; i < (disp_len - olen); i++)
-    {
-	fputc(' ', stdout);
-    }
-    fflush(stdout);
-	
-    return CS_SUCCEED;
-}
-#endif
 
 static CS_RETCODE
 describe(info, dbp, restype)
@@ -791,6 +657,9 @@ describe(info, dbp, restype)
 {
     CS_RETCODE retcode;
     int i;
+    int use_datetime = 0;
+    int use_money = 0;
+    int use_numeric = 0;
     
     if((retcode = ct_res_info(info->cmd, CS_NUMDATA,
 			      &info->numCols, CS_UNUSED, NULL)) != CS_SUCCEED)
@@ -811,6 +680,7 @@ describe(info, dbp, restype)
     if(dbp)
     {
 	HV *hv;
+	SV **svp;
 	if(!SvROK(dbp))
 	    croak("connection parameter is not a reference");
 	hv = (HV *)SvRV(dbp);
@@ -828,6 +698,12 @@ describe(info, dbp, restype)
 	}
 	else
 	    my_hv_store(hv, HV_compute_id, (SV*)newSViv(0), 0);
+	if((svp = my_hv_fetch(hv, HV_use_datetime, FALSE)))
+	    use_datetime = SvIV(*svp);
+	if((svp = my_hv_fetch(hv, HV_use_money, FALSE)))
+	    use_money = SvIV(*svp);
+	if((svp = my_hv_fetch(hv, HV_use_numeric, FALSE)))
+	    use_numeric = SvIV(*svp);
     }
 
     for(i = 0; i < info->numCols; ++i)
@@ -881,6 +757,7 @@ describe(info, dbp, restype)
 	    
 	  case CS_REAL_TYPE:
 	  case CS_FLOAT_TYPE:
+	  DoFloat:;
 	    info->datafmt[i].maxlength = sizeof(CS_FLOAT);
 	    info->datafmt[i].datatype = CS_FLOAT_TYPE;
 	    info->datafmt[i].format   = CS_FMT_UNUSED;
@@ -905,6 +782,8 @@ describe(info, dbp, restype)
 		
 	  case CS_NUMERIC_TYPE:
 	  case CS_DECIMAL_TYPE:
+	    if(!use_numeric)
+		goto DoFloat;
 	    info->datafmt[i].maxlength = sizeof(CS_NUMERIC);
 	    info->datafmt[i].datatype = CS_NUMERIC_TYPE;
 	    info->datafmt[i].format   = CS_FMT_UNUSED;
@@ -917,6 +796,8 @@ describe(info, dbp, restype)
 	    
 	  case CS_MONEY_TYPE:
 	  case CS_MONEY4_TYPE:
+	    if(!use_money)
+		goto DoFloat;
 	    info->datafmt[i].maxlength = sizeof(CS_MONEY);
 	    info->datafmt[i].datatype = CS_MONEY_TYPE;
 	    info->datafmt[i].format   = CS_FMT_UNUSED;
@@ -929,6 +810,8 @@ describe(info, dbp, restype)
 	    
 	  case CS_DATETIME_TYPE:
 	  case CS_DATETIME4_TYPE:
+	    if(!use_datetime)
+		goto DoChar;
 	    info->datafmt[i].maxlength = sizeof(CS_DATETIME);
 	    info->datafmt[i].datatype = CS_DATETIME_TYPE;
 	    info->datafmt[i].format   = CS_FMT_UNUSED;
@@ -944,6 +827,7 @@ describe(info, dbp, restype)
 	  case CS_BINARY_TYPE:
 	  case CS_VARBINARY_TYPE:
 	  default:
+	  DoChar:;
 	    info->datafmt[i].maxlength =
 		display_dlen(&info->datafmt[i]) + 1;
 	    info->datafmt[i].datatype = CS_CHAR_TYPE;
@@ -1354,11 +1238,15 @@ initialize()
     if((sv = perl_get_sv("Sybase::CTlib::Version", TRUE)))
     {
 	char buff[256];
-	sprintf(buff, "This is sybperl, version %s\n\nSybase::CTlib version 1.13 10/31/95\tBeta\n\nCopyright (c) 1995 Michael Peppler\nPortions Copyright (c) 1995 Sybase, Inc.\n\n",
+	sprintf(buff, "This is sybperl, version %s\n\nSybase::CTlib version 1.17 1/5/96\tBeta\n\nCopyright (c) 1995 Michael Peppler\nPortions Copyright (c) 1995 Sybase, Inc.\n\n",
 		SYBPLVER);
 	sv_setnv(sv, atof(SYBPLVER));
 	sv_setpv(sv, buff);
 	SvNOK_on(sv);
+    }
+    if((sv = perl_get_sv("Sybase::CTlib::VERSION", TRUE)))
+    {
+	sv_setnv(sv, atof(SYBPLVER));
     }
 
     if((sv = perl_get_sv("0", FALSE)))
@@ -5028,8 +4916,8 @@ ct_connect(package="Sybase::CTlib", user=NULL, pwd=NULL, server=NULL, appname=NU
     CS_RETCODE retcode;
     CS_INT len;
     SV *rv;
-    SV *sv;
-    HV *hv;
+    SV *sv, **svp;
+    HV *hv, *Att;		/* That's to get at %Att in CTlib.pm */
     HV *stash;
 
     if((retcode = ct_con_alloc(context, &connection)) != CS_SUCCEED)
@@ -5088,10 +4976,23 @@ ct_connect(package="Sybase::CTlib", user=NULL, pwd=NULL, server=NULL, appname=NU
 	    info->numCols = 0;
 	    info->coldata = NULL;
 	    info->datafmt = NULL;
+
+	    Att = perl_get_hv("Sybase::CTlib::Att", FALSE);
 	
 	    hv = (HV*)sv_2mortal((SV*)newHV());
 	    sv = newSViv((IV)info);
 	    my_hv_store(hv, HV_coninfo, sv, 0);
+	    if(Att) {
+		if((svp = my_hv_fetch(Att, HV_use_datetime, 0)))
+		    my_hv_store(hv, HV_use_datetime, newSVsv(*svp), 0);
+		if((svp = my_hv_fetch(Att, HV_use_money, 0)))
+		    my_hv_store(hv, HV_use_money, newSVsv(*svp), 0);
+		if((svp = my_hv_fetch(Att, HV_use_numeric, 0)))
+		    my_hv_store(hv, HV_use_numeric, newSVsv(*svp), 0);
+		if((svp = my_hv_fetch(Att, HV_max_rows, 0)))
+		    my_hv_store(hv, HV_max_rows, newSVsv(*svp), 0);
+	    }
+	    
 	    rv = newRV((SV*)hv);
 	    stash = gv_stashpv(package, TRUE);
 	    ST(0) = sv_2mortal(sv_bless(rv, stash));
@@ -5113,7 +5014,7 @@ DESTROY(dbp)
     /* FIXME:
        must check for pending results, and maybe cancel those before
        dropping the cmd structure. */
-    
+
     ct_cmd_drop(info->cmd);
 
     if(info->type == CON_CONNECTION)
@@ -5316,13 +5217,13 @@ PPCODE:
 		    XPUSHs(sv_2mortal(newSViv(info->coldata[i].value.i)));
 		    break;
 		  case CS_DATETIME_TYPE:
-		    XPUSHs(newdate(dbp, &info->coldata[i].value.dt));
+		    XPUSHs(sv_2mortal(newdate(&info->coldata[i].value.dt)));
 		    break;
 		  case CS_MONEY_TYPE:
-		    XPUSHs(newmoney(dbp, &info->coldata[i].value.mn));
+		    XPUSHs(sv_2mortal(newmoney(&info->coldata[i].value.mn)));
 		    break;
 		  case CS_NUMERIC_TYPE:
-		    XPUSHs(newnumeric(dbp, &info->coldata[i].value.num));
+		    XPUSHs(sv_2mortal(newnumeric(&info->coldata[i].value.num)));
 		    break;
 		}
 #if defined(UNDEF_BUG)
@@ -5461,18 +5362,21 @@ CODE:
 	{
 	    name = SvPV(func, na);
 	    if((func = (SV*) perl_get_cv(name, FALSE)))
-		ci->sub = func;
+		if(ci->sub == (SV*) NULL)
+		    ci->sub = newSVsv(newRV(func));
+		else
+		    sv_setsv(ci->sub, newRV(func));
 	}
 	else
 	{
 	    if(ci->sub == (SV*) NULL)
 		ci->sub = newSVsv(func);
 	    else
-		SvSetSV(ci->sub, func);
+		sv_setsv(ci->sub, func);
 	}
     }
     if(ret)
-	ST(0) = sv_2mortal(newRV(ret));
+	ST(0) = sv_2mortal(ret);
     else
 	ST(0) = sv_newmortal();
 }
@@ -5580,9 +5484,6 @@ ct_param(dbp, sv_params)
 	datafmt.status = SvIV(*svp);
     
     svp = hv_fetch(hv, keys[k_value], strlen(keys[k_value]), FALSE);
-    /* FIXME:
-       decimal/numeric types are treated as double precision
-       floating point. */
     switch(datafmt.datatype)
     {
       case CS_BIT_TYPE:
@@ -5622,14 +5523,9 @@ ct_param(dbp, sv_params)
 	    datalen = datafmt.maxlength = CS_SIZEOF(CS_NUMERIC);
 	    if(svp)
 	    {
-		NumericInfo *di;
-		SV *sv;
-		
-		if(SvROK(*svp))
-		{
-		    sv = (SV *)SvRV(*svp);
-		    di = (NumericInfo *)SvIV(sv);
-		    v_num = di->mn_val;
+		if (sv_isa(*svp, NumericPkg)) {
+		    IV tmp = SvIV((SV*)SvRV(*svp));
+		    v_num = *(CS_NUMERIC *) tmp;
 		}
 		else
 		    v_num = to_numeric(SvPV(*svp, na));
@@ -5646,14 +5542,9 @@ ct_param(dbp, sv_params)
 	    datalen = datafmt.maxlength = CS_SIZEOF(CS_MONEY);
 	    if(svp)
 	    {
-		MoneyInfo *di;
-		SV *sv;
-		
-		if(SvROK(*svp))
-		{
-		    sv = (SV *)SvRV(*svp);
-		    di = (MoneyInfo *)SvIV(sv);
-		    v_mn = di->mn_val;
+		if (sv_isa(*svp, MoneyPkg)) {
+		    IV tmp = SvIV((SV*)SvRV(*svp));
+		    v_mn = *(CS_MONEY *) tmp;
 		}
 		else
 		    v_mn = to_money(SvPV(*svp, na));
@@ -5670,14 +5561,9 @@ ct_param(dbp, sv_params)
 	    datalen = datafmt.maxlength = CS_SIZEOF(CS_DATETIME);
 	    if(svp)
 	    {
-		DateInfo *di;
-		SV *sv;
-		
-		if(SvROK(*svp))
-		{
-		    sv = (SV *)SvRV(*svp);
-		    di = (DateInfo *)SvIV(sv);
-		    v_dt = di->date;
+		if (sv_isa(*svp, DateTimePkg)) {
+		    IV tmp = SvIV((SV*)SvRV(*svp));
+		    v_dt = *(CS_DATETIME *) tmp;
 		}
 		else
 		    v_dt = to_datetime(SvPV(*svp, na));
@@ -5722,30 +5608,36 @@ RETVAL
 
 
 void
-newdate(dbp, dt=NULL)
+newdate(dbp=&sv_undef,dt=NULL)
 	SV *	dbp
 	char *	dt
   CODE:
 {
-    ST(0) = newdate(dbp, to_datetime(dt));
+    CS_DATETIME d;
+    d = to_datetime(dt);
+    ST(0) = sv_2mortal(newdate(&d));
 }
 
 void
-newmoney(dbp, mn=NULL)
+newmoney(dbp=&sv_undef, mn=NULL)
 	SV *	dbp
 	char *	mn
   CODE:
 {
-    ST(0) = newmoney(dbp, to_money(mn));
+    CS_MONEY m;
+    m = to_money(mn);
+    ST(0) = sv_2mortal(newmoney(&m));
 }
 
 void
-newnumeric(dbp, num=NULL)
+newnumeric(dbp=&sv_undef, num=NULL)
 	SV *	dbp
 	char *	num
   CODE:
 {
-    ST(0) = newnumeric(dbp, to_numeric(num));
+    CS_NUMERIC n;
+    n = to_numeric(num);
+    ST(0) = sv_2mortal(newnumeric(&n));
 }
 
 
@@ -5757,14 +5649,15 @@ DESTROY(valp)
 	SV *	valp
   CODE:
 {
-    SV *sv;
-    DateInfo *value;
+    CS_DATETIME *ptr;
+    if (sv_isa(valp, DateTimePkg)) {
+	IV tmp = SvIV((SV*)SvRV(valp));
+	ptr = (CS_DATETIME *) tmp;
+    }
+    else
+	croak("valp is not of type %s", DateTimePkg);
 
-    if(!SvROK(valp))
-	croak("DESTROY of non-reference value");
-    sv = (SV *)SvRV(valp);
-    value = (DateInfo *)SvIV(sv);
-    Safefree(value);
+    Safefree(ptr);
 }
 
 char *
@@ -5772,15 +5665,15 @@ str(valp)
 	SV *	valp
   CODE:
 {
-    DateInfo *value;
-    SV *sv;
+    CS_DATETIME *ptr;
+    if (sv_isa(valp, DateTimePkg)) {
+	IV tmp = SvIV((SV*)SvRV(valp));
+	ptr = (CS_DATETIME *) tmp;
+    }
+    else
+	croak("valp is not of type %s", DateTimePkg);
     
-    if(!SvROK(valp))
-	croak("value pointer is not a reference");
-    sv = (SV *)SvRV(valp);
-    value = (DateInfo *)SvIV(sv);
-
-    RETVAL = from_datetime(&value->date);
+    RETVAL = from_datetime(ptr);
 }
  OUTPUT:
 RETVAL
@@ -5790,15 +5683,15 @@ crack(valp)
 	SV *	valp
   PPCODE:
 {
-    DateInfo *value;
     CS_DATEREC rec;
-    SV *sv;
-
-    if(!SvROK(valp))
-	croak("value pointer is not a reference");
-    sv = (SV *)SvRV(valp);
-    value = (DateInfo *)SvIV(sv);
-    if(cs_dt_crack(context, CS_DATETIME_TYPE, &value->date,
+    CS_DATETIME *ptr;
+    if (sv_isa(valp, DateTimePkg)) {
+	IV tmp = SvIV((SV*)SvRV(valp));
+	ptr = (CS_DATETIME *) tmp;
+    }
+    else
+	croak("valp is not of type %s", DateTimePkg);
+    if(cs_dt_crack(context, CS_DATETIME_TYPE, ptr,
 		&rec) == CS_SUCCEED)
     {
 	XPUSHs(sv_2mortal(newSViv(rec.dateyear)));
@@ -5822,15 +5715,15 @@ cmp(valp, valp2, ord = &sv_undef)
   CODE:
 {
     SV *sv;
-    DateInfo *value;
     CS_DATETIME *d1, *d2, *tmp, dt;
     CS_INT result;
+    if (sv_isa(valp, DateTimePkg)) {
+	IV tmp = SvIV((SV*)SvRV(valp));
+	d1 = (CS_DATETIME *) tmp;
+    }
+    else
+	croak("valp is not of type %s", DateTimePkg);
     
-    if(!SvROK(valp))
-	croak("value pointer is not a reference");
-    sv = (SV *)SvRV(valp);
-    value = (DateInfo *)SvIV(sv);
-    d1 = &value->date;
     if(!SvROK(valp2))
     {
 	dt = to_datetime(SvPV(valp2, na));
@@ -5839,8 +5732,7 @@ cmp(valp, valp2, ord = &sv_undef)
     else
     {
 	sv = (SV *)SvRV(valp2);
-	value = (DateInfo *)SvIV(sv);
-	d2 = &value->date;
+	d2 = (CS_DATETIME *)SvIV(sv);
     }
     if(ord != &sv_undef && SvTRUE(ord))
     {
@@ -5860,26 +5752,24 @@ cmp(valp, valp2, ord = &sv_undef)
 RETVAL
 
 void
-calc(valp1, days, msecs = 0)
-	SV *	valp1
+calc(valp, days, msecs = 0)
+	SV *	valp
 	int	days
 	int	msecs
   CODE:
 {
-    SV *sv;
-    DateInfo *value;
-    CS_DATETIME dt;
-    
-    if(!SvROK(valp1))
-	croak("value pointer is not a reference");
-    sv = (SV *)SvRV(valp1);
-    value = (DateInfo *)SvIV(sv);
-    dt = value->date;
-
-    dt.dtdays += days;
-    dt.dttime += msecs;
-    ST(0) = newdate(NULL, &dt);
+    CS_DATETIME *ptr;
+    if (sv_isa(valp, DateTimePkg)) {
+	IV tmp = SvIV((SV*)SvRV(valp));
+	ptr = (CS_DATETIME *) tmp;
+    }
+    else
+	croak("valp is not of type %s", DateTimePkg);
+    ptr->dtdays += days;
+    ptr->dttime += msecs;
+    ST(0) = sv_2mortal(newdate(ptr));
 }
+
 
 void
 diff(valp, valp2, ord = &sv_undef)
@@ -5889,15 +5779,15 @@ diff(valp, valp2, ord = &sv_undef)
   PPCODE:
 {
     SV *sv;
-    DateInfo *value;
     CS_DATETIME *d1, *d2, *tmp, dt;
     CS_INT days, msecs;
+    if (sv_isa(valp, DateTimePkg)) {
+	IV tmp = SvIV((SV*)SvRV(valp));
+	d1 = (CS_DATETIME *) tmp;
+    }
+    else
+	croak("valp is not of type %s", DateTimePkg);
     
-    if(!SvROK(valp))
-	croak("value pointer is not a reference");
-    sv = (SV *)SvRV(valp);
-    value = (DateInfo *)SvIV(sv);
-    d1 = &value->date;
     if(!SvROK(valp2))
     {
 	dt = to_datetime(SvPV(valp2, na));
@@ -5906,8 +5796,7 @@ diff(valp, valp2, ord = &sv_undef)
     else
     {
 	sv = (SV *)SvRV(valp2);
-	value = (DateInfo *)SvIV(sv);
-	d2 = &value->date;
+	d2 = (CS_DATETIME *)SvIV(sv);
     }
     if(ord != &sv_undef && SvTRUE(ord))
     {
@@ -5928,17 +5817,18 @@ info(valp, op)
 	int	op
   CODE:
 {
-    DateInfo *value;
-    SV *sv;
     CS_DATEREC rec;
     char buff[32];
     CS_INT item, ret;
+    CS_DATETIME *ptr;
+    if (sv_isa(valp, DateTimePkg)) {
+	IV tmp = SvIV((SV*)SvRV(valp));
+	ptr = (CS_DATETIME *) tmp;
+    }
+    else
+	croak("valp is not of type %s", DateTimePkg);
     
-    if(!SvROK(valp))
-	croak("value pointer is not a reference");
-    sv = (SV *)SvRV(valp);
-    value = (DateInfo *)SvIV(sv);
-    if(cs_dt_crack(context, CS_DATETIME_TYPE, &value->date,
+    if(cs_dt_crack(context, CS_DATETIME_TYPE, ptr,
 		&rec) == CS_SUCCEED)
     {
 	switch(op)
@@ -5973,14 +5863,14 @@ DESTROY(valp)
 	SV *	valp
   CODE:
 {
-    SV *sv;
-    MoneyInfo *value;
-
-    if(!SvROK(valp))
-	croak("DESTROY of non-reference value");
-    sv = (SV *)SvRV(valp);
-    value = (MoneyInfo *)SvIV(sv);
-    Safefree(value);
+    CS_MONEY *ptr;
+    if (sv_isa(valp, MoneyPkg)) {
+	IV tmp = SvIV((SV*)SvRV(valp));
+	ptr = (CS_MONEY *) tmp;
+    }
+    else
+	croak("valp is not of type %s", MoneyPkg);
+    Safefree(ptr);
 }
 
 char *
@@ -5988,15 +5878,15 @@ str(valp)
 	SV *	valp
   CODE:
 {
-    MoneyInfo *value;
-    SV *sv;
-    
-    if(!SvROK(valp))
-	croak("value pointer is not a reference");
-    sv = (SV *)SvRV(valp);
-    value = (MoneyInfo *)SvIV(sv);
+    CS_MONEY *ptr;
+    if (sv_isa(valp, MoneyPkg)) {
+	IV tmp = SvIV((SV*)SvRV(valp));
+	ptr = (CS_MONEY *) tmp;
+    }
+    else
+	croak("valp is not of type %s", MoneyPkg);
 
-    RETVAL = from_money(&value->mn_val);
+    RETVAL = from_money(ptr);
 }
  OUTPUT:
 RETVAL
@@ -6006,15 +5896,15 @@ num(valp)
 	SV *	valp
   CODE:
 {
-    MoneyInfo *value;
-    SV *sv;
-    
-    if(!SvROK(valp))
-	croak("value pointer is not a reference");
-    sv = (SV *)SvRV(valp);
-    value = (MoneyInfo *)SvIV(sv);
+    CS_MONEY *ptr;
+    if (sv_isa(valp, MoneyPkg)) {
+	IV tmp = SvIV((SV*)SvRV(valp));
+	ptr = (CS_MONEY *) tmp;
+    }
+    else
+	croak("valp is not of type %s", MoneyPkg);
 
-    RETVAL = money2float(&value->mn_val);
+    RETVAL = money2float(ptr);
 }
  OUTPUT:
 RETVAL
@@ -6025,15 +5915,15 @@ set(valp, str)
 	char *	str
   CODE:
 {
-    MoneyInfo *value;
-    SV *sv;
-    
-    if(!SvROK(valp))
-	croak("value pointer is not a reference");
-    sv = (SV *)SvRV(valp);
-    value = (MoneyInfo *)SvIV(sv);
+    CS_MONEY *ptr;
+    if (sv_isa(valp, MoneyPkg)) {
+	IV tmp = SvIV((SV*)SvRV(valp));
+	ptr = (CS_MONEY *) tmp;
+    }
+    else
+	croak("valp is not of type %s", MoneyPkg);
 
-    value->mn_val = to_money(str);
+    *ptr = to_money(str);
 }
 
 int
@@ -6043,17 +5933,17 @@ cmp(valp, valp2, ord = &sv_undef)
 	SV *	ord
   CODE:
 {
-    SV *sv;
-    MoneyInfo *value;
     CS_MONEY *m1, *m2, *tmp, mn;
     CS_INT result;
+
+    if (sv_isa(valp, MoneyPkg)) {
+	IV tmp = SvIV((SV*)SvRV(valp));
+	m1 = (CS_MONEY *) tmp;
+    }
+    else
+	croak("valp is not of type %s", MoneyPkg);
     
-    if(!SvROK(valp))
-	croak("value pointer is not a reference");
-    sv = (SV *)SvRV(valp);
-    value = (MoneyInfo *)SvIV(sv);
-    m1 = &value->mn_val;
-    if(!SvROK(valp2) ||	!sv_isa(valp2, "Sybase::CTlib::Money"))
+    if(!SvROK(valp2) ||	!sv_isa(valp2, MoneyPkg))
     {
 	char buff[64];
 
@@ -6063,9 +5953,8 @@ cmp(valp, valp2, ord = &sv_undef)
     }
     else
     {
-	sv = (SV *)SvRV(valp2);
-	value = (MoneyInfo *)SvIV(sv);
-	m2 = &value->mn_val;
+	IV tmp = SvIV((SV*)SvRV(valp2));
+	m2 = (CS_MONEY *) tmp;
     }
     if(ord != &sv_undef && SvTRUE(ord))
     {
@@ -6092,8 +5981,6 @@ calc(valp1, valp2, op, ord = &sv_undef)
 	SV *	ord
   CODE:
 {
-    SV *sv;
-    MoneyInfo *value;
     CS_MONEY *m1, *m2, *tmp, mn;
     CS_MONEY result;
     CS_INT cs_op;
@@ -6108,12 +5995,14 @@ calc(valp1, valp2, op, ord = &sv_undef)
 	croak("Invalid operator %c to Sybase::CTlib::Money::calc", op);
     }
     
-    if(!SvROK(valp1))
-	croak("value pointer is not a reference");
-    sv = (SV *)SvRV(valp1);
-    value = (MoneyInfo *)SvIV(sv);
-    m1 = &value->mn_val;
-    if(!SvROK(valp2) ||	!sv_isa(valp2, "Sybase::CTlib::Money"))
+    if (sv_isa(valp1, MoneyPkg)) {
+	IV tmp = SvIV((SV*)SvRV(valp1));
+	m1 = (CS_MONEY *) tmp;
+    }
+    else
+	croak("valp1 is not of type %s", MoneyPkg);
+    
+    if(!SvROK(valp2) ||	!sv_isa(valp2, MoneyPkg))
     {
 	char buff[64];
 
@@ -6123,9 +6012,8 @@ calc(valp1, valp2, op, ord = &sv_undef)
     }
     else
     {
-	sv = (SV *)SvRV(valp2);
-	value = (MoneyInfo *)SvIV(sv);
-	m2 = &value->mn_val;
+	IV tmp = SvIV((SV*)SvRV(valp2));
+	m2 = (CS_MONEY *) tmp;
     }
     if(ord != &sv_undef && SvTRUE(ord))
     {
@@ -6139,7 +6027,7 @@ calc(valp1, valp2, op, ord = &sv_undef)
     {
 	warn("cs_calc(CS_MONEY) failed");
     }
-    ST(0) = newmoney(NULL, &result);
+    ST(0) = sv_2mortal(newmoney(&result));
 }    
 
 MODULE = Sybase::CTlib		PACKAGE = Sybase::CTlib::Numeric
@@ -6150,14 +6038,14 @@ DESTROY(valp)
 	SV *	valp
   CODE:
 {
-    SV *sv;
-    NumericInfo *value;
-
-    if(!SvROK(valp))
-	croak("DESTROY of non-reference value");
-    sv = (SV *)SvRV(valp);
-    value = (NumericInfo *)SvIV(sv);
-    Safefree(value);
+    CS_NUMERIC *ptr;
+    if (sv_isa(valp, NumericPkg)) {
+	IV tmp = SvIV((SV*)SvRV(valp));
+	ptr = (CS_NUMERIC *) tmp;
+    }
+    else
+	croak("valp is not of type %s", NumericPkg);
+    Safefree(ptr);
 }
 
 char *
@@ -6165,15 +6053,15 @@ str(valp)
 	SV *	valp
   CODE:
 {
-    NumericInfo *value;
-    SV *sv;
-    
-    if(!SvROK(valp))
-	croak("value pointer is not a reference");
-    sv = (SV *)SvRV(valp);
-    value = (NumericInfo *)SvIV(sv);
+    CS_NUMERIC *ptr;
+    if (sv_isa(valp, NumericPkg)) {
+	IV tmp = SvIV((SV*)SvRV(valp));
+	ptr = (CS_NUMERIC *) tmp;
+    }
+    else
+	croak("valp is not of type %s", NumericPkg);
 
-    RETVAL = from_numeric(&value->mn_val);
+    RETVAL = from_numeric(ptr);
 }
  OUTPUT:
 RETVAL
@@ -6183,15 +6071,15 @@ num(valp)
 	SV *	valp
   CODE:
 {
-    NumericInfo *value;
-    SV *sv;
-    
-    if(!SvROK(valp))
-	croak("value pointer is not a reference");
-    sv = (SV *)SvRV(valp);
-    value = (NumericInfo *)SvIV(sv);
+    CS_NUMERIC *ptr;
+    if (sv_isa(valp, NumericPkg)) {
+	IV tmp = SvIV((SV*)SvRV(valp));
+	ptr = (CS_NUMERIC *) tmp;
+    }
+    else
+	croak("valp is not of type %s", NumericPkg);
 
-    RETVAL = numeric2float(&value->mn_val);
+    RETVAL = numeric2float(ptr);
 }
  OUTPUT:
 RETVAL
@@ -6202,15 +6090,15 @@ set(valp, str)
 	char *	str
   CODE:
 {
-    NumericInfo *value;
-    SV *sv;
-    
-    if(!SvROK(valp))
-	croak("value pointer is not a reference");
-    sv = (SV *)SvRV(valp);
-    value = (NumericInfo *)SvIV(sv);
+    CS_NUMERIC *ptr;
+    if (sv_isa(valp, NumericPkg)) {
+	IV tmp = SvIV((SV*)SvRV(valp));
+	ptr = (CS_NUMERIC *) tmp;
+    }
+    else
+	croak("valp is not of type %s", NumericPkg);
 
-    value->mn_val = to_numeric(str);
+    *ptr = to_numeric(str);
 }
 
 int
@@ -6220,17 +6108,17 @@ cmp(valp, valp2, ord = &sv_undef)
 	SV *	ord
   CODE:
 {
-    SV *sv;
-    NumericInfo *value;
     CS_NUMERIC *m1, *m2, *tmp, mn;
     CS_INT result;
     
-    if(!SvROK(valp))
-	croak("value pointer is not a reference");
-    sv = (SV *)SvRV(valp);
-    value = (NumericInfo *)SvIV(sv);
-    m1 = &value->mn_val;
-    if(!SvROK(valp2) || !sv_isa(valp2, "Sybase::CTlib::Numeric"))
+    if (sv_isa(valp, NumericPkg)) {
+	IV tmp = SvIV((SV*)SvRV(valp));
+	m1 = (CS_NUMERIC *) tmp;
+    }
+    else
+	croak("valp is not of type %s", NumericPkg);
+    
+    if(!SvROK(valp2) ||	!sv_isa(valp2, NumericPkg))
     {
 	char buff[64];
 
@@ -6240,9 +6128,8 @@ cmp(valp, valp2, ord = &sv_undef)
     }
     else
     {
-	sv = (SV *)SvRV(valp2);
-	value = (NumericInfo *)SvIV(sv);
-	m2 = &value->mn_val;
+	IV tmp = SvIV((SV*)SvRV(valp2));
+	m2 = (CS_NUMERIC *) tmp;
     }
     if(ord != &sv_undef && SvTRUE(ord))
     {
@@ -6269,8 +6156,6 @@ calc(valp1, valp2, op, ord = &sv_undef)
 	SV *	ord
   CODE:
 {
-    SV *sv;
-    NumericInfo *value;
     CS_NUMERIC *m1, *m2, *tmp, mn;
     CS_NUMERIC result;
     CS_INT cs_op;
@@ -6285,23 +6170,25 @@ calc(valp1, valp2, op, ord = &sv_undef)
 	croak("Invalid operator %c to Sybase::CTlib::Numeric::calc", op);
     }
     
-    if(!SvROK(valp1))
-	croak("value pointer is not a reference");
-    sv = (SV *)SvRV(valp1);
-    value = (NumericInfo *)SvIV(sv);
-    m1 = &value->mn_val;
-    if(!SvROK(valp2) || !sv_isa(valp2, "Sybase::CTlib::Numeric"))
+    if (sv_isa(valp1, NumericPkg)) {
+	IV tmp = SvIV((SV*)SvRV(valp1));
+	m1 = (CS_NUMERIC *) tmp;
+    }
+    else
+	croak("valp1 is not of type %s", NumericPkg);
+    
+    if(!SvROK(valp2) ||	!sv_isa(valp2, NumericPkg))
     {
 	char buff[64];
+
 	sprintf(buff, "%f", SvNV(valp2));
 	mn = to_numeric(buff);
 	m2 = &mn;
     }
     else
     {
-	sv = (SV *)SvRV(valp2);
-	value = (NumericInfo *)SvIV(sv);
-	m2 = &value->mn_val;	    
+	IV tmp = SvIV((SV*)SvRV(valp2));
+	m2 = (CS_NUMERIC *) tmp;
     }
     if(ord != &sv_undef && SvTRUE(ord))
     {
@@ -6315,5 +6202,5 @@ calc(valp1, valp2, op, ord = &sv_undef)
     {
 	warn("cs_calc(CS_NUMERIC) failed");
     }
-    ST(0) = newnumeric(NULL, &result);
+    ST(0) = sv_2mortal(newnumeric(&result));
 }    

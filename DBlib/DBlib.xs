@@ -1,5 +1,5 @@
 /* -*-C-*-
- *	@(#)DBlib.xs	1.22	9/28/95
+ *	@(#)DBlib.xs	1.24	12/22/95
  */	
 
 
@@ -122,6 +122,20 @@ typedef struct
 static CallBackInfo err_callback 	= { 0 } ;
 static CallBackInfo msg_callback 	= { 0 } ;
 
+static SV **my_hv_fetch _((HV*, hash_key_id, int));
+static SV **my_hv_store _((HV*, hash_key_id, SV*, int));
+static DBPROCESS *getDBPROC _((SV*));
+static int err_handler _((DBPROCESS*, int, int, int, char*, char*));
+static int msg_handler _((DBPROCESS*, DBINT, int, int, char*, char*, char*, int));
+static void initialize _((void));
+#if DBLIBVS >= 461
+static void new_mny4tochar _((DBPROCESS*, DBMONEY4*, DBCHAR*));
+static void new_mnytochar _((DBPROCESS*, DBMONEY*, DBCHAR*));
+#endif
+static int not_here _((char*));
+static double constant _((char*, int));
+
+
 /* A couple of simplifyed calls for our own use... */
 
 static SV **my_hv_fetch(hv, id, flag)
@@ -237,7 +251,7 @@ static int msg_handler(db, msgno, msgstate, severity, msgtext, srvname, procname
     char *msgtext;
     char *srvname;
     char *procname;
-    DBUSMALLINT line;
+    int line;
 {
 
     if(msg_callback.sub)	/* a perl error handler has been installed */
@@ -349,12 +363,14 @@ initialize()
 	if((sv = perl_get_sv("Sybase::DBlib::Version", TRUE)))
 	{
 	    char buff[256];
-	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib version 1.22 9/28/95\n\nCopyright (c) 1991-1995 Michael Peppler\n\n",
+	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib version 1.24 12/22/95\n\nCopyright (c) 1991-1995 Michael Peppler\n\n",
 		    SYBPLVER);
 	    sv_setnv(sv, atof(SYBPLVER));
 	    sv_setpv(sv, buff);
 	    SvNOK_on(sv);
 	}
+	if((sv = perl_get_sv("Sybase::DBlib::VERSION", TRUE)))
+	    sv_setnv(sv, atof(SYBPLVER));
     }
 }
     
@@ -2802,7 +2818,7 @@ dbnextrow(dbp,doAssoc=0)
 PPCODE:
 {
     int retval, ComputeId = 0;
-    char buff[260], *p = NULL, *t;
+    char buff[520], *p = NULL, *t;
     BYTE *data;
     int col, type, numcols = 0;
     int len;
@@ -2933,7 +2949,7 @@ PPCODE:
 	      case SYBMONEY:
 		dbconvert(dbproc, SYBMONEY, (BYTE *)data, len,
 			  SYBMONEY, (BYTE*)&tv_money, -1);
-		new_mnytochar(dbp, &tv_money, buff);
+		new_mnytochar(dbproc, &tv_money, buff);
 		break;
 #else
 	      case SYBMONEY:
@@ -3045,7 +3061,7 @@ dbretdata(dbp,doAssoc=0)
 	int	doAssoc
 PPCODE:
 {
-    char buff[260], *p = NULL, *t;
+    char buff[520], *p = NULL, *t;
     BYTE *data;
     int col, type, numcols;
     int len;
@@ -3151,7 +3167,7 @@ PPCODE:
 	      case SYBMONEY:
 		dbconvert(dbproc, SYBMONEY, data, len,
 			  SYBMONEY, (BYTE*)&tv_money, -1);
-		new_mnytochar(dbp, &tv_money, buff);
+		new_mnytochar(dbproc, &tv_money, buff);
 		break;
 #else
 	      case SYBMONEY:
@@ -3383,18 +3399,21 @@ dberrhandle(err_handle)
 	{
 	    name = SvPV(err_handle, na);
 	    if((err_handle = (SV*) perl_get_cv(name, FALSE)))
-		err_callback.sub = err_handle;
+		if(err_callback.sub == (SV*) NULL)
+		    err_callback.sub = newSVsv(newRV(err_handle));
+		else
+		    sv_setsv(err_callback.sub, newRV(err_handle));
 	}
 	else
 	{
 	    if(err_callback.sub == (SV*) NULL)
 		err_callback.sub = newSVsv(err_handle);
 	    else
-		SvSetSV(err_callback.sub, err_handle);
+		sv_setsv(err_callback.sub, err_handle);
 	}
     }
     if(ret)
-	ST(0) = sv_2mortal(newRV(ret));
+	ST(0) = sv_2mortal(ret);
     else
 	ST(0) = sv_newmortal();
 }
@@ -3417,18 +3436,21 @@ dbmsghandle(msg_handle)
 	{
 	    name = SvPV(msg_handle, na);
 	    if((msg_handle = (SV*) perl_get_cv(name, FALSE)))
-		msg_callback.sub = msg_handle;
+		if(msg_callback.sub == (SV*)NULL)
+		    msg_callback.sub = newSVsv(newRV(msg_handle));
+		else
+		    sv_setsv(msg_callback.sub, newRV(msg_handle));
 	}
 	else
 	{
 	    if(msg_callback.sub == (SV*) NULL)
 		msg_callback.sub = newSVsv(msg_handle);
 	    else
-		SvSetSV(msg_callback.sub, msg_handle);
+		sv_setsv(msg_callback.sub, msg_handle);
 	}
     }
     if(ret)
-	ST(0) = sv_2mortal(newRV(ret));
+	ST(0) = sv_2mortal(ret);
     else
 	ST(0) = sv_newmortal();
 }
@@ -4279,6 +4301,18 @@ dbmnycmp(dbp, m1, m2)
  OUTPUT:
 RETVAL
 
+int
+DBDEAD(dbp)
+      SV *    dbp
+  CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = (DBBOOL)DBDEAD(dbproc);
+}
+  OUTPUT:
+RETVAL
+
 void
 open_commit(package="Sybase::DBlib",user=NULL,pwd=NULL,server=NULL,appname=NULL)
 	char *	package
@@ -4333,6 +4367,8 @@ start_xact(dbp, app_name, xact_name, site_count)
 
     RETVAL = start_xact(dbproc, app_name, xact_name, site_count);
 }
+  OUTPUT:
+RETVAL
 
 int
 stat_xact(dbp, id)
@@ -4344,6 +4380,8 @@ stat_xact(dbp, id)
 
     RETVAL = stat_xact(dbproc, id);
 }
+  OUTPUT:
+RETVAL
 
 int
 scan_xact(dbp, id)
@@ -4355,6 +4393,8 @@ scan_xact(dbp, id)
 
     RETVAL = scan_xact(dbproc, id);
 }
+  OUTPUT:
+RETVAL
 
 int
 commit_xact(dbp, id)
@@ -4366,6 +4406,8 @@ commit_xact(dbp, id)
 
     RETVAL = commit_xact(dbproc, id);
 }
+  OUTPUT:
+RETVAL
 
 void
 close_commit(dbp)
@@ -4388,6 +4430,8 @@ abort_xact(dbp, id)
 
     RETVAL = abort_xact(dbproc, id);
 }
+  OUTPUT:
+RETVAL
 
 void
 build_xact_string(xact_name, service_name, commid)
@@ -4406,6 +4450,20 @@ build_xact_string(xact_name, service_name, commid)
 
     Safefree(buf);
 }
+
+int
+remove_xact(dbp, id, site_count)
+        SV *    dbp
+        int     id
+        int     site_count
+  CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = remove_xact(dbproc, id, site_count);
+}
+  OUTPUT:
+RETVAL
 
 int
 dbrpcinit(dbp, rpcname, opt)

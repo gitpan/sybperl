@@ -1,8 +1,39 @@
 		  SYBPERL Frequently Asked Questions
 
-		  @(#)FAQ	1.4	10/27/95
+		  @(#)FAQ	1.7	1/3/96
 
 NOTE: This FAQ is still very much under construction!!!
+
+Contents:
+1)   Sybperl? What is that?
+1.1) What is Sybperl?
+1.2) Where can I get Sybperl?
+1.3) Can I get Sybperl for Windows/NT?
+1.4) Can I get Sybperl for OS 'foo'?
+1.5) Is there a version of Sybperl for Perl 5?
+
+2)   Building & Installing
+2.1) Where is uperl.o?
+2.2) make test doesn't work
+2.3) How to get Dynamic Linking under HP-UX?
+2.4) How do I set PERL_SRC?
+2.5) I've moved the Sybase libraries, and Sybperl won't run...
+2.6) Sybperl won't run as a CGI script
+
+3)   Sybperl 1.x vs Sybperl 2.x
+3.1) Are Sybperl 1.x scripts compatible with 2.x?
+3.2) Is Sybperl 2.x stable enough to use, or should I use 1.x for
+     production code?
+     
+4)   Documentation
+4.1) Is there any good sybperl documentation?
+4.2) Is there a sybperl FAQ?
+4.3) Is there a sybperl mailing list?
+
+5)   Improving sybperl
+5.1) Reporting bugs
+5.2) Feature requests
+
 
 
 1)   Sybperl? What is that?
@@ -69,20 +100,63 @@ NOTE: This FAQ is still very much under construction!!!
 
 1.2) Where can I get Sybperl?
 
-   See above :-)
+   Sybperl is available from CPAN (the Comprehensive Perl Archive Network)
 
-   Version 1.x: ftp://ftp.demon.co.uk/pub/perl/db/perl4/sybperl
-   Version 2.x: ftp://ftp.demon.co.uk/pub/perl/db/mod/Sybase
+   The CPAN master is at
+       ftp://ftp.funet.fi/pub/languages/perl/CPAN
 
-   These directories are mirrored on Delphi Internet:
-   ftp://ftp.delphi.com/pub/mirrors/packages/perl/db/...
-   (Although it appears that the mirroring is not done very often)
+   and Sybperl is archived in
+       "CPAN"/authors/id/MEWP/sybperl-2.0.tar.gz
+
+   CPAN is mirrored widely, please select the CPAN site nearest you to
+   keep the networks happy. At the moment the registered CPAN sites are:
+
+	Africa
+
+	ftp://ftp.is.co.za/programming/perl/CPAN/
+
+	Australasia
+
+	ftp://coombs.anu.edu.au/pub/perl/
+	ftp://ftp.mame.mu.oz.au/pub/perl/CPAN/
+
+	Europe
+
+	ftp://ftp.funet.fi/pub/languages/perl/CPAN/
+	ftp://ftp.sunet.se/pub/lang/perl/CPAN/
+	ftp://ftp.cs.ruu.nl/pub/PERL/CPAN/
+	ftp://ftp.demon.co.uk/pub/mirrors/perl/CPAN/
+	ftp://ftp.pasteur.fr/pub/computing/unix/perl/CPAN/
+	ftp://ftp.rz.ruhr-uni-bochum.de/pub/programming/languages/perl/CPAN/
+	ftp://ftp.switch.ch/mirror/CPAN/
+	ftp://orpheu.ci.uminho.pt/pub/lang/perl/
+
+	North America
+
+	ftp://ftp.cis.ufl.edu/pub/perl/CPAN/
+	ftp://uiarchive.cso.uiuc.edu/pub/lang/perl/CPAN/
+	ftp://ftp.delphi.com/pub/mirrors/packages/perl/CPAN/
+	ftp://ftp.sedl.org/pub/mirrors/CPAN/
+	ftp://ftp.sterling.com/programming/languages/perl/
    
    Version 2.x is also available on Sybase's Web page:
    http://www.sybase.com/WWW/Sybperl/index.html. I try to make sure
    that the Sybase Web page is up to date, but I don't control it...
 
-1.3) Can I get Sybperl for OS 'foo'?
+1.3) Can I get Sybperl for Windows/NT?
+
+   Perl is available for Windows/NT from
+   ftp://ntperl.hip.com. However, certain key components that are used
+   to add modules to Perl are missing in the current version, which
+   makes things difficult for us Sybperl users.
+
+   However, I *know* that it is possible to get Sybperl to work under
+   Windows/NT (I would venture to guess that most of the work is in
+   creating appropriate Makefiles).
+
+   Contact me if you are interested in attempting this.
+   
+1.4) Can I get Sybperl for OS 'foo'?
 
    Perl is primarily a Unix tool, and Sybperl was developped under
    SunOS. However, Perl has been ported to numerous other OSes
@@ -90,13 +164,10 @@ NOTE: This FAQ is still very much under construction!!!
    portable to these OSes as well, in particular with Perl 5's better
    extension mechanism.
 
-   I only *know* of one *working* port, for Windows/NT, which I
-   understand will become available through http://www.metainfo.com.
-
    I am always ready to provide any help I can to anyone wishing to
    port Sybperl to any particular OS/platform.
 
-1.4) Is there a version of Sybperl for Perl 5?
+1.5) Is there a version of Sybperl for Perl 5?
 
    Yes. Sybperl 2.x works only with Perl 5.
    
@@ -106,35 +177,7 @@ NOTE: This FAQ is still very much under construction!!!
    
 2) Building Sybperl
 
-2.1) make test doesn't work (2b?)
-
-   a) You have compiled sybperl 2b? statically. make test does indeed
-      not work in that case.
-      If you have 2b3, run the static.test script.
-      Otherwise, do the following:
-      cd DBlib; ./perl -I../blib t/dblib.t
-      cd ../Sybperl; ../DBlib/perl -I../blib t/sybperl.t
-      ../DBlib/perl -I../blib t/dbmoney.t
-      cd ../CTlib; ./perl -I../blib t/ctlib.t
-
-      Alternative (strongly recommended!): get the 2.0 production
-      release.
-
-   b) The 'interfaces' file is not visible.
-      The Sybase libraries need access to a file that contain
-      information on how to connect to the server. This file is
-      normally located at the root of the Sybase installation
-      directory, and the Sybase libraries and programs normally use
-      the SYBASE environement variable to find this directory (ie
-      sybperl will try to find $SYBASE/interfaces in order to run).
-
-   c) The userid/password combination is invalid.
-      In versions prior to 2b2, you will need to edit the test scripts
-      to add userid & password information.
-      With version 2b2 a file called PWD is included in the
-      distribution where passwords & userids should be entered.
-   
-2.2) Where is uperl.o (1.x)?
+2.1) Where is uperl.o (1.x)?
 
    uperl.o is the object file that sybperl 1.x needs to be linked with
    to give it access to all the Perl routines. uperl.o is normally
@@ -143,7 +186,25 @@ NOTE: This FAQ is still very much under construction!!!
 
    If you have Perl 5.x you need sybperl 2.x.
 
-2.3) How to get Dynamic Linking under HP-UX (2.x)?
+2.2) make test doesn't work
+
+   a) The 'interfaces' file is not visible.
+      The Sybase libraries need access to a file that contain
+      information on how to connect to the server. This file is
+      normally located at the root of the Sybase installation
+      directory, and the Sybase libraries and programs normally use
+      the SYBASE environement variable to find this directory (ie
+      sybperl will try to find $SYBASE/interfaces in order to run).
+
+   b) The userid/password combination is invalid.
+      Edit the PWD file to add a valid userid/password combination for
+      accessing your database server.
+
+   c) The $SYBASE environment variable is incorrectly set. The
+      Sybase::CTlib modules needs access to it's 'locale' information
+      in the $SYBASE/locales directory.
+   
+2.3) How to get Dynamic Linking under HP-UX?
 
    The bundled C compiler that comes with HP-UX apparently can't
    produce position independant code, which is needed to build a
@@ -212,6 +273,23 @@ NOTE: This FAQ is still very much under construction!!!
        - Link the Sybase libraries to a standard directory (such as
        /usr/lib or /usr/local/lib) which will be searched by default.
 
+2.6) Sybperl won't run as a CGI script
+
+   Typical symptoms: your script runs from the command line, but fails
+   when run as a CGI script.
+
+   The problem is (probably) that you normally have LD_LIBRARY_PATH
+   set when running Sybperl scripts, but the HTTP deamon does not
+   normally set this environment variable when executing child
+   processes. It is not possible to set the LD_LIBRARY_PATH
+   environment variable in the script itself (the variable needs to be
+   set before the execution starts), so you may need to write a small
+   shell wrapper that sets this environment variable and then execs
+   your script.
+
+   Alternatively, link the Sybase shared libraries to one of the
+   'default' directories (such as /usr/lib').
+
    
 3)   Sybperl 1.x vs Sybperl 2.x
 
@@ -237,26 +315,30 @@ NOTE: This FAQ is still very much under construction!!!
 3.2) Is sybperl 2.x stable enough to use, or should I use 1.x for
    production code?
 
-   The advantage (if one can call it that) of sybperl 1.x over 2.x is
-   that the code is frozen - both for sybperl itself and for
+   Sybperl 2.x is composed of three modules: Sybase::DBlib,
+   Sybase::CTlib and Sybase::Sybperl. The DBlib and Sybperl modules
+   are stable, and I recommend their use in production code (as I've
+   been doing here for over a year now).
+
+   The Sybase::CTlib module is in "beta", and the API may be slightly
+   modified in the future. In addition to that, I've noticed a
+   performance problem with the CTlib module which appears to make it
+   quite a bit slower than the DBlib module for equivalent code. This
+   is something that I still need to investigate.
+
+   The advantage (if one can call it that) of staying with sybperl 1.x
+   is that the code is frozen - both for sybperl itself and for
    perl. This means that any bugs that you code around will not come
    back to bite you as you upgrade from one release to the other.
-
-   That said I think that 2.x is stable enough, certainly if you use the
-   Sybase::DBlib and/or Sybase::Sybperl modules. The Sybase::CTlib
-   module is under active development, but I'm fairly certain that the
-   current API will not be modified.
-
-   The concern that some people have over the apparent instability of
-   Perl 5 is understandable, but I've been using Perl 5 in production
-   code here since January '95 with no problems.
 
    
 4)  Documentation
    
 4.1) Is there any good sybperl documentation?
 
-   No. :-)
+   There is a Sybperl man page (in the current release it comes out to
+   13 PostScript pages), but that is definitely *not* sufficient in
+   itself.
 
    You need *Perl* documentation (there are over 370 pages of
    documentation in the standard Perl 5 release...).
@@ -275,14 +357,19 @@ NOTE: This FAQ is still very much under construction!!!
    monthly in comp.lang.perl.announce, and which can be ftp'd from
    ftp://ftp.cis.ufl.edu/pub/perl/doc/FAQ.
 
+   And you need the Sybase FAQ, too.
+
 4.3) Is there a sybperl mailing list?
 
-   Yes. I am exprimenting with a mailing list at the following
-   address: sybperl-list@itf.ch. To subscribe, send a message with the
-   word 'subscribe' in the body to sybperl-list-request@itf.ch.
+   Yes. The lists address is sybperl-l@trln.lib.unc.edu (it was moved
+   recently from sybperl-list@itf.ch due to the high cost of
+   supporting the list for my company).
 
-   Note that I may have to discontinue this service if the
-   volume becomes to large.
+   Send a message to sybperl-l-REQUEST@trln.lib.unc.edu with
+
+	add "your name" <your@email.address>
+
+   to subscribe.
 
    
 5) Improving sybperl...

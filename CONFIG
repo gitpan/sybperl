@@ -25,10 +25,8 @@ SYBASE=/usr/local/sybase10.0.2
 EXTRA_LIBS=
 
 # Additional #defines.
-# With Perl 5.001 there is a bug when returning an array that is
-# entirely populated with 'undef' values (as would be the case when
-# fetching a row where all the values are NULL. By defining UNDEF_BUG
-# you enable a (crude) work around.
+# With Perl 5.001m, you will need -DUNDEF_BUG.
+# With Perl 5.002, none are normally needed.
 EXTRA_DEFS=-DUNDEF_BUG
 
 # LINKTYPE
@@ -36,8 +34,3 @@ EXTRA_DEFS=-DUNDEF_BUG
 # into perl uncomment the line below and run the make normally. Then,
 # when you run 'make test' a new perl binary will be built.
 #LINKTYPE=static
-
-# The sybperl version info is now extracted from the patchlevel.h
-# file in this directory.
-# Sybperl version - shouldn't need to change this.
-#VERSION=2.0

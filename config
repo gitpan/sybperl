@@ -1,9 +1,15 @@
 # -*-Perl-*-
-#	@(#)config	1.4	10/4/95;
+#	@(#)config	1.6	1/5/96;
 #
 # Extract relevant info from the CONFIG and patchlevel.h files.
 
 my @dirs = ('.', '..', '../..', '../../..');
+
+if(defined($ExtUtils::MakeMaker::VERSION)) {
+    $MM_VERSION = $ExtUtils::MakeMaker::VERSION;
+} else {
+    $MM_VERSION = $ExtUtils::MakeMaker::Version;
+}
 
 sub config
 {
@@ -55,6 +61,31 @@ sub config
     $sattr{VERSION} = "$patchlvl{VERSION}.$patchlvl{PATCHLEVEL}$patchlvl{UNOFFICIAL}";
 
     \%sattr;
+}
+
+if($MM_VERSION > 5) {
+    eval <<'EOF_EVAL';
+
+sub MY::const_config {
+    my($self) = shift;
+    unless (ref $self){
+	ExtUtils::MakeMaker::TieAtt::warndirectuse((caller(0))[3]);
+	$self = $ExtUtils::MakeMaker::Parent[-1];
+    }
+    my(@m,$m);
+    push(@m,"\n# These definitions are from config.sh (via $INC{'Config.pm'})\n");
+    push(@m,"\n# They may have been overridden via Makefile.PL or on the command line\n");
+    my(%once_only);
+    foreach $m (@{$self->{CONFIG}}){
+	next if $once_only{$m};
+	next if ($self->{LINKTYPE} eq 'static' && $m =~ /C+DLFLAGS/i);
+	push @m, "\U$m\E = ".$self->{uc $m}."\n";
+	$once_only{$m} = 1;
+    }
+    join('', @m);
+}
+
+EOF_EVAL
 }
 
 1;
