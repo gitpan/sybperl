@@ -1,11 +1,11 @@
 /* -*-C-*-
  *
- * $Id: CTlib.xs,v 1.42 2000/11/15 00:30:05 mpeppler Exp $
+ * $Id: CTlib.xs,v 1.51 2001/10/30 21:34:31 mpeppler Exp $
  *	@(#)CTlib.xs	1.37	03/26/99
  */
 
 
-/* Copyright (c) 1995-1998
+/* Copyright (c) 1995-2001
    Michael Peppler
 
    Parts of this file are
@@ -39,6 +39,7 @@
 
 
 #include <ctpublic.h>
+#include <bkpublic.h>
 
 #if defined(CS_VERSION_125)
 #define CTLIB_VERSION   CS_VERSION_125
@@ -53,6 +54,17 @@
 #endif
 #endif
 #endif
+
+#if defined(BLK_VERSION_125)
+#define BLK_VERSION BLK_VERSION_125
+#elif defined(BLK_VERSION_120)
+#define BLK_VERSION BLK_VERSION_120
+#elif defined(BLK_VERSION_110)
+#define BLK_VERSION BLK_VERSION_110
+#else
+#define BLK_VERSION BLK_VERSION_100
+#endif
+
 
 #ifndef MAX
 #define MAX(X,Y)	(((X) > (Y)) ? (X) : (Y))
@@ -86,6 +98,8 @@ typedef struct _col_data
     } value;
     CS_INT	valuelen;
 
+    char *ptr;
+
 /*    CS_IODESC *iodesc; */
 } ColData;
 
@@ -108,6 +122,7 @@ struct attribs {
     int RowCount;
     int RC;
     int pid;
+    int restype;
     HV *other;
 };
 
@@ -116,6 +131,11 @@ typedef struct _ref_con
 {
     CS_CONNECTION *connection;
     int refcount;
+    /* Dynamic SQL attributes */
+    CS_DATAFMT *dyndata;
+    int        num_param;
+    char       dyn_id_str[32];
+    char       dyn_id;
 
     struct _con_info *head;
 
@@ -126,10 +146,11 @@ typedef struct _ref_con
 
 typedef struct _con_info
 {
+    char package[255];
     ConType type;
     int numCols;
     int numBoundCols;
-    
+
     ColData *coldata;
     CS_DATAFMT *datafmt;
     RefCon *connection;
@@ -139,6 +160,10 @@ typedef struct _con_info
     CS_IODESC iodesc;
 
     CS_LOCALE *locale;
+
+    CS_BLKDESC *bcp_desc;
+    int id_column;
+    int has_identity;
 
     AV *av;
     HV *hv;
@@ -156,6 +181,7 @@ typedef struct
 
 static CallBackInfo server_cb 	= { 0 } ;
 static CallBackInfo client_cb 	= { 0 } ;
+static CallBackInfo comp_cb     = { 0 } ;
 
 typedef enum hash_key_id
 {
@@ -168,6 +194,7 @@ typedef enum hash_key_id
     HV_compute_id,
     HV_extended_error,
     HV_row_count,
+    HV_last_restype,
     HV_rc,
     HV_pid,
     HV_coninfo
@@ -186,9 +213,10 @@ static struct _hash_keys {
     { "ComputeId",   HV_compute_id },
     { "ExtendedError", HV_extended_error },
     { "ROW_COUNT",   HV_row_count },
+    { "LastRestype", HV_last_restype },
     { "RC",          HV_rc },
     { "__PID__",     HV_pid },
-    {"__coninfo__",  HV_coninfo },
+    { "__coninfo__", HV_coninfo },
     { "",            -1 }
 };
 
@@ -227,13 +255,14 @@ static CS_MONEY to_money _((char *, CS_LOCALE*));
 static char *from_money _((CS_MONEY*, CS_LOCALE*));
 static CS_FLOAT money2float _((CS_MONEY *, CS_LOCALE*));
 static SV *newmoney _((CS_MONEY*));
-static CS_NUMERIC to_numeric _((char*, CS_LOCALE*));
+static CS_NUMERIC to_numeric _((char*, CS_LOCALE*, CS_DATAFMT*, int));
 static char *from_numeric _((CS_NUMERIC*, CS_LOCALE*));
 static CS_FLOAT numeric2float _((CS_NUMERIC *, CS_LOCALE*));
 static SV *newnumeric _((CS_NUMERIC*));
 static CS_CONNECTION *get_con _((SV*));
 static CS_COMMAND *get_cmd _((SV*));
 static void cleanUp _((ConInfo *));
+static void blkCleanUp _((ConInfo *));
 static char *GetAggOp _((CS_INT));
 static CS_INT get_cwidth _((CS_DATAFMT *));
 static CS_INT display_dlen _((CS_DATAFMT *));
@@ -243,6 +272,8 @@ static CS_RETCODE fetch_data _((CS_COMMAND*));
 static CS_RETCODE CS_PUBLIC clientmsg_cb _((CS_CONTEXT*, CS_CONNECTION*, CS_CLIENTMSG*));
 static CS_RETCODE CS_PUBLIC servermsg_cb _((CS_CONTEXT*, CS_CONNECTION*, CS_SERVERMSG*));
 static CS_RETCODE CS_PUBLIC notification_cb _((CS_CONNECTION*, CS_CHAR*, CS_INT));
+static CS_RETCODE CS_PUBLIC completion_cb _((CS_CONNECTION*, CS_COMMAND*, CS_INT, CS_RETCODE));
+
 static void initialize _((void));
 static int not_here _((char*));
 static double constant _((char*,int));
@@ -280,37 +311,40 @@ attr_store(info, key, keylen, sv, flag)
 
     switch(hash_keys[i].id) {
       case HV_use_datetime:
-	  attr->UseDateTime   = SvTRUE(sv);
-	  break;
+	attr->UseDateTime   = SvTRUE(sv);
+	break;
       case HV_use_money:
-	  attr->UseMoney      = SvTRUE(sv);
-	  break;
+	attr->UseMoney      = SvTRUE(sv);
+	break;
       case HV_use_numeric:
-	  attr->UseNumeric    = SvTRUE(sv);
-	  break;
+	attr->UseNumeric    = SvTRUE(sv);
+	break;
       case HV_use_bin0x:
-	  attr->UseBin0x      = SvTRUE(sv);
-	  break;
+	attr->UseBin0x      = SvTRUE(sv);
+	break;
       case HV_max_rows:
-	  attr->MaxRows       = SvIV(sv);
-	  break;
+	attr->MaxRows       = SvIV(sv);
+	break;
       case HV_compute_id:
-	  attr->ComputeId     = SvIV(sv);
-	  break;
+	attr->ComputeId     = SvIV(sv);
+	break;
       case HV_extended_error:
-	  attr->ExtendedError = SvIV(sv);
-	  break;
+	attr->ExtendedError = SvIV(sv);
+	break;
       case HV_row_count:
-	  attr->RowCount      = SvIV(sv);
-	  break;
+	attr->RowCount      = SvIV(sv);
+	break;
+      case HV_last_restype:
+	attr->restype         = SvIV(sv);
+	break;
       case HV_rc:
-	  attr->RC            = SvIV(sv);
-	  break;
+	attr->RC            = SvIV(sv);
+	break;
       case HV_pid:
-	  attr->pid           = SvIV(sv);
-	  break;
+	attr->pid           = SvIV(sv);
+	break;
       default:
-	  return 0;
+	return 0;
     }
 
     return 1;
@@ -344,40 +378,43 @@ attr_fetch(info, key, keylen)
 
     switch(hash_keys[i].id) {
       case HV_use_datetime:
-	  sv = newSViv(attr->UseDateTime);
-	  break;
+	sv = newSViv(attr->UseDateTime);
+	break;
       case HV_use_money:
-	  sv = newSViv(attr->UseMoney);
-	  break;
+	sv = newSViv(attr->UseMoney);
+	break;
       case HV_use_numeric:
-	  sv = newSViv(attr->UseNumeric);
-	  break;
+	sv = newSViv(attr->UseNumeric);
+	break;
       case HV_use_bin0x:
-	  sv = newSViv(attr->UseBin0x);
-	  break;
+	sv = newSViv(attr->UseBin0x);
+	break;
       case HV_max_rows:
-	  sv = newSViv(attr->MaxRows);
-	  break;
+	sv = newSViv(attr->MaxRows);
+	break;
       case HV_compute_id:
-	  sv = newSViv(attr->ComputeId);
-	  break;
+	sv = newSViv(attr->ComputeId);
+	break;
       case HV_extended_error:
-	  sv = newSViv(attr->ExtendedError);
-	  break;
+	sv = newSViv(attr->ExtendedError);
+	break;
       case HV_row_count:
-	  sv = newSViv(attr->RowCount);
-	  break;
+	sv = newSViv(attr->RowCount);
+	break;
+      case HV_last_restype:
+	sv = newSViv(attr->restype);
+	break;
       case HV_rc:
-	  sv = newSViv(attr->RC);
-	  break;
+	sv = newSViv(attr->RC);
+	break;
       case HV_pid:
-	  sv = newSViv(attr->pid);
-	  break;
+	sv = newSViv(attr->pid);
+	break;
       case HV_coninfo:
-	  sv = newSViv((IV)info);
-	  break;
+	sv = newSViv((IV)info);
+	break;
       default:
-	  return Nullsv;
+	return Nullsv;
     }
 
     return sv_2mortal(sv);
@@ -477,6 +514,7 @@ newdbh(info, package, attr_ref)
 	info->connection->attr.ComputeId  = 0;
 	info->connection->attr.pid        = getpid();
 	info->connection->attr.ExtendedError = 0;
+	info->connection->attr.restype    = 0;
     }
 
 
@@ -496,8 +534,12 @@ get_ConInfoFromMagic(hv)
     MAGIC *m;
 
     m = mg_find((SV*)hv, '~');
-    if(!m)
+    if(!m) {
+	if(PL_dirty)
+	    return NULL;	/* Ignore during global destruction */
+
 	croak("no connection key in hash");
+    }
 
     /* When doing global destruction, the tied _attribs hash gets freed
        before we get here. The statement below causes the program to exit
@@ -781,14 +823,27 @@ static SV
 }
     
 static CS_NUMERIC
-to_numeric(str, locale)
+to_numeric(str, locale, datafmt, type)
     char *str;
     CS_LOCALE *locale;
+    CS_DATAFMT *datafmt;
+    int type;
 {
     CS_NUMERIC mn;
     CS_DATAFMT srcfmt, destfmt;
     CS_INT reslen;
     char *p;
+
+    if(!datafmt) {
+	memset(&destfmt, 0, sizeof(destfmt));
+	    
+	destfmt.datatype  = CS_NUMERIC_TYPE;
+	destfmt.locale    = locale;
+	destfmt.maxlength = sizeof(CS_NUMERIC);
+	destfmt.format    = CS_FMT_UNUSED;
+	
+	datafmt = &destfmt;
+    }
 
     memset(&mn, 0, sizeof(mn));
 
@@ -801,21 +856,48 @@ to_numeric(str, locale)
     srcfmt.format    = CS_FMT_NULLTERM;
     srcfmt.locale    = locale;
 	    
-    memset(&destfmt, 0, sizeof(destfmt));
-	    
-    destfmt.datatype  = CS_NUMERIC_TYPE;
-    destfmt.locale    = locale;
-    destfmt.maxlength = sizeof(CS_NUMERIC);
-    destfmt.format    = CS_FMT_UNUSED;
 
-    /* FIXME: */
-    if((p = strchr(str, '.')))
-	destfmt.scale = strlen(p+1);
-    else
-	destfmt.scale = 0;
-    destfmt.precision = strlen(str);
+    if(type) {			/* dynamic SQL */
+    /* If the number of digits after the . is larger than
+       the 'scale' value in datafmt, then we need to adjust it. Otherwise
+       the conversion fails */
+	if((p = strchr(str, '.'))) {
+	    int len = strlen(++p);
+	    if(len > datafmt->scale) {
+		if(p[datafmt->scale] < '5')
+		    p[datafmt->scale] = 0;
+		else {
+		    p[datafmt->scale] = 0;
+		    len = strlen(str);
+		    while(len--) {
+			if(str[len] == '.')
+			    continue;
+			if(str[len] < '9') {
+			    str[len]++;
+			    break;
+			}
+			str[len] = '0';
+			if(len == 0) {
+			    char buf[64];
+			    buf[0] = '1';
+			    buf[1] = 0;
+			    strcat(buf, str);
+			    strcpy(str, buf);
+			    break;
+			}
+		    }
+		}
+	    }
+	}
+    } else {
+	if((p = strchr(str, '.')))
+	    datafmt->scale = strlen(p+1);
+	else
+	    datafmt->scale = 0;
+	datafmt->precision = strlen(str);
+    }
     
-    if (cs_convert(context, &srcfmt, str, &destfmt,
+    if (cs_convert(context, &srcfmt, str, datafmt,
 		   &mn, &reslen) != CS_SUCCEED)
 	warn("cs_convert failed (to_numeric(%s))", str);
 
@@ -927,12 +1009,36 @@ cleanUp(info)
 {
     int i;
 
+    if(info->coldata) {
+	for(i = 0; i < info->numCols; ++i)
+	    if(!info->coldata[i].ptr &&
+	       info->coldata[i].value.c &&
+	       info->coldata[i].type == CS_CHAR_TYPE ||
+	       info->coldata[i].type == CS_TEXT_TYPE)
+		Safefree(info->coldata[i].value.c);
+	Safefree(info->coldata);
+    }
+    
+    if(info->datafmt)
+	Safefree(info->datafmt);
+    info->numCols = 0;
+    info->coldata = NULL;
+    info->datafmt = NULL;
+}
+
+static void
+blkCleanUp(info)
+    ConInfo *info;
+{
+    int i;
+
+#if 0
     for(i = 0; i < info->numCols; ++i)
 	if(info->coldata[i].value.c &&
 	   info->coldata[i].type == CS_CHAR_TYPE ||
 	   info->coldata[i].type == CS_TEXT_TYPE)
 	    Safefree(info->coldata[i].value.c);
-    
+#endif
     if(info->datafmt)
 	Safefree(info->datafmt);
     if(info->coldata)
@@ -940,6 +1046,11 @@ cleanUp(info)
     info->numCols = 0;
     info->coldata = NULL;
     info->datafmt = NULL;
+
+    if(info->bcp_desc) {
+	blk_drop(info->bcp_desc);
+	info->bcp_desc = NULL;
+    }
 }
 
 static CS_CHAR * 
@@ -1302,6 +1413,7 @@ describe(info, dbp, restype, textBind)
 		get_cwidth(&info->datafmt[i]) + 1;
 	    info->datafmt[i].datatype = CS_CHAR_TYPE;
 	    info->datafmt[i].format   = CS_FMT_NULLTERM;
+/*	    info->datafmt[i].format   = CS_FMT_UNUSED; */
 	    New(902, info->coldata[i].value.c, info->datafmt[i].maxlength, char);
 	    info->coldata[i].type = CS_CHAR_TYPE;
 	    retcode = ct_bind(info->cmd, (i + 1), &info->datafmt[i],
@@ -1322,6 +1434,7 @@ describe(info, dbp, restype, textBind)
   GoodBye:;
     return retcode;
 }
+
 
 /* FIXME:
    All of the output in this function goes to stdout. The function is
@@ -1475,6 +1588,117 @@ CS_COMMAND	*cmd;
     return retcode;
 }
 
+static int
+fetch2sv(info, doAssoc, wantref)
+    ConInfo *info;
+    int doAssoc;
+    int wantref;
+{
+    SV *sv;
+    int i, len;
+
+    for(i = 0; i < info->numBoundCols; ++i) {
+	sv = AvARRAY(info->av)[i];
+	len = 0;
+	
+	if(info->coldata[i].indicator == CS_NULLDATA) { /* NULL data */
+	    (void)SvOK_off(sv);
+	} else {
+	    switch(info->datafmt[i].datatype) {
+	      case CS_TEXT_TYPE:
+		len = info->coldata[i].valuelen;
+		sv_setpvn(sv, info->coldata[i].value.c, len);
+		break;
+	      case CS_CHAR_TYPE:
+		if(info->coldata[i].realtype == CS_BINARY_TYPE && 
+		   info->connection->attr.UseBin0x) {
+		    char buff[MAX_CHAR_BUF];
+		    strcpy(buff, "0x");
+		    strcat(buff, info->coldata[i].value.c);
+		    sv_setpv(sv, buff);
+		} else {
+		    sv_setpv(sv, info->coldata[i].value.c);
+		}
+		break;
+	      case CS_FLOAT_TYPE:
+		sv_setnv(sv, info->coldata[i].value.f);
+		break;
+	      case CS_INT_TYPE:
+		sv_setiv(sv, info->coldata[i].value.i);
+		break;
+	      case CS_DATETIME_TYPE:
+		sv_setsv(sv, sv_2mortal(newdate(&info->coldata[i].value.dt)));
+		break;
+	      case CS_MONEY_TYPE:
+		sv_setsv(sv, sv_2mortal(newmoney(&info->coldata[i].value.mn)));
+		break;
+	      case CS_NUMERIC_TYPE:
+		sv_setsv(sv, sv_2mortal(newnumeric(&info->coldata[i].value.num)));
+		break;
+	      default:
+		croak("fetch2sv: unknown datatype: %d, column %d",
+		      info->datafmt[i].datatype, i);
+	    }
+	}
+	if(debug_level & TRACE_FETCH)
+	    warn("fetch2sv got %s for column %d",
+		 neatsvpv(sv, 0), i+1);
+	if(doAssoc) {
+	    hv_store(info->hv, info->datafmt[i].name,
+		     strlen(info->datafmt[i].name), 
+		     newSVsv(sv), 0);
+	}
+    }
+}
+
+static CS_RETCODE CS_PUBLIC
+completion_cb(connection, cmd, function, status)
+    CS_CONNECTION *connection;
+    CS_COMMAND   *cmd;
+    CS_INT       function;
+    CS_RETCODE   status;
+{
+    dTHR;
+    if(comp_cb.sub)
+    {
+	dSP;
+	int retval, count;
+
+	ENTER;
+	SAVETMPS;
+	PUSHMARK(sp);
+
+	if(connection) {
+	    ConInfo *info;
+	    SV *rv;
+	 
+	    if((ct_con_props(connection, CS_GET, CS_USERDATA,
+			     &info, CS_SIZEOF(info), NULL)) != CS_SUCCEED)
+		croak("Panic: comp_cb: Can't find handle from connection");
+	    rv = newRV((SV*)info->magic);
+	    XPUSHs(sv_2mortal(rv));
+	}
+	XPUSHs(sv_2mortal(newSViv(function)));
+	XPUSHs(sv_2mortal(newSViv(status)));
+	
+	    
+	PUTBACK;
+	if((count = perl_call_sv(comp_cb.sub, G_SCALAR)) != 1)
+	    croak("A completion handler cannot return a LIST");
+	SPAGAIN;
+	retval = POPi;
+	
+	PUTBACK;
+	FREETMPS;
+	LEAVE;
+	
+	return retval;
+    } else {
+/*	warn("Sybase::CTlib: no completion handler is installed"); */
+    }
+    
+    return CS_SUCCEED;
+}
 
 static CS_RETCODE CS_PUBLIC
 clientmsg_cb(context, connection, errmsg)
@@ -1562,9 +1786,9 @@ CS_SERVERMSG	*srvmsg;
 	dSP;
 	SV *sv, **svp;
 	HV *hv;
-	char *package = "Sybase::CTlib";
+/*	char *package = "Sybase::CTlib"; */
 	int retval, count;
-	ConInfo *info = NULL;
+	ConInfo *info = NULL, *ninfo;
 	RefCon *refCon;
 
 	if((ct_con_props(connection, CS_GET, CS_USERDATA,
@@ -1586,21 +1810,21 @@ CS_SERVERMSG	*srvmsg;
 
 	    refCon = info->connection;
 
-	    Newz(902, info, 1, ConInfo);
-	    info->connection = refCon;
-	    info->cmd = cmd;
-	    info->numCols = 0;
-	    info->coldata = NULL;
-	    info->datafmt = NULL;
-	    info->type = CON_EED_CMD;
-	    ++info->connection->refcount;
+	    Newz(902, ninfo, 1, ConInfo);
+	    ninfo->connection = refCon;
+	    ninfo->cmd = cmd;
+	    ninfo->numCols = 0;
+	    ninfo->coldata = NULL;
+	    ninfo->datafmt = NULL;
+	    ninfo->type = CON_EED_CMD;
+	    ++ninfo->connection->refcount;
 
-	    sv = newdbh(info, package, &PL_sv_undef);
+	    sv = newdbh(ninfo, info->package, &PL_sv_undef);
 	    if(!SvROK(sv))
 		croak("The newly created dbh is not a reference (this should never happen!)");
-	    describe(info, sv, 0, 1);
+	    describe(ninfo, sv, 0, 1);
 
-	    info->connection->attr.ExtendedError = TRUE;
+	    ninfo->connection->attr.ExtendedError = TRUE;
 	    if(debug_level & TRACE_CREATE)
 		warn("Created %s", neatsvpv(sv, 0));
 	    
@@ -1736,6 +1960,10 @@ initialize()
 			      (CS_VOID *)notification_cb)) != CS_SUCCEED)
 	croak("Sybase::CTlib initialize: ct_callback(notification) failed");
 
+    if((retcode = ct_callback(context, NULL, CS_SET, CS_COMPLETION_CB,
+			      (CS_VOID *)completion_cb)) != CS_SUCCEED)
+	croak("Sybase::CTlib initialize: ct_callback(completion) failed");
+
     if((retcode = ct_config(context, CS_SET, CS_NETIO, &netio_type, 
 			    CS_UNUSED, NULL)) != CS_SUCCEED)
 	croak("Sybase::CTlib initialize: ct_config(netio) failed");
@@ -1749,9 +1977,17 @@ initialize()
 
     if((sv = perl_get_sv("Sybase::CTlib::Version", TRUE|GV_ADDMULTI)))
     {
-	char buff[256];
-	sprintf(buff, "This is sybperl, version %s\n\nSybase::CTlib $Revision: 1.42 $ $Date: 2000/11/15 00:30:05 $\n\nCopyright (c) 1995-1999 Michael Peppler\nPortions Copyright (c) 1995 Sybase, Inc.\n\n",
-		SYBPLVER);
+	char buff[2048];
+	char ocVersion[1024], *p;
+	CS_INT outlen;
+
+	ct_config(context, CS_GET, CS_VER_STRING,
+		  (CS_VOID*)ocVersion, 1024, &outlen);
+	if((p = strchr(ocVersion, '\n')))
+	    *p = 0;
+	
+	sprintf(buff, "This is sybperl, version %s\n\nSybase::CTlib $Revision: 1.51 $ $Date: 2001/10/30 21:34:31 $\n\nCopyright (c) 1995-2001 Michael Peppler\nPortions Copyright (c) 1995 Sybase, Inc.\n\nOpenClient version: %s\n",
+		SYBPLVER, ocVersion);
 	sv_setnv(sv, atof(SYBPLVER));
 	sv_setpv(sv, buff);
 	SvNOK_on(sv);
@@ -1884,6 +2120,24 @@ int arg;
 		if (strEQ(name, "CS_BLK_HAS_TEXT"))
 #ifdef CS_BLK_HAS_TEXT
 		    return CS_BLK_HAS_TEXT;
+#else
+		goto not_there;
+#endif
+		if (strEQ(name, "CS_BLK_ALL"))
+#ifdef CS_BLK_ALL
+		    return CS_BLK_ALL;
+#else
+		goto not_there;
+#endif
+		if (strEQ(name, "CS_BLK_BATCH"))
+#ifdef CS_BLK_BATCH
+		    return CS_BLK_BATCH;
+#else
+		goto not_there;
+#endif
+		if (strEQ(name, "CS_BLK_CANCEL"))
+#ifdef CS_BLK_CANCEL
+		    return CS_BLK_CANCEL;
 #else
 		goto not_there;
 #endif
@@ -3333,6 +3587,12 @@ int arg;
 #endif
 		break;
 	      case 'H':
+		if (strEQ(name, "CS_HAFAILOVER"))
+#ifdef CS_HAFAILOVER
+		    return CS_HAFAILOVER;
+#else
+		goto not_there;
+#endif
 		if (strEQ(name, "CS_HASEED"))
 #ifdef CS_HASEED
 		    return CS_HASEED;
@@ -4479,6 +4739,12 @@ int arg;
 #else
 		goto not_there;
 #endif
+                if (strEQ(name, "CS_RET_HAFAILOVER"))
+#ifdef CS_RET_HAFAILOVER
+		    return CS_RET_HAFAILOVER;
+#else
+		goto not_there;
+#endif
 		if (strEQ(name, "CS_ROWFMT_RESULT"))
 #ifdef CS_ROWFMT_RESULT
 		    return CS_ROWFMT_RESULT;
@@ -5470,8 +5736,13 @@ ct_connect(package="Sybase::CTlib", user=NULL, pwd=NULL, server=NULL, appname=NU
 		{ "CS_SEC_ENCRYPTION", CS_SEC_ENCRYPTION, CS_INT_TYPE},
 		{ "CS_SEC_NEGOTIATE", CS_SEC_NEGOTIATE, CS_INT_TYPE},
 		{ "CS_TDS_VERSION", CS_TDS_VERSION, CS_INT_TYPE},
+#if defined(CS_HAFAILOVER)
+		{ "CS_HAFAILOVER", CS_HAFAILOVER, CS_INT_TYPE},
+#endif
+		{ "CS_BULK_LOGIN", CS_BULK_LOGIN, CS_INT_TYPE},
 		{ "CS_SYB_LANG", CS_SYB_LANG, -1 },
 		{ "CS_SYB_CHARSET", CS_SYB_CHARSET, -1 },
+		{ "CS_DATA_LCHAR", CS_DATA_LCHAR, -2 },
 		{ "", 0, 0}
 	    };
 	    hv = (HV*)SvRV(*svp);
@@ -5482,6 +5753,14 @@ ct_connect(package="Sybase::CTlib", user=NULL, pwd=NULL, server=NULL, appname=NU
 			/* CS_LOCALE type attribute */
 			cs_locale(context, CS_SET, locale, props[i].attr,
 				  SvPV(*svp, PL_na), CS_NULLTERM, NULL);
+			continue;
+		    }
+		    if(props[i].type == -2) {
+			/* ct_capability  type attribute */
+			CS_INT capval = SvIV(*svp);
+			if(ct_capability(connection, CS_SET, CS_CAP_RESPONSE,
+				      CS_DATA_LCHAR, &capval) != CS_SUCCEED)
+			    warn("Failed to set CS_DATA_LCHAR capability");
 			continue;
 		    }
 		    if(props[i].type == CS_CHAR_TYPE) {
@@ -5502,6 +5781,13 @@ ct_connect(package="Sybase::CTlib", user=NULL, pwd=NULL, server=NULL, appname=NU
 		}
 	    }
 	}
+	if (ct_con_props( connection, CS_SET, CS_LOC_PROP, 
+			  (CS_VOID*)locale,
+			  CS_UNUSED, (CS_INT*)NULL) != CS_SUCCEED)
+	{
+	    warn("ct_con_props(CS_LOC_PROP) failed");
+	}
+
     }
 
     if (retcode == CS_SUCCEED)
@@ -5537,6 +5823,7 @@ ct_connect(package="Sybase::CTlib", user=NULL, pwd=NULL, server=NULL, appname=NU
 	    Newz(902, refCon, 1, RefCon);
 	    refCon->connection = connection;
 	    refCon->refcount = 1;
+	    strcpy(info->package, package); /* remember package */
 	    info->type = CON_CONNECTION;
 	    info->connection = refCon; /*connection; */
 	    info->cmd = cmd;
@@ -5593,6 +5880,7 @@ ct_cmd_alloc(dbp)
 	
 	New(902, info, 1, ConInfo);
 	info->connection = o_info->connection;
+	strcpy(info->package, package);
 	info->cmd = cmd;
 	info->locale = o_info->locale;
 	info->numCols = 0;
@@ -5758,6 +6046,65 @@ OUTPUT:
 RETVAL
 
 int
+ct_con_props(dbp, action, property, buffer, type)
+	SV *	dbp
+	int	action
+	int	property
+	SV *	buffer
+	int	type
+CODE:
+{
+    ConInfo *info = get_ConInfo(dbp);
+    char buff[1024];
+    CS_INT outlen, *outptr = NULL;
+    CS_INT int_param;
+    CS_RETCODE retcode;
+    CS_VOID *param_ptr;
+    CS_INT param_len;
+
+    if(action == CS_GET)
+    {
+	if(type == CS_INT_TYPE) {
+	    param_ptr = &int_param;
+	    param_len = CS_UNUSED;
+	}
+	else {
+	    param_ptr = buff;
+	    param_len = 1023;
+	}
+	retcode = ct_con_props(info->connection->connection, action, 
+			       property, param_ptr, param_len,
+			       NULL);
+    }
+    else if(action == CS_SET)
+    {
+	if(type == CS_INT_TYPE) {
+	    int_param = SvIV(buffer);
+	    param_ptr = &int_param;
+	    param_len = CS_UNUSED;
+	} else {
+	    param_ptr = SvPV(buffer, PL_na);
+	    param_len = CS_NULLTERM;
+	}
+	retcode = ct_con_props(info->connection->connection, action, property,
+			       param_ptr, param_len,
+			       NULL);
+    }
+
+
+    RETVAL = retcode;
+    /* This is a hack: */
+    if(action == CS_GET) {
+	if(type == CS_INT_TYPE)
+	    sv_setiv((SV*)ST(3), int_param);
+	else
+	    sv_setpv((SV*)ST(3), buff);
+    }
+}
+OUTPUT:
+RETVAL
+
+int
 ct_cmd_realloc(dbp)
 	SV *	dbp
   CODE:
@@ -5846,8 +6193,9 @@ CODE:
     ConInfo *info = get_ConInfo(dbp);
     CS_INT retcode;
 
-    if((RETVAL = ct_results(info->cmd, (CS_INT *)&restype)) == CS_SUCCEED)
+    if((RETVAL = ct_results(info->cmd, (CS_INT *)&info->connection->attr.restype)) == CS_SUCCEED)
     {
+	restype = info->connection->attr.restype;
 	info->lastResult = restype;
 	switch(restype)
 	{
@@ -5876,6 +6224,24 @@ CODE:
 OUTPUT:
 restype
 RETVAL
+
+int
+as_describe(dbp, restype, textBind=1)
+	SV *	dbp
+	int	restype
+	int	textBind
+CODE:
+{
+    ConInfo *info = get_ConInfo(dbp);
+
+    RETVAL = describe(info, dbp, restype, textBind);
+    if(debug_level & TRACE_RESULTS)
+	warn("%s->as_describe() == %d",
+	     neatsvpv(dbp, 0), RETVAL);
+}
+OUTPUT:
+RETVAL
+
 
 int
 ct_get_data(dbp, column, size = 0)
@@ -6095,83 +6461,30 @@ PPCODE:
 	      warn("%s->ct_fetch() returned CS_ROW_FAIL",  neatsvpv(dbp, 0));
 	  /* FALL THROUGH */
       case CS_SUCCEED:
-	  for(i = 0; i < info->numBoundCols; ++i) {
-	    sv = AvARRAY(info->av)[i];
-	    len = 0;
-	    if(doAssoc && !wantref) {
-		SV *namesv = newSVpv(info->datafmt[i].name, 0);
-		if(debug_level & TRACE_FETCH)
-		    warn("%s->ct_fetch pushes %s on the stack (doAssoc == TRUE)",
-			 neatsvpv(dbp, 0), neatsvpv(namesv, 0));
-		XPUSHs(sv_2mortal(namesv));
-	    }
-
-	    if(info->coldata[i].indicator == CS_NULLDATA) { /* NULL data */
-		(void)SvOK_off(sv);
-	    } else {
-		switch(info->datafmt[i].datatype) {
-		  case CS_TEXT_TYPE:
-		    len = info->coldata[i].valuelen;
-		    sv_setpvn(sv, info->coldata[i].value.c, len);
-		    break;
-		  case CS_CHAR_TYPE:
-		    if(info->coldata[i].realtype == CS_BINARY_TYPE && 
-		       info->connection->attr.UseBin0x) {
-			char buff[MAX_CHAR_BUF];
-			strcpy(buff, "0x");
-			strcat(buff, info->coldata[i].value.c);
-			sv_setpv(sv, buff);
-		    } else {
-			sv_setpv(sv, info->coldata[i].value.c);
-		    }
-		    break;
-		  case CS_FLOAT_TYPE:
-		    sv_setnv(sv, info->coldata[i].value.f);
-		    break;
-		  case CS_INT_TYPE:
-		    sv_setiv(sv, info->coldata[i].value.i);
-		    break;
-		  case CS_DATETIME_TYPE:
-		    sv_setsv(sv, newdate(&info->coldata[i].value.dt));
-		    break;
-		  case CS_MONEY_TYPE:
-		    sv_setsv(sv, newmoney(&info->coldata[i].value.mn));
-		    break;
-		  case CS_NUMERIC_TYPE:
-		    sv_setsv(sv, newnumeric(&info->coldata[i].value.num));
-		    break;
-		  default:
-		    croak("ct_fetch: unknown datatype: %d, column %d",
-			  info->datafmt[i].datatype, i);
-		}
-	    }
-	    if(debug_level & TRACE_FETCH)
-		warn("%s->ct_fetch pushes %s on the stack",
-		     neatsvpv(dbp, 0), neatsvpv(sv, 0));
-	    if(!wantref)
-		XPUSHs(sv_mortalcopy(sv));
-	    else {
-		if(doAssoc) {
-		    hv_store(info->hv, info->datafmt[i].name,
-			     strlen(info->datafmt[i].name), 
-			     newSVsv(sv), 0);
-		}
-#if defined(UNDEF_BUG)
-		++n_null;
-#endif
-	    }
-	}
+	fetch2sv(info, doAssoc, wantref);
 	if(wantref) {
 	    if(doAssoc) {
 		XPUSHs(sv_2mortal((SV*)newRV((SV*)info->hv)));
 	    } else {
 		XPUSHs(sv_2mortal((SV*)newRV((SV*)info->av)));
 	    }
+	} else {
+	    for(i = 0; i < info->numBoundCols; ++i) {
+		sv = AvARRAY(info->av)[i];
+		if(doAssoc) {
+		    SV *namesv = newSVpv(info->datafmt[i].name, 0);
+		    if(debug_level & TRACE_FETCH)
+			warn("ct_fetch() pushes %s on the stack (doAssoc == TRUE)",
+			     neatsvpv(namesv, 0));
+		    XPUSHs(sv_2mortal(namesv));
+		}
+		if(debug_level & TRACE_FETCH)
+		    warn("ct_fetch pushes %s on the stack",
+			 neatsvpv(sv, 0));
+		XPUSHs(sv_mortalcopy(sv));
+	    }
 	}
-#if defined(UNDEF_BUG)
-	if(!n_null)
-	    XPUSHs(sv_2mortal(newSVpv("__ALL NULL__", 0)));
-#endif
+	
 	break;
       case CS_FAIL:		/* ohmygod */
 	/* FIXME: Should we call ct_cancel() here, or should we let
@@ -6188,6 +6501,42 @@ PPCODE:
     }
 }
 
+int
+as_fetch(dbp)
+	SV *	dbp
+CODE:
+{
+    ConInfo *info = get_ConInfo(dbp);
+    CS_RETCODE retcode;
+    CS_INT rows_read;
+
+    retcode = ct_fetch(info->cmd, CS_UNUSED, CS_UNUSED, CS_UNUSED, &rows_read);
+    if(debug_level & TRACE_FETCH)
+	warn("%s->as_fetch() == %d", neatsvpv(dbp, 0), retcode);
+    
+    RETVAL = retcode;
+}
+OUTPUT:
+RETVAL
+
+void
+as_fetchrow(dbp, doAssoc=0)
+    SV *	dbp
+    int		doAssoc
+PPCODE:
+{
+    ConInfo *info = get_ConInfo(dbp);
+
+    if(debug_level & TRACE_FETCH)
+	warn("%s->as_fetchrow() called", neatsvpv(dbp, 0));
+
+    fetch2sv(info, doAssoc, 1);
+    if(doAssoc) {
+	XPUSHs(sv_2mortal((SV*)newRV((SV*)info->hv)));
+    } else {
+	XPUSHs(sv_2mortal((SV*)newRV((SV*)info->av)));
+    }
+}
 
 void
 ct_options(dbp, action, option, param, type)
@@ -6383,13 +6732,16 @@ CODE:
       case CS_SERVERMSG_CB:
 	ci = &server_cb;
 	break;
+      case CS_COMPLETION_CB:
+	ci = &comp_cb;
+	break;
       default:
 	croak("Unsupported callback type");
     }
     
     if(ci->sub)
 	ret = newSVsv(ci->sub);
-    if(func == &PL_sv_undef)
+    if(!SvOK(func))
 	ci->sub = NULL;
     else
     {
@@ -6415,6 +6767,51 @@ CODE:
     else
 	ST(0) = sv_newmortal();
 }
+
+
+int
+ct_poll(dbp, milliseconds, compconn, compid, compstatus)
+	SV *	dbp
+	int	milliseconds
+	SV *	compconn   = NO_INIT
+	int	compid     = NO_INIT
+	int	compstatus = NO_INIT
+CODE:
+{
+    ConInfo *info;
+    CS_RETCODE retcode;
+    CS_COMMAND *cmd;
+    CS_CONNECTION *conn;
+
+    if(SvROK(dbp)) {
+	info = get_ConInfo(dbp);
+    }
+
+    if(info) {
+	retcode = ct_poll(NULL, info->connection->connection, milliseconds,
+			  NULL, &cmd, (CS_INT*)&compid, 
+			  (CS_RETCODE*)&compstatus);
+    } else {
+	retcode = ct_poll(context, NULL, milliseconds,
+			  &conn, &cmd, (CS_INT*)&compid, 
+			  (CS_RETCODE*)&compstatus);
+	if(retcode == CS_SUCCEED) {
+	    ConInfo *i2;
+	    if((ct_con_props(conn, CS_GET, CS_USERDATA,
+			     &i2, CS_SIZEOF(i2), NULL)) != CS_SUCCEED)
+		croak("Panic: ct_poll: Can't find handle from connection");
+	    if(i2) {
+		compconn = newRV((SV*)i2->magic);
+	    }
+	}
+    }
+    RETVAL = retcode;
+}
+OUTPUT:
+compconn
+compid
+compstatus
+RETVAL
 
 
 int
@@ -6577,7 +6974,7 @@ ct_param(dbp, sv_params)
 		    v_num = *(CS_NUMERIC *) tmp;
 		}
 		else
-		    v_num = to_numeric(SvPV(*svp, PL_na), info->locale);
+		    v_num = to_numeric(SvPV(*svp, PL_na), info->locale, NULL, 0);
 		value = &v_num;
 	    }
 	}
@@ -6662,6 +7059,438 @@ ct_param(dbp, sv_params)
 OUTPUT:
 RETVAL
 
+int
+ct_dyn_prepare(dbp, query)
+	SV *	dbp
+	char *	query
+  CODE:
+{
+    ConInfo *info = get_ConInfo(dbp);
+    RefCon  *ref  = info->connection;
+    CS_COMMAND	*cmd = get_cmd(dbp);
+    CS_RETCODE	ret;
+    CS_INT      restype;
+    int         failed = 0;
+    CS_BOOL     val;
+    char        *id;
+
+    ret = ct_capability(ref->connection, CS_GET, CS_CAP_REQUEST,
+			CS_REQ_DYN, (CS_VOID*)&val);
+    if(ret != CS_SUCCEED || val == CS_FALSE) {
+	warn("dynamic SQL (? placeholders) are not supported by the server you are connected to");
+	ret = CS_FAIL;
+	goto FAIL;
+    }
+
+    if(ref->dyndata) {
+	warn("You already have an active dynamic SQL statement on this handle. Drop it first with ct_dyn_dealloc()");
+	ret = CS_FAIL;
+	goto FAIL;
+    }
+
+
+    ref->dyn_id++;
+    sprintf(ref->dyn_id_str, "CT%x", ref->dyn_id);
+
+    id = ref->dyn_id_str;
+
+    ret = ct_dynamic(cmd, CS_PREPARE, id, CS_NULLTERM,
+		query, CS_NULLTERM);
+
+    /*    warn("ct_dynamic(CS_PREPARE)"); */
+
+    if(ret == CS_SUCCEED)
+	ret = ct_send(cmd);
+
+    if(debug_level & TRACE_SQL)
+	warn("%s->ct_dynamic(PREPARE, '%s', '%s') == %d",
+	     neatsvpv(dbp, 0), query, id, ret);
+
+    if(ret == CS_FAIL)
+	goto FAIL;
+
+    while((ret = ct_results(cmd, &restype)) == CS_SUCCEED)
+	if(restype == CS_CMD_FAIL)
+	    failed = 1;
+    
+    if(ret == CS_FAIL || failed) {
+	ret = CS_FAIL;
+	goto FAIL;
+    }
+
+    ret = ct_dynamic(cmd, CS_DESCRIBE_INPUT, id, CS_NULLTERM,
+		NULL, CS_UNUSED);
+
+    /*    warn("ct_dynamic(CS_DESCRIBE_INPUT)"); */
+
+    if(ret == CS_SUCCEED)
+	ret = ct_send(cmd);
+
+    if(debug_level & TRACE_SQL)
+	warn("%s->ct_dynamic(DESCRIBE, '%s') == %d",
+	     neatsvpv(dbp, 0), id, ret);
+
+    while((ret = ct_results(cmd, &restype)) == CS_SUCCEED) {
+        /*	warn("ct_results(CS_DESCRIBE_INPUT)"); */
+	if(restype == CS_DESCRIBE_RESULT) {
+	    CS_INT num_param, outlen;
+	    int i;
+		    
+	    ct_res_info(cmd, CS_NUMDATA, &num_param, CS_UNUSED,
+			&outlen);
+	    ref->num_param = num_param;
+	    Newz(902, ref->dyndata, num_param, CS_DATAFMT);
+	    
+	    for(i = 1; i <= num_param; ++i) {
+		ct_describe(cmd, i, &ref->dyndata[i-1]);
+	    }
+	}
+    }
+
+    ret = CS_SUCCEED;
+
+ FAIL:;
+    RETVAL = ret;
+}
+OUTPUT:
+RETVAL
+
+int
+ct_dyn_execute(dbp, param)
+	SV *	dbp
+	SV *	param
+  CODE:
+{
+    ConInfo *info = get_ConInfo(dbp);
+    RefCon  *ref  = info->connection;
+    CS_COMMAND *cmd = get_cmd(dbp);
+    CS_RETCODE ret;
+    CS_DATAFMT *workfmt;
+    AV * param_av;
+    SV ** param_sv;
+
+    if(!ref->dyndata) {
+	warn("No dynamic SQL statement is currently active on this handle.");
+	ret = CS_FAIL;
+	goto FAIL;
+    }
+
+
+    if (!SvROK(param))
+	croak("param is not a reference!");
+
+    param_av = (AV *)SvRV(param);
+
+    ret = ct_dynamic(cmd, CS_EXECUTE, ref->dyn_id_str, CS_NULLTERM,
+		NULL, CS_UNUSED);
+
+    if(ret == CS_SUCCEED) {
+	int      i;
+	char     *sv_buf;
+	STRLEN   value_len;
+	CS_INT   i_value;
+	CS_FLOAT d_value;
+	CS_NUMERIC n_value;
+	CS_MONEY m_value;
+	void     *value;
+
+	for (i = 0; i < ref->num_param; i++) {
+        /*   fprintf(stderr, "ct_dyn_execute() - param %d\n", i); */
+	    workfmt = &ref->dyndata[i];
+	    param_sv = av_fetch(param_av, i, 0);
+	    
+	    if(SvOK(*param_sv)) {
+		sv_buf = SvPV(*param_sv, value_len);
+
+		switch(workfmt->datatype) {
+		  case CS_INT_TYPE:
+		  case CS_SMALLINT_TYPE:
+		  case CS_TINYINT_TYPE:
+		  case CS_BIT_TYPE:
+		    workfmt->datatype = CS_INT_TYPE;
+		    i_value = atoi(sv_buf);
+		    value = &i_value;
+		    value_len = 4;
+		    break;
+		  case CS_NUMERIC_TYPE:
+		  case CS_DECIMAL_TYPE:
+		    n_value = to_numeric(sv_buf, info->locale, workfmt,
+					 1);
+		    workfmt->datatype = CS_NUMERIC_TYPE;
+		    value = &n_value;
+		    value_len = sizeof(n_value);
+		    break;
+		  case CS_MONEY_TYPE:
+		  case CS_MONEY4_TYPE:
+		    m_value = to_money(sv_buf, info->locale);
+		    workfmt->datatype = CS_MONEY_TYPE;
+		    value = &m_value;
+		    value_len = sizeof(m_value);
+		    break;
+		  case CS_REAL_TYPE:
+		  case CS_FLOAT_TYPE:
+		    workfmt->datatype = CS_FLOAT_TYPE;
+		    d_value = atof(sv_buf);
+		    value = &d_value;
+		    value_len = sizeof(double);
+		    break;
+		  case CS_BINARY_TYPE:
+		    workfmt->datatype = CS_BINARY_TYPE;
+		    value = sv_buf;
+		    break;
+		  default:
+		    workfmt->datatype = CS_CHAR_TYPE;
+		    value = sv_buf;
+		    value_len = CS_NULLTERM;
+		    break;
+		}
+	    } else {
+		value_len   = 0;
+		value       = NULL;
+	    }
+
+	    if((ret = ct_param(cmd, workfmt, value, value_len, 0)) 
+	       != CS_SUCCEED) {
+		warn("ct_param() failed!");
+		break;
+	    }
+	}
+	if (ret == CS_SUCCEED)
+	    ret = ct_send(cmd);
+    }
+
+    if(debug_level & TRACE_SQL)
+	warn("%s->ct_dyn_execute('%s', @param) == %d",
+	     neatsvpv(dbp, 0), ref->dyn_id_str, ret);
+
+ FAIL:;
+    RETVAL = ret;
+}
+OUTPUT:
+RETVAL
+
+int
+ct_dyn_dealloc(dbp)
+	SV *	dbp
+CODE:
+{
+    ConInfo *info = get_ConInfo(dbp);
+    RefCon  *ref  = info->connection;
+    CS_COMMAND *cmd = get_cmd(dbp);
+    CS_RETCODE ret;
+    CS_INT restype;
+	
+    ret = ct_dynamic(cmd, CS_DEALLOC, ref->dyn_id_str,
+		     CS_NULLTERM, NULL, CS_UNUSED);
+    if(ret != CS_SUCCEED)
+	goto FAIL;
+    ret = ct_send(cmd);
+    if(ret != CS_SUCCEED)
+	goto FAIL;
+    while(ct_results(cmd, &restype) == CS_SUCCEED)
+	;
+
+    Safefree(ref->dyndata);
+    ref->dyndata = NULL;
+    ref->num_param = 0;
+
+ FAIL:;
+    RETVAL = ret;
+}
+OUTPUT:
+RETVAL
+
+
+int
+blk_init(dbp, table, num_cols, has_identity = 0, id_column = 0)
+	SV *	dbp
+	char *	table
+	int	num_cols
+	int	has_identity
+	int	id_column
+CODE:
+{
+    ConInfo *info = get_ConInfo(dbp);
+    CS_RETCODE ret;
+    int i;
+
+    ret = blk_alloc(info->connection->connection, BLK_VERSION, 
+		    &info->bcp_desc);
+    if(ret != CS_SUCCEED)
+	goto FAIL;
+    ret = blk_props(info->bcp_desc,
+		    CS_SET, BLK_IDENTITY,
+		    (CS_VOID*)&has_identity,
+		    CS_UNUSED, NULL);
+    if(ret != CS_SUCCEED)
+	goto FAIL;
+    info->id_column = id_column;
+    info->has_identity = has_identity;
+
+    ret = blk_init(info->bcp_desc,
+		   CS_BLK_IN, table, strlen(table));
+    if(ret != CS_SUCCEED)
+	goto FAIL;
+
+    info->numCols = num_cols;
+    Newz(902, info->datafmt, num_cols, CS_DATAFMT);
+    Newz(902, info->coldata, num_cols, ColData);
+    for(i = 0; i < num_cols; ++i) {
+	ret = blk_describe(info->bcp_desc, i+1, &info->datafmt[i]);
+	if(ret != CS_SUCCEED)
+	    goto FAIL;
+    }
+
+ FAIL:;
+    if(ret != CS_SUCCEED)
+	blkCleanUp(info);
+    RETVAL = ret;
+}
+OUTPUT:
+RETVAL
+
+int
+blk_rowxfer(dbp, data)
+	SV *	dbp
+	SV *	data
+CODE:
+{
+    ConInfo *info = get_ConInfo(dbp);
+    CS_RETCODE ret;
+    int i;
+    AV *av;
+    I32 len;
+    STRLEN slen;
+    SV **svp;
+
+    if(!SvROK(data)) {
+	warn("Usage: $dbh->blk_rowxfer($arrayref)");
+	ret = CS_FAIL;
+	goto FAIL;
+    }
+    av = (AV*)SvRV(data);
+    len = av_len(av);
+
+    if(len > info->numCols) {
+	warn("More columns passed to blk_rowxfer() than were allocated with blk_init()");
+	goto FAIL;
+    }
+
+    for(i = 0; i <= len; ++i)
+    {
+	void *ptr;
+	svp = av_fetch(av, i, 0);
+	info->datafmt[i].format = CS_FMT_UNUSED;
+	info->datafmt[i].count = 1;
+	if(!SvOK(*svp)) {
+	    info->coldata[i].indicator = 0;
+	    ptr = "foo";
+	    info->coldata[i].valuelen = 0;
+	    if(!info->has_identity && info->id_column == i + 1)
+		continue;
+	} else {
+	    info->coldata[i].ptr = SvPV(*svp, slen);
+	    info->coldata[i].indicator = 0;
+
+	    switch(info->datafmt[i].datatype) {
+	      case CS_INT_TYPE:
+	      case CS_SMALLINT_TYPE:
+	      case CS_TINYINT_TYPE:
+	      case CS_BIT_TYPE:
+		info->datafmt[i].datatype = CS_INT_TYPE;
+		info->coldata[i].valuelen = sizeof(CS_INT);
+		info->coldata[i].value.i = atoi(info->coldata[i].ptr);
+		ptr = &info->coldata[i].value.i;
+		break;
+	      case CS_NUMERIC_TYPE:
+	      case CS_DECIMAL_TYPE:
+		info->coldata[i].value.num = 
+		    to_numeric(info->coldata[i].ptr, info->locale, 
+			       &info->datafmt[i],
+			       0);
+		info->coldata[i].valuelen = sizeof(info->coldata[i].value.num);
+		ptr = &info->coldata[i].value.num;
+		break;
+	      case CS_MONEY_TYPE:
+	      case CS_MONEY4_TYPE:
+		info->datafmt[i].datatype = CS_MONEY_TYPE;
+		info->coldata[i].valuelen = sizeof(CS_MONEY);
+		info->coldata[i].value.mn = 
+		    to_money(info->coldata[i].ptr, info->locale);
+		ptr = &info->coldata[i].value.mn;
+		break;
+	      case CS_REAL_TYPE:
+	      case CS_FLOAT_TYPE:
+		info->datafmt[i].datatype = CS_FLOAT_TYPE;
+		info->coldata[i].valuelen = sizeof(CS_FLOAT);
+		info->coldata[i].value.f = atof(info->coldata[i].ptr);
+		ptr = &info->coldata[i].value.f;
+		break;
+#if 0
+	      case CS_BINARY_TYPE:
+		phs->datafmt.datatype = CS_BINARY_TYPE;
+		value = phs->sv_buf;
+		break;
+#endif
+
+	      case CS_DATETIME_TYPE:
+	      case CS_DATETIME4_TYPE:
+		info->datafmt[i].datatype = CS_DATETIME_TYPE;
+		info->coldata[i].value.dt = to_datetime(info->coldata[i].ptr,
+							info->locale);
+
+		info->coldata[i].valuelen = sizeof(info->coldata[i].value.dt);
+		ptr = &info->coldata[i].value.dt;
+		break;
+	      default:
+		ptr = info->coldata[i].ptr;
+		info->coldata[i].valuelen = SvCUR(*svp);
+		break;
+	    }
+	}
+/*	warn("blk_bind(%d %s\n", i+1, info->coldata[i].ptr); */
+	ret = blk_bind(info->bcp_desc,
+		       i + 1,
+		       &info->datafmt[i],
+		       ptr,
+		       &info->coldata[i].valuelen,
+		       &info->coldata[i].indicator);
+	if(ret != CS_SUCCEED)
+	    goto FAIL;
+    }
+
+    ret = blk_rowxfer(info->bcp_desc);
+
+ FAIL:;
+    RETVAL = ret;
+}
+OUTPUT:
+RETVAL
+
+int
+blk_done(dbp, type, outrow)
+	SV *	dbp
+	int	type
+	int	outrow = NO_INIT
+CODE:
+{
+    ConInfo *info = get_ConInfo(dbp);
+
+    RETVAL = blk_done(info->bcp_desc, type, (CS_INT*)&outrow);
+}
+OUTPUT:
+outrow
+RETVAL
+
+void
+blk_drop(dbp)
+	SV *	dbp
+CODE:
+{
+    ConInfo *info = get_ConInfo(dbp);
+
+    blkCleanUp(info);
+}
 
 void
 newdate(dbp=&PL_sv_undef,dt=NULL)
@@ -6692,7 +7521,7 @@ newnumeric(dbp=&PL_sv_undef, num=NULL)
   CODE:
 {
     CS_NUMERIC n;
-    n = to_numeric(num, locale); /* XXX */
+    n = to_numeric(num, locale, NULL, 0); /* XXX */
     ST(0) = sv_2mortal(newnumeric(&n));
 }
 
@@ -7188,7 +8017,7 @@ set(valp, str)
     else
 	croak("valp is not of type %s", NumericPkg);
 
-    *ptr = to_numeric(str, locale); /* XXX */
+    *ptr = to_numeric(str, locale, NULL, 0); /* XXX */
 }
 
 int
@@ -7213,7 +8042,7 @@ cmp(valp, valp2, ord = &PL_sv_undef)
 	char buff[64];
 
 	sprintf(buff, "%f", SvNV(valp2));
-	mn = to_numeric(buff, locale); /* XXX */
+	mn = to_numeric(buff, locale, NULL, 0); /* XXX */
 	m2 = &mn;
     }
     else
@@ -7275,7 +8104,7 @@ calc(valp1, valp2, op, ord = &PL_sv_undef)
 	char buff[64];
 
 	sprintf(buff, "%f", SvNV(valp2));
-	mn = to_numeric(buff, locale); /* XXX */
+	mn = to_numeric(buff, locale, NULL, 0); /* XXX */
 	m2 = &mn;
     }
     else

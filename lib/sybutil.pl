@@ -1,3 +1,5 @@
+# $Id: sybutil.pl,v 1.1 2001/07/03 23:48:27 mpeppler Exp $
+#
 # @(#)sybutil.pl	1.8	03/25/98
 #
 # Copyright (c) 1994, 1998

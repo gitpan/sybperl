@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# $Id: Sybperl.pm,v 1.30 2000/05/13 22:54:13 mpeppler Exp $
+# $Id: Sybperl.pm,v 1.31 2001/08/09 00:02:06 mpeppler Exp $
 #
 # From
 # 	@(#)Sybperl.pm	1.27	03/26/98
@@ -1263,7 +1263,7 @@ sub dbreadtext
 
     $dbproc = shift(@params);
 
-    $dbproc->dbwritetext(@params);
+    $dbproc->dbreadtext(@params);
 }
 
 sub dbmoretext

@@ -1,3 +1,4 @@
+# $Id: ctutil.pl,v 1.1 2001/07/03 23:48:27 mpeppler Exp $
 # @(#)ctutil.pl	1.4	03/05/98
 #
 # Copyright (c) 1995

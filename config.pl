@@ -1,5 +1,5 @@
 # -*-Perl-*-
-#	$Id: config.pl,v 1.4 2000/11/15 00:42:41 mpeppler Exp $
+#	$Id: config.pl,v 1.7 2001/09/06 21:13:46 mpeppler Exp $
 #
 # Extract relevant info from the CONFIG and patchlevel.h files.
 
@@ -122,21 +122,30 @@ sub getExtraLibs {
 	$lib = "$dir/$ENV{SYBASE_OCS}/lib";
     }
 
+    my $version = `strings $lib/libct.a`;
+    $version =~ /Sybase Client-Library\/([^\/]+)\//;
+    $version = $1;
+    print "Sybase OpenClient $version found.\n";
+
     opendir(DIR, "$lib") || die "Can't access $lib: $!";
     my %files = map { $_ =~ s/lib([^\.]+)\..*/$1/; $_ => 1 } grep(/lib/, readdir(DIR));
     closedir(DIR);
 
     my %x = map {$_ => 1} split(' ', $cfg);
-    foreach my $f (keys(%x)) {
+    my $f;
+    foreach $f (keys(%x)) {
 	my $file = $f;
 	$file =~ s/-l//;
 	next if($file =~ /^-/);
 	delete($x{$f}) unless (exists($files{$file}) || $f =~ /dnet_stub/);
     }
     
-
-    foreach my $f (qw(insck tli sdna dnet_stub)) {
+    foreach $f (qw(insck tli sdna dnet_stub tds)) {
 	$x{"-l$f"} = 1 if exists $files{$f};
+    }
+    if($version gt '11') {
+	delete($x{-linsck});
+	delete($x{-ltli});
     }
 
     join(' ', keys(%x));

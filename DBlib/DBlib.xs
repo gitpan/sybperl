@@ -1,12 +1,12 @@
 /* -*-C-*-
- * $Id: DBlib.xs,v 1.51 2000/11/15 00:32:21 mpeppler Exp $
+ * $Id: DBlib.xs,v 1.54 2001/09/06 21:13:47 mpeppler Exp $
  *
  * From
  *	@(#)DBlib.xs	1.47	03/26/99
  */	
 
 
-/* Copyright (c) 1991-1999
+/* Copyright (c) 1991-2001
    Michael Peppler
 
    You may copy this under the terms of the GNU General Public License,
@@ -517,8 +517,12 @@ get_ConInfoFromMagic(hv)
     MAGIC *m;
 
     m = mg_find((SV*)hv, '~');
-    if(!m)
+    if(!m) {
+	if(PL_dirty)		/* Flag only if not in global destruction */
+	    return NULL;
+
 	croak("no connection key in hash");
+    }
 
     /* When doing global destruction, the tied _attribs hash gets freed
        before we get here. The statement below causes the program to exit
@@ -936,9 +940,9 @@ initialize()
 
 	if((sv = perl_get_sv("Sybase::DBlib::Version", TRUE|GV_ADDMULTI)))
 	{
-	    char buff[256];
-	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib $Revision: 1.51 $ $Date: 2000/11/15 00:32:21 $ \n\nCopyright (c) 1991-1999 Michael Peppler\n\n",
-		    SYBPLVER);
+	    char buff[2048];
+	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib $Revision: 1.54 $ $Date: 2001/09/06 21:13:47 $ \n\nCopyright (c) 1991-2001 Michael Peppler\n\nDB-Library version: %s\n",
+		    SYBPLVER, dbversion());
 	    sv_setnv(sv, atof(SYBPLVER));
 	    sv_setpv(sv, buff);
 	    SvNOK_on(sv);
@@ -3249,12 +3253,6 @@ CODE:
 {
     ConInfo *info = get_ConInfo(dbp);
 
-    if(info->attr.pid != getpid()) {
-	if(debug_level & TRACE_DESTROY)
-	    warn("Skipping Destroying %s (pid %d != getpid %d)", neatsvpv(dbp, 0), info->attr.pid, getpid());
-	XSRETURN_EMPTY;
-    }
- 
     if(PL_dirty && !info)
     {
 	if(debug_level & TRACE_DESTROY)
@@ -3271,6 +3269,13 @@ CODE:
 	    warn("ConInfo pointer is NULL for %s", neatsvpv(dbp, 0));
 	XSRETURN_EMPTY;
     }
+
+    if(info->attr.pid != getpid()) {
+	if(debug_level & TRACE_DESTROY)
+	    warn("Skipping Destroying %s (pid %d != getpid %d)", neatsvpv(dbp, 0), info->attr.pid, getpid());
+	XSRETURN_EMPTY;
+    }
+ 
     if(info->bcp_data)
     {
 	Safefree(info->bcp_data->colPtr);
@@ -3871,7 +3876,7 @@ PPCODE:
 		dbconvert(dbproc, SYBMONEY, (BYTE *)data, len,
 			  SYBMONEY, (BYTE*)&tv_money, -1);
 		if(useMoney)
-		    sv_setsv(sv, newmoney(dbproc, &tv_money));
+		    sv_setsv(sv, sv_2mortal(newmoney(dbproc, &tv_money)));
 		else
 		{
 		    new_mnytochar(dbproc, &tv_money, buff);
@@ -3895,7 +3900,7 @@ PPCODE:
 		if(useDateTime)
 		{
 		    dt = *(DBDATETIME*)data;
-		    sv_setsv(sv, newdate(dbproc, &dt));
+		    sv_setsv(sv, sv_2mortal(newdate(dbproc, &dt)));
 		}
 		else
 		{
@@ -3931,7 +3936,7 @@ PPCODE:
 		{
 		    dbconvert(dbproc, SYBDATETIME4, (BYTE *)data, len,
 			      SYBDATETIME, (BYTE *)&dt, -1);
-		    sv_setsv(sv, newdate(dbproc, &dt));
+		    sv_setsv(sv, sv_2mortal(newdate(dbproc, &dt)));
 		}
 		else
 		{
@@ -3945,7 +3950,7 @@ PPCODE:
 		dbconvert(dbproc, SYBMONEY4, (BYTE *)data, len,
 			  SYBMONEY, (BYTE*)&tv_money, -1);
 		if(useMoney)
-		    sv_setsv(sv, newmoney(dbproc, &tv_money));
+		    sv_setsv(sv, sv_2mortal(newmoney(dbproc, &tv_money)));
 		else
 		{
 		    new_mnytochar(dbproc, &tv_money, buff);
@@ -4439,7 +4444,7 @@ dberrhandle(err_handle)
 
     if(err_callback.sub)
 	ret = newSVsv(err_callback.sub);
-    if(err_handle == &PL_sv_undef)
+    if(!SvOK(err_handle))
 	err_callback.sub = NULL;
     else
     {
@@ -4476,7 +4481,7 @@ dbmsghandle(msg_handle)
 
     if(msg_callback.sub)
 	ret = newSVsv(msg_callback.sub);
-    if(msg_handle == &PL_sv_undef)
+    if(!SvOK(msg_handle))
 	msg_callback.sub = NULL;
     else
     {

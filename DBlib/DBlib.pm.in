@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# $Id: DBlib.pm,v 1.37 1999/05/18 06:02:52 mpeppler Exp $
+# $Id: DBlib.pm.in,v 1.38 2001/07/03 23:31:13 mpeppler Exp $
 #
 # From:
 # 	@(#)DBlib.pm	1.35	03/26/99
@@ -420,11 +420,11 @@ sub nsql {
  
   DEADLOCK:
     {	
+	local $^W = 0;		# shut up warnings.
 	
 	return unless $db->dbcmd($sql);
 	
 	unless ( $db->dbsqlexec ) {
-	    
 	    if ( $nsql_deadlock_retrycount && $DB_ERROR =~ /Message: 1205\b/m ) {
 		if ( $retrycount < 0 || $retrycount-- ) {
 		    carp "SQL deadlock encountered.  Retrying...\n" if $retryverbose;

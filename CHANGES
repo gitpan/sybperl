@@ -1,4 +1,28 @@
-	$Id: CHANGES,v 1.3 2000/11/15 00:43:28 mpeppler Exp $
+	$Id: CHANGES,v 1.10 2001/10/30 21:34:30 mpeppler Exp $
+
+2.14	And more (minor) bug fixes
+
+	config.pl's getExtraLibs() now tries to determine the Client
+	Library version to avoid linking with -linsck or -ltli for
+	OC 11 or later (as the correct library is loaded dynamically 
+	based on the values defined in $SYBASE/config/libtcl.cfg)
+        Added support for CS_HAFAILOVER connect option (thanks to 
+	Ranko Popovic)
+        Added CTlib version of nsql().
+	Documentation patches from Geoffrey Rommel.
+	Fixed memory leak when using UseDateTime/UseMoney/UseNumeric.
+	Add Async calls for CTlib (ct_poll(), etc).
+	Add CS_DATA_LCHAR connection capability.
+        Add ct_dyn_prepare() and ct_dyn_execute() to handle "dynamic SQL"
+	- thanks to Masatsuyo Takahas for the patch.
+	Add experimental blk_*() calls.
+	Ask for the PWD entries during the perl Makefile.PL phase.
+	Add Sybase::BLK module (based on Sybase::BCP) (*many* thanks to
+        Scott Zetlan for this!)
+	
+	Bug Fixes
+	309   Sybase::BCP fails test if server is set to use 
+	      datarows locking by default.
 
 2.13    Yet more bug fixes
 

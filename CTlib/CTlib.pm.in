@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# $Id: CTlib.pm.in,v 1.30 2000/05/13 22:50:56 mpeppler Exp $
+# $Id: CTlib.pm.in,v 1.32 2001/10/30 21:34:31 mpeppler Exp $
 # @(#)CTlib.pm	1.27	03/26/99
 
 # Copyright (c) 1995-1997
@@ -273,6 +273,8 @@ use subs qw(CS_SUCCEED CS_FAIL CS_CMD_DONE CS_ROW_COUNT
 
 use vars qw(%Att @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $AUTOLOAD 
 	    $res_type %fetchable);
+use vars qw($DB_ERROR $nsql_strip_whitespace $nsql_deadlock_retrycount
+	   $nsql_deadlock_retrysleep $nsql_deadlock_verbose);
 
 %EXPORT_TAGS = (minimal => [qw(CS_SUCCEED CS_FAIL ct_callback CS_CMD_FAIL)]);
 
@@ -293,6 +295,8 @@ use vars qw(%Att @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $AUTOLOAD
 	CS_ASYNC_NOTIFS
 	CS_BINARY_TYPE
 	CS_BIT_TYPE
+	CS_BLK_ALL
+        CS_BLK_BATCH
 	CS_BLK_HAS_TEXT
 	CS_BOUNDARY_TYPE
 	CS_BROWSE_INFO
@@ -533,6 +537,7 @@ use vars qw(%Att @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $AUTOLOAD
 	CS_GETATTR
 	CS_GETCNT
 	CS_GOODDATA
+	CS_HAFAILOVER
 	CS_HASEED
 	CS_HIDDEN
 	CS_HIDDEN_KEYS
@@ -720,6 +725,7 @@ use vars qw(%Att @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $AUTOLOAD
 	CS_RES_NOSTRIPBLANKS
 	CS_RES_NOTDSDEBUG
 	CS_RETURN
+        CS_RET_HAFAILOVER
 	CS_ROWFMT_RESULT
 	CS_ROW_COUNT
 	CS_ROW_FAIL
@@ -813,6 +819,7 @@ use vars qw(%Att @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $AUTOLOAD
 	CS_VER_STRING
 	CS_WILDCARD
 	CS_ZERO
+	      $DB_ERROR
 );
 # Other items we are prepared to export if requested
 @EXPORT_OK = qw(TRACE_NONE TRACE_ALL TRACE_CREATE TRACE_DESTROY TRACE_SQL
@@ -900,6 +907,12 @@ sub ct_sql
 	$fail = 1 if ($res_type == &CS_CMD_FAIL);
 	next unless $fetchable{$res_type};
 
+	if($Sybase::CTlib::ct_sql_nostatus && $res_type == &CS_STATUS_RESULT) {
+	    while ($data = $db->ct_fetch(0, 1)) {
+		;   #skip return codes from procs...
+	    }
+	}
+
         while ($data = $db->ct_fetch($flag, 1)) {
             if (defined $sub) {
 		if($flag) {
@@ -922,6 +935,143 @@ sub ct_sql
     $db->{RC} = $fail ? CS_FAIL : $rc;
     wantarray ? @res : \@res;  # return the result array
 }
+
+######
+## nsql()
+######
+
+#
+# Enhanced sql routine.
+# 
+
+sub DB_ERROR { return $DB_ERROR; }
+ 
+
+sub nsql {
+    my ($db,$sql,$type,$callback) = @_;
+    my (@res,$data,$restype);
+    my $retrycount = $nsql_deadlock_retrycount;
+    my $retrysleep = $nsql_deadlock_retrysleep || 60;
+    my $retryverbose = $nsql_deadlock_verbose;
+
+    if ( ref $type ) {
+	$type = ref $type;
+    }
+    elsif ( not defined $type ) {
+	$type = "";
+    }
+
+    undef $DB_ERROR;
+ 
+  DEADLOCK:
+    {	
+	local $^W = 0;		# shut up warnings.
+	
+	return unless $db->ct_execute($sql);
+
+	while($db->ct_results($restype) == &CS_SUCCEED) {
+	    if($restype == &CS_FAIL) {
+		if ( $nsql_deadlock_retrycount && 
+		     $DB_ERROR =~ /Message: 1205\b/m ) {
+		    if ( $retrycount < 0 || $retrycount-- ) {
+			carp "SQL deadlock encountered.  Retrying...\n" if $retryverbose;
+			undef $DB_ERROR;
+			@res = ();
+			sleep($retrysleep);
+			redo DEADLOCK;
+		    } else {
+			carp "SQL deadlock retry failed $nsql_deadlock_retrycount times.  Aborting.\n" if $retryverbose;
+			last DEADLOCK;
+		    }
+		}
+		
+	    }
+	    next unless $db->ct_fetchable($restype);
+
+	    if($Sybase::CTlib::ct_sql_nostatus && $res_type == &CS_STATUS_RESULT) {
+		while ($data = $db->ct_fetch(0, 1)) {
+		    ;   #skip return codes from procs...
+		}
+
+		next;
+	    }
+
+	    
+	    if ( $type eq "HASH" ) {
+		while ( $data = $db->ct_fetch(1, 1) ) {
+		    grep($data->{$_} =~ s/\s+$//g,keys %$data) if $nsql_strip_whitespace;
+		    if ( ref $callback eq "CODE" ) {
+			unless ( $callback->(%$data) ) {
+			    $db->ct_cancel(&CS_CANCEL_ALL);   # XXX
+			    $DB_ERROR = "User-defined callback subroutine failed\n";
+			    return;
+			} 
+		    }
+		    else {
+			push(@res,{%$data});
+		    }
+		}
+	    }
+	    elsif ( $type eq "ARRAY" ) {
+		while ( $data = $db->ct_fetch(0, 1) ) {
+		    grep(s/\s+$//g,@$data) if $nsql_strip_whitespace;
+		    if ( ref $callback eq "CODE" ) {
+			unless ( $callback->(@$data) ) {
+			    $db->ct_cancel(&CS_CANCEL_ALL);
+			    $DB_ERROR = "User-defined callback subroutine failed\n";
+			    return;
+			} 
+		    }
+		    else {
+			push(@res,( @$data == 1 ? $data->[0] : [@$data] ));
+		    }
+		}
+	    }
+	    else {
+		# If you ask for nothing, you get nothing.  But suck out
+		# the data just in case.
+		while ( $data = $db->ct_fetch(0, 1) ) { 1; }
+		$res[0]++;	# Return non-null (true)
+	    }
+	    
+	}
+	
+	last DEADLOCK;
+	
+    }
+
+    #
+    # If we picked any sort of error, then don't feed the data back.
+    #
+    if ( $DB_ERROR ) {
+	return;
+    }
+    elsif ( ref $callback eq "CODE" ) {
+	return 1;
+    }
+    else {
+	return @res;
+    }
+}
+
+sub nsql_srv_cb {
+    my($dbh, $number, $severity, $state, $line, $server, $proc, $msg)
+	= @_;
+
+    # Don't print informational or status messages
+    if($severity > 0) {
+	$DB_ERROR  = "Message: $number\n";
+	$DB_ERROR .= "Severity: $severity\n";
+	$DB_ERROR .= "State: $state\n";
+	$DB_ERROR .= "Server: $server\n" if defined $server;
+	$DB_ERROR .= "Procedure: $proc\n" if defined $proc;
+	$DB_ERROR .= "Line: $line\n" if defined $line;
+	$DB_ERROR .= "Text: $msg\n";
+    }
+    CS_SUCCEED;
+}
+
+
 
 1;
 __END__

@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# $Id: Makefile.PL,v 1.22 2000/11/15 00:29:36 mpeppler Exp $
+# $Id: Makefile.PL,v 1.24 2001/10/02 16:06:02 mpeppler Exp $
 # @(#)Makefile.PL	1.19	03/26/99
 
 
@@ -51,7 +51,7 @@ if($^O eq 'MSWin32') {
 } else {
     $inc_string = "-I$SYBASE/include";
     $def_string = "-DCTLIBVS=$CTLIBVS -DSYBPLVER='\"\${VERSION}\"' $$sattr{EXTRA_DEFS}";
-    $lib_string = "-L$SYBASE/lib -lct -lcs -ltcl -lcomn -lintl";
+    $lib_string = "-L$SYBASE/lib -lct -lcs -ltcl -lcomn -lintl -lblk";
 
     # Linux uses libsybtcl instead of libtcl to avoid conflicts with tcl/tk
     if(-e "$SYBASE/lib/libsybtcl$Config{lib_ext}" || 
@@ -66,7 +66,8 @@ if($^O eq 'MSWin32') {
     # Logic to replace normal libs with _r (re-entrant) libs if
     # usethreads is defined provided by W. Phillip Moore (wpm@ms.com)
     # I have no idea if this works on Win32 systems (probably not!)
-    if ( $Config{usethreads} eq 'define' && $Config{osname} =~ /solaris/ ) {
+    if ( $Config{usethreads} eq 'define' && $Config{osname} =~ /solaris|linux/ ) {
+	print "Running in threaded mode - looking for _r libraries...\n";
 	opendir(SYBLIB,"$SYBASE/lib")
 	    or die "Unable to opendir $SYBASE/lib: $!\n";
 	
@@ -85,6 +86,7 @@ if($^O eq 'MSWin32') {
 	    my $oldname = $1;
 	    my $newname = $1 . "_r";
 	    next unless exists $libname{$newname};
+	    print "Found -l$newname for -l$oldname\n";
 	    $lib_string =~ s/-l$oldname\b/-l$newname/;
 	}
 	

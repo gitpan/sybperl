@@ -4,6 +4,12 @@ BCP/Makefile.PL
 BCP/README
 BCP/t/bcp.dat
 BCP/t/bcp.t
+BLK/BLK.pm
+BLK/MANIFEST
+BLK/Makefile.PL
+BLK/README
+BLK/t/blk.t
+BLK/t/blk.dat
 CHANGES
 CONFIG
 CTlib/CTlib.pm.in
@@ -12,6 +18,7 @@ CTlib/Makefile.PL
 CTlib/README
 CTlib/t/ctlib.t
 CTlib/t/cursor.t
+CTlib/t/nsql.t
 DBlib/DBlib.pm.in
 DBlib/DBlib.xs
 DBlib/Makefile.PL

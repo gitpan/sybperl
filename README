@@ -1,10 +1,10 @@
-	$Id: README,v 1.4 2000/11/15 00:37:15 mpeppler Exp $
+	$Id: README,v 1.5 2001/07/03 23:24:57 mpeppler Exp $
 
 			   sybperl 2.0
 	
 	  This is sybperl, the Sybase extensions for Perl5.
 
-	      Copyright (c) 1991-1997,  Michael Peppler
+	      Copyright (c) 1991-2001,  Michael Peppler
 			 All rights reserved.
 			 
   This program is free software; you can redistribute it and/or modify
@@ -378,9 +378,9 @@ Reporting Bugs:
 ===============
 
 I have set up a (simple) bug tracking database, which can be accessed
-on line at http://gw.peppler.org/cgi-bin/bug.cgi. You can submit bugs 
+on line at http://www.peppler.org/cgi-bin/bug.cgi. You can submit bugs 
 directly, or send me email using the SPR file in this directory. Keep
-in mind that gw.peppler.org is on the end of a K56 line, so it may be 
+in mind that www.peppler.org is on the end of a K56 line, so it may be 
 slow.
 
 When submitting bugs, or any sort of problem report, please make sure
