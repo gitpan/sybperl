@@ -1,4 +1,4 @@
-<--@(#)sybperl.pod	1.31	06/13/98-->
+<--@(#)sybperl.pod	1.32	11/06/98-->
 
 =head1 NAME
 
@@ -46,6 +46,14 @@ new() is automatically closed when the $dbh goes out of scope:
        return @dat;
     }
     # The $dbh is automatically closed when we exit the subroutine.
+
+It should be noted that an important difference between CTlib and DBlib is
+in how the SYBASE environment variable is handled.  DBlib only checks for
+the SYBASE variable when it requires access to the interfaces file.  This
+allows for definition of the SYBASE variable in your script.  CTlib requires
+that the SYBASE variable be defined BEFORE initialization.  If the variable
+is not defined then CTlib will not initialize properly and your script will
+not run.
 
 
 =head2 Attributes
@@ -185,17 +193,23 @@ Wait for results from the server and verify the correctness of the
 instructions the server is responding to. Mainly for use with dbmoretext() 
 in Sybase::DBlib. See also the Sybase documentation for details.
 
-=item ($dbproc, $reason) = Sybase::DBlib::dbpoll($millisecs)
+=item ($dbproc, $reason) = Sybase::DBlib->dbpoll($millisecs)
+
+=item ($dbproc, $reason) = $dbh->dbpoll($millisecs)
+
+B<Note>: The dbpoll() syntax has been changed since sybperl 2.09_05.
 
 Poll the server to see if any connection has results pending. Used in 
 conjunction with dbsqlsend() and dbsqlok() to perform asynchronous queries.
 dbpoll() will wait up to $millisecs milliseconds and poll any open DBPROCESS
-for results. If it finds a DBPROCESS that is ready it returns it, along with 
-the reason why it's ready. If dbpoll() times out, or if an interupt occurs
-$dbproc will be undefined, and $reason will be either DBTIMEOUT or DBINTERUPT.
-If $millisecs is 0 then dbpoll() returns immediately. If $millisecs is -1 then
-it will not return until either results are pending or a system interupt has
-occured. Please see the Sybase documentation for further details.
+for results (if called as Sybase::DBlib->dbpoll()) or poll the specified 
+DBPROCESS (if called as $dbh->dbpoll()). If it finds a DBPROCESS that is
+ready it returns it, along with the reason why it's ready. If dbpoll()
+times out, or if an interupt occurs $dbproc will be undefined, and $reason 
+will be either DBTIMEOUT or DBINTERUPT. If $millisecs is 0 then dbpoll()
+returns immediately. If $millisecs is -1 then it will not return until
+either results are pending or a system interupt has occured. Please see
+the Sybase documentation for further details.
 
 Here is an example of using dbsqlsend(), dbpoll() and dbsqlok():
 
@@ -203,8 +217,8 @@ Here is an example of using dbsqlsend(), dbpoll() and dbsqlok():
   $dbh->dbsqlsend;
   # here you can go do something else...
   # now - find out if some results are waiting
-  ($dbh2, $reason) = Sybase::DBlib::dbpoll(100);
-  if($dbh2) {   # yes! - there's data on the pipe
+  ($dbh2, $reason) = $dbh->dbpoll(100);
+  if($dbh2 && $reason == DBRESULT) {   # yes! - there's data on the pipe
      $dbh2->dbsqlok;
      while($dbh2->dbresults != NO_MORE_RESULTS) {
         while(@dat = $dbh2->dbnextrow) {
@@ -290,6 +304,10 @@ How many columns are in the current result set.
 What is the column type of column $colid in the current result
 set. 
 
+=item $type = $dbh->dbprtype($colid)
+
+Returns the column type as a printable string.
+
 =item $status = $dbh->dbcollen($colid)
 
 What is the length (in bytes) of column $colid in the current result set.
@@ -345,6 +363,16 @@ dbnextrow() can also return a hash keyed on the column name:
 Retrieve the value of the parameters marked as 'OUTPUT' in a stored
 procedure. If $doAssoc is non-0, then retrieve the data as an
 associative array with parameter name/value pairs.
+
+=item %hash = $dbh->dbcomputeinfo($computeID, $column)
+
+Returns a hash with the B<colid>, B<op>, B<len>, B<type> and B<utype>
+of the I<compute by> column. You can call this subroutine to get the 
+information returned by DBlibrary's I<dbalt*()> calls. The $column is the 
+column number in the current I<compute by> row (starting at 1) and
+the $computeID is best retrieved from I<$dbh->{ComputeID}>. Please
+see the documentation of the I<dbalt*()> calls in Sybase's DBlibrary
+manual.
 
 =item $string = $dbh->dbstrcpy
 
@@ -1049,10 +1077,6 @@ Et voila!
 
 =back
 
-=head2 BUGS
-
-The 2PC calls have not been well tested.
-
 =head1 Sybase::Sybperl
 
 The Sybase::Sybperl package is designed for backwards compatibility
@@ -1121,7 +1145,6 @@ See the Sybase documentation on how and when to use these connection
 properties.
 
 
-
 =item $status = $dbh->ct_execute($sql)
 
 Send the SQL commands $sql to the server. Multiple commands are
@@ -1151,12 +1174,18 @@ Send the current command buffer to the server for execution.
 B<NOTE:> You only need to call ct_send() directly if you've used
 ct_command() to set up your SQL query.
 
-=item $status = $dbh->ct_results($res_type)
+=item $status = $dbh->ct_results($res_type [, $textBind])
 
 This routine returns a results type to indicate the status of returned
 data. "Command Done:" result type is returned if one result set has
 been processed. "Row result" token is returned if regular rows are
 returned. This output is stored in $res_type.
+
+If the optional $textBind parameter is B<FALSE> then I<TEXT> or
+I<IMAGE> columns are B<not> bound, and will not be subsequewntly
+returned by ct_fetch(). Using this feature is a little tricky - please
+see the discussion on raw B<TEXT> and B<IMAGE> handling elsewhere in this
+document.
 
 The commonly used values for $res_type are CS_ROW_RESULT, CS_CMD_DONE,
 CS_CMD_SUCCEED, CS_COMPUTE_RESULT, CS_CMD_FAIL. The full list of
@@ -1183,7 +1212,7 @@ with column names/column type pairs.
 Retrieves the description of each of the output columns of the current
 result set. Each element of the returned array is a reference to a
 hash that describes the column. The following fields are set: B<NAME>,
-B<TYPE>, B<MAXLENGTH>, B<SCALE>, B<PRECISION>, B<STATUS>.
+B<TYPE>, B<SYBTYPE>, B<MAXLENGTH>, B<SCALE>, B<PRECISION>, B<STATUS>.
 
 You could use it like this:
 
@@ -1202,6 +1231,14 @@ The B<STATUS> field is a bitmask which can be tested for the following
 values: CS_CANBENULL, CS_HIDDEN, CS_IDENTITY, CS_KEY, CS_VERSION_KEY,
 CS_TIMESTAMP and CS_UPDATEABLE. See table 3-46 of the Open Client
 Client Library Reference Manual for a description of each of these values.
+
+The B<TYPE> field is the data type that Sybase::CTlib converts the column 
+I<to> when retrieving the data, so a DATETIME column will be returned as a 
+CS_CHAR_TYPE column, unless the B<UseDateTime> attribute described elsewhere 
+in this document is turned on.
+
+The B<SYBTYPE> field is the real Sybase data type for this column.
+
 
 =item @data = $dbh->ct_fetch([$doAssoc [, $wantRef]])
 
@@ -1225,6 +1262,13 @@ transaction. If $type == CS_CANCEL_ALL, then cancels the current
 command immediately. If $type == CS_CANCEL_ATTN, then discard all
 results when next time the application reads from the server.
 
+=item $status = $dbh->DBDEAD
+
+Calls ct_con_props(CS_CON_STATUS) on the connection and returns TRUE if 
+the connection status CS_CONSTAT_DEAD bit is set. If this call returns
+TRUE (ie non-0) the connection has been marked DEAD and you need to 
+reconnect to the server.
+
 =item $old_cb = ct_callback($type, $cb_func)
 
 Install a callback routine. Valid callback types are CS_CLIENTMSG_CB
@@ -1238,7 +1282,7 @@ Retrieves information on the current result set. The type of
 information returned depends on $info_type. Currently supported values
 are: CS_NUM_COMPUTES, CS_NUMDATA, CS_NUMORDERCOLS, CS_ROW_COUNT.
 
-=item ($status, $param) = $dbh->ct_option($action, $option, $param, $type)
+=item ($status, $param) = $dbh->ct_options($action, $option, $param, $type)
 
 This routine will set, retrieve or clear the values of server
 query-processing options.
@@ -1339,9 +1383,9 @@ names for dateparts.
 
 To set the default conversion you call cs_dt_info() with
 a $type parameter of CS_DT_CONVFMT, and pass the conversion style
-you want as a string:
+you want as the last parameter:
 
-	cs_dt_info(CS_SET, CS_DT_CONVFMT, CS_UNUSED, "CS_DATES_LONG");
+	cs_dt_info(CS_SET, CS_DT_CONVFMT, CS_UNUSED, CS_DATES_LONG);
 
 See Table 2-26 in the Open Client and Open Server Common Libraries 
 Reference Manual for details of other formats that are available.
@@ -1353,6 +1397,63 @@ You can query a datepart name by doing something like:
 
 Again see the entry for cs_dt_info() in Chapter 2 of the Open Client and
 Open Server Common Libraries Reference Manual for details.
+
+=item ($ret, $data) = $dbh->ct_get_data($colnum [, $maxsize])
+
+Retrieve the raw TEXT or IMAGE data from column $colnum in the
+current result set. The optional $maxsize parameter can be used
+to limit the size of the retrieved buffer. If $maxsize is used then
+ct_get_data() should be called in a loop until $ret == CS_END_DATA
+(all the data for this column has been retrieved, and this is the
+last column in the row) or $ret == CS_END_ITEM (all the data for this
+column has been retrieved, but there are more columns to be processed).
+
+The TEXT columns B<must> appear I<after> all the normal data columns
+in the select list for this to work, and ct_results() must be called 
+with $textBind set to 0.
+
+See the discussion on raw TEXT/IMAGE processing elsewhere in this 
+document.
+
+=item $ret = $dbh->ct_send_data($data, $size)
+
+Send $size bytes of data in $data to the server, based on information 
+previously determined via a call to ct_data_info().
+
+If the data item is large it can be stored in chunks by calling
+ct_send_data() multiple times.
+
+Please see the discussion on raw TEXT/IMAGE handling elsewhere in this
+document for details.
+
+
+=item $ret = $dbh->ct_data_info($action, $colnum [, \%attr [, $dbh_2]])
+
+When $action is CS_GET ct_data_info() retrieves a CS_IODESC
+struct for column $colnum. The CS_IODESC struct is stored internally
+in the $dbh, and stores the text pointer, the total length and whether
+logging should be turned on for updates.
+
+If $dbh_2 is passed and $action is CS_SET then the CS_IODESC struct
+from $dbh_2 is copied to $dbh. This is usefull if you need to update
+TEXT columns in multiple rows by selecting the rows in one
+connection and doing the update in a different connection.
+
+The CS_IODESC struct is referenced when calling ct_send_data() to
+tell OpenClient where to store the data that is being sent to the server,
+as well as what the total size of the column is supposed to be.
+
+The CS_IODESC is typically set during a select query to retrieve a valid
+text pointer to the column that you wish to update. Sybase::CTlib is
+limited to a single CS_IODESC struct per connection, so you can only
+update a single TEXT or IMAGE column at a time.
+
+For details on CS_IODESC please see the Sybase OpenClient 
+Client Library Reference Manual.
+
+For examples on the usage of ct_data_info() please see the discussion on 
+raw TEXT processing elsewhere in this document.
+
 
 =item $ret|@ret = $dbh->ct_sql($cmd [, \&rowcallback [, $doAssoc]])
 
@@ -1399,7 +1500,6 @@ Use like this:
     }
 
 =back
-
 
 =head2 EXAMPLES
 
@@ -1518,6 +1618,133 @@ If non-0, limit the number of data rows that can be retrieve via
 ct_sql(). Default: 0.
 
 =back
+
+=head1 Using ct_get_data() and ct_send_data() to do raw TEXT processing
+
+As of release 2.09_06 of B<sybperl> Sybase::CTlib includes the ability
+to process B<TEXT> and B<IMAGE> datatypes using perl versions of 
+ct_get_data() and ct_send_data(). Using these functions is a little
+tricky, however.
+
+B<NOTE:> This discussion applies equally to B<TEXT> and B<IMAGE> datatypes,
+even if only one or the other is mentioned in the text.
+
+=head2 Retrieving TEXT columns using ct_get_data()
+
+First lets see how ct_get_data() is implemented to retrieve B<TEXT>
+or B<IMAGE> data types in raw format, and (possibly) in retrieve large 
+data items in smaller, more manageable pieces.
+
+First, it is essential that the B<TEXT> columns appear
+I<last> in the select statement (there can be several TEXT columns
+in the statement, but they must appear I<after> any regular columns.
+
+For example:
+
+	select userID, userName, msgText
+	from   messageTable
+
+(where I<msgText> is a TEXT column) would work fine.
+
+You issue the query in the normal way:
+
+	$dbh->ct_execute("select userID, userName, msgText
+			from messageTable where userID = 5");
+
+You call ct_results() in the normal way, with the exception that you
+pass the $textBind param as B<FALSE> to prevent ct_fetch() from 
+returning the TEXT column.
+
+If there are fetchable results, you call ct_fetch() to retrieve the 
+normal data columns, and for each row you then call ct_get_data()
+to retrieve the TEXT column(s).
+
+For example:
+
+	$dbh->ct_execute("select userID, userName, msgText
+			from messageTable where userID = 5");
+	while($dbh->ct_results($restype, 0) == CS_SUCCEED) {
+	    next unless $dbh->ct_fetchable($restype);
+	    while(@row = $dbh->ct_fetch) {
+		($ret, $msg) = $dbh->ct_get_data(3);
+	    }
+
+=head2 Updating TEXT columns using ct_send_data()
+
+This operation is a little more complicated. Essentially, you must
+first select the column that you wish to update to obtain a valid 
+I<text pointer> (via a call to ct_data_info(CS_GET), then you 
+initiate a CS_SEND_DATA_CMD command using ct_command(), you
+set the new total length of the column via ct_data_info(CS_SET), 
+send the data to the server via ct_send_data(), commit the operation
+with ct_send(), and then process the results in the normal way
+with ct_results() and ct_fetch().
+
+For example, assuming the following table:
+
+	create table blobtext(id numeric(5,0) identity,
+			      data image)
+
+We would update the I<data> column of a particular row like this:
+
+	$dbh->ct_execute("select id, data from testdb..blobtest where id = 5");
+	my $restype;
+	while($dbh->ct_results($restype) == CS_SUCCEED) {
+	    next unless($dbh->ct_fetchable($restype));
+	    my @dat;
+	    while(@dat = $dbh->ct_fetch) {
+		$dbh->ct_data_info(CS_GET, 2);
+	    }
+	}
+
+	my $data = "This is a the new content that we want to place in
+	            the 'data' column for the row";
+	my @dat;
+	$dbh->ct_command(CS_SEND_DATA_CMD, '', CS_UNUSED, CS_COLUMN_DATA);
+	$dbh->ct_data_info(CS_SET, 2, {total_txtlen => length($data)});
+	$dbh->ct_send_data($data, length($data));
+	$dbh->ct_send;
+	while($dbh->ct_results($restype) == CS_SUCCEED) {
+	    next unless $dbh->ct_fetchable($restype);
+
+	    while(@dat = $dbh->ct_fetch) {
+		print "@dat\n";
+	    }
+	}
+
+The last ct_fetch() will return one column - the new text pointer. At the
+moment there is no way to make use of this text pointer directly.
+
+You can also update TEXT fields on a set of rows by using a second
+connection and performing the ct_send_data() in a nested loop:
+
+	$dbh->ct_execute("select id, data from testdb..blobtest");
+	my $restype;
+	while($dbh->ct_results($restype) == CS_SUCCEED) {
+	    next unless($dbh->ct_fetchable($restype));
+	    my @dat;
+	    while(@dat = $dbh->ct_fetch) {
+		$dbh->ct_data_info(CS_GET, 2);
+
+		# get the data to be updated, based on the 'id' column
+		# presumably the get_data() function knows what to do :-)
+		my $data = get_data($dat[0]);
+		$dbh2->ct_command(CS_SEND_DATA_CMD, '', CS_UNUSED, CS_COLUMN_DATA);
+		# copy the CS_IODESC struct from $dbh to $dbh2, and
+		# set 'total_txtlen' to the correct value.
+		$dbh2->ct_data_info(CS_SET, 2, {total_txtlen => length($data)}, $dbh);
+		$dbh2->ct_send_data($data, length($data));
+		$dbh2->ct_send;
+		while($dbh2->ct_results($restype) == CS_SUCCEED) {
+		    next unless $dbh2->ct_fetchable($restype);
+
+		    while(@dat = $dbh2->ct_fetch) {
+			print "@dat\n";
+		    }
+		}		
+	    }
+	}
+
 
 =head1 Common Sybase::DBlib and Sybase::CTlib routines
         
@@ -1748,6 +1975,17 @@ initializing value. For example, $num = $dbh->newnumeric(11.111) will
 produce an item with a I<SCALE> of 3 and a I<PRECISION> of 5. This is
 totally transparent to the user.
 
+=head1 BUGS
+
+The Sybase::DBlib 2PC calls have not been well tested.
+
+There is a (approximately) 300 byte memory leak in the newdbh() function
+in Sybase/DBlib.xs and Sybase/CTlib.xs. This function is called when a 
+new connection is created, or, in the case of CTlib, when extended
+error information is processed in the server callback.
+I have not been able to locate the real cause of the leak so far. Patches
+that appear to solve the problem are welcome!
+
 =head1 ACKNOWLEDGEMENTS
 
 Larry Wall - for Perl :-)
@@ -1765,5 +2003,5 @@ Jeffrey Wong for the Sybase::DBlib DBMONEY routines.
 Numerous folks have contributed ideas and bug fixes for which they
 have my undying thanks :-) 
 
-The sybperl mailing list E<lt>F<sybperl-l@trln.lib.unc.edu>E<gt> is the
+The sybperl mailing list E<lt>F<sybperl-l@listproc.net>E<gt> is the
 best place to ask questions.

@@ -1,5 +1,31 @@
-	%W%	%G%
+	@(#)CHANGES	1.19	11/06/98
 
+2.10    CTlib TEXT/IMAGE handling
+
+	**WARNING**
+
+	Please see the sybperl.pod file for dbpoll() syntax
+	changes.
+
+	Added ct_get_data(), ct_send_data(), ct_data_info().
+	Added some missing documentation.
+	Added Sybase::CTlib::DBDEAD().
+	Added Sybase::DBlib::dbcomputeinfo().
+
+	Changed DBlib::dbpoll() to allow polling on a single handle.
+
+	W. Philipp Moore supplied a patch to CTlib/Makefile.PL to 
+	link with the Sybase _r (re-entrant) libraries if perl
+	was compiled with threading enabled. **THERE IS NO GUARANTEE
+	THAT A THREADED VERSION OF Sybase::CTlib WILL WORK CORRECTLY!!!***
+	Please read README.thread for details.
+
+	Bug Fixes:
+
+	247: Sybase::DBlib::sql() returns invalid results in $doAssoc mode
+	     when multiple result sets are being processed.
+	248: cs_dt_info(CS_DT_CONVFMT) doesn't work.
+	
 2.09_05 DBlib asynch calls
 
 	Added dbpoll(), dbsqlsend() to allow asynchronous calls to Sybase.

@@ -2,17 +2,14 @@
 # Configuration file for Sybperl
 #
 # DBlibrary version. Set to 1000 (or higher) if you have System 10
-# Set to 0 if you do not want to build DBlib or if DBlib is not available
-# (Linux, for example)
+# Set to 0 if you do not want to build DBlib or if DBlib is not available.
 DBLIBVS=1000
 
 
 # CTlib version. Set to 0 if Client Library is not available on your
 # system, or if you don't want to build the CTlib module. The Client
 # Library started shipping with System 10.
-# Note that the CTlib module is still under construction, though the
-# core API should be stable now.
-# Set to 100 if you have System 10.
+# Set to 100 if you have OpenClient 10.x or later.
 CTLIBVS=100
 
 # Where is the Sybase directory on your system (include files &

@@ -23,6 +23,7 @@ MANIFEST
 Makefile.PL
 PWD
 README
+README.thread
 README.win32
 SPR
 Sybperl/Makefile.PL

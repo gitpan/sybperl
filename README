@@ -1,4 +1,4 @@
-		     @(#)README	1.27	11/28/97
+		     @(#)README	1.28	11/06/98
 
 			   sybperl 2.0
 	
@@ -34,6 +34,9 @@ version of sybperl 2.x.
 Please see the README.win32 file if you are trying to build sybperl
 on a Windows 95/NT system.
 
+Perl 5.005 and later can be built with threading enabled. Please read
+README.thread before attempting to use Thread with any Sybase modules.
+
 There are four modules in this distribution: Sybase::DBlib,
 Sybase::BCP, Sybase::Sybperl and Sybase::CTlib.
 
@@ -42,11 +45,83 @@ API. This differs slightly from the Perl 4 version. Note that this is
 not a full implementation of the DB-Library API.
 Sybase::BCP is a simplified bulk copy API, and requires Sybase::DBlib.
 The Sybase::Sybperl module implements the sybperl 1.0xx API, and is
-built on top of Sybase::DBlib.
+built on top of Sybase::DBlib. Use of Sybase::Sybperl is discouraged.
 
 Sybase::CTlib implements a subset of the newer Client Library API.
 Client Ligrary is included with Sybase's OpenClient libraries as of 
 System 10.
+
+---------------------------------------------------------------------
+
+Recent Changes:
+
+2.10    CTlib TEXT/IMAGE handling
+
+	**WARNING**
+
+	Please see the sybperl man page on changes to the dbpoll()
+	call. 
+
+	Added ct_get_data(), ct_send_data(), ct_data_info().
+	Added some missing documentation.
+	Added Sybase::CTlib::DBDEAD().
+	Added Sybase::DBlib::dbcomputeinfo().
+
+	Changed dbpoll() to handle polling on a single handle.
+
+	W. Philipp Moore supplied a patch to CTlib/Makefile.PL to 
+	link with the Sybase _r (re-entrant) libraries if perl
+	was compiled with threading enabled. **THERE IS NO GUARANTEE
+	THAT A THREADED VERSION OF Sybase::CTlib WILL WORK
+	CORRECTLY!!!***
+	Read README.thread for details.
+
+	Bug Fixes:
+
+	247: Sybase::DBlib::sql() returns invalid results in $doAssoc mode
+	     when multiple result sets are being processed.
+	248: cs_dt_info(CS_DT_CONVFMT) doesn't work.
+	
+2.09_05 DBlib asynch calls
+
+	Added dbpoll(), dbsqlsend() to allow asynchronous calls to Sybase.
+
+	Applied W. Philipp Moore's patch to the nsql() routine.
+
+2.09_04 DBlib dbreg*() calls
+
+	Added dbreg*() calls to allow execution of OpenServer registered
+	procedures.
+
+2.09_03 Bug Fixes
+
+	235: Calling DBlib's dbexit() breaks Sybase::DBlib on Win32
+	236: Sybase::CTlib doesn't work with OC 11.x on Win32.
+
+2.09_02	Bug Fixes
+
+	233: CTlib dumps core in DESTROY.
+
+
+2.09_01 Bug Fixes
+
+	This is a bug fix release. The only functional change is in the
+	handling of attributes in Sybase::CTlib when using the 
+	ct_cmd_alloc() call. If you use that call to open
+	multiple cursors on the same connection then you should
+	be aware that the attributes are shared between the handles
+	opened for this connection (ie the handle created with
+	ct_connect() and the handles created with ct_cmd_alloc().)
+
+	Other fixes:
+
+	218: length($buf) is incorrect after dbreadtext().
+	223: dbreadtext() leaves garbage at the end of $buf
+	224: dbreadtext() missing from Sybase::Sybperl
+	226: Changing $user in dblogin() fails on NCR
+	228: BCP RECORD_SEPARATOR error
+	229: BCP & null_pattern error
+	232: SEGV in ctutils.pl when inserting a duplicate row.
 
 ---------------------------------------------------------------------
 
@@ -56,6 +131,8 @@ Before you start, you have to consider the following issues:
 
 a) Is Perl 5.002 (or later) already installed at your site?
    (For Win32 you *must* have perl 5.004 or later)
+
+   Note: perl 5.004_04 (or later) is highly recommended.
 
    If Perl 5.002 (or later) is the default production version of Perl
    at your site, then I recommend that you unpack the sybperl
@@ -146,8 +223,33 @@ e) The LD_LIBRARY_PATH variable and libintl.so
 
 f) If you are using Win32 (Win NT) please read the README.win32
    file before proceeding.
+
+g) There is a symbol conflict between Berkeley DB (-ldb) and
+   DB-Library (-lsybdb): both define the dbopen() function. Perl's
+   Configure will include -ldb in the link line of the perl binary if
+   it finds it on the system. This causes Sybase::DBlib to fail.
+
+   This can be resolved by rebuilding perl and excluding -ldb from the 
+   libraries that are included. You can run 
+
+	     perl -V:libs
+
+   to see if -ldb is included in the link line.
+
+   Linux and DEC Unix 4.0 are known to include Berkeley DB by default, 
+   so a normal perl build on those systems will be affected with this
+   problem. 
+
+h) Linux -lndbm and -lgbdm issues.
+
+   In addition to the discussion on -ldb above, it seems that linux's
+   libndbm.a and libgdbm.a libraries also cause problems with
+   DB-Library. I have not identified the exact problem yet, but
+   rebuilding perl without -lndbm and -lgdbm in the extra libraries
+   line (and of course without -ldb) seems to solve the problem.
+
    
-Once you have answered these six questions, you can proceed:
+Once you have answered these eight questions, you can proceed:
 
    1) Unpack the package.
       See comments under a) above.
@@ -166,8 +268,9 @@ Once you have answered these six questions, you can proceed:
       requires -lnsl, for example). You should check your Sybase
       OpenClient Supplement for your OS and add any special libraries
       to the EXTRA_LIBS line. The required information can be found on
-      the web at http://cobweb.sybase.com:8000/con10022/tctsg (you'll
-      need to dig around a bit, though), or via AnswerBase.
+      the web at http://sybooks.sybase.com/ (you'll need to need to
+      dig around a bit - look for "Open Client/Server xx.x.x
+      Platforms"), or via AnswerBase. 
 
       The DBLIBVS and CTLIBVS variables need to be set correctly for
       the version of OpenClient that is available at your site. Below
@@ -179,6 +282,7 @@ Once you have answered these six questions, you can proceed:
       - 4.2 (includes MSSQL 4.2)       420         0
       - 4.8, 4.9.x                     461         0
       - 10.0.x                        1000       100
+      - 11.x			      1000	 100
 
       You can check for the DB-Library version by looking at the top
       of the sybdb.h include file (it should be located in
@@ -210,6 +314,10 @@ Once you have answered these six questions, you can proceed:
       tests. It's probably a good idea to reset this file to its
       original state once you're done, unless you really don't have
       any security concerns!
+
+      Make sure that the SYBASE environment variable is set
+      correctly. You can test this by trying to connect to the server
+      using isql from the same shell.
 
       The tests are non-destructive (ie only SELECT statements),
       except for Sybase::BCP which creates a temp table (#bcp) to test
@@ -263,7 +371,7 @@ In case of problems:
 First, read the FAQ file in the sybperl distribution.
 
 Second, fire off an e-mail to me (mpeppler@mbay.net) or to the Sybperl
-mailing list (sybperl-l@trln.lib.unc.edu) with a *full* description of
+mailing list (sybperl-l@listproc.net) with a *full* description of
 what doesn't work, including version numbers of Perl and sybperl, the
 hardware and OS version, and the Sybase Open Client version you are
 using.
@@ -275,8 +383,8 @@ There are quite a few small example scripts in eg/ which illustrate
 the use of both the DBlib and CTlib modules.
 
 There is a mailing list for discussing sybperl related questions
-(sybperl-l@trln.lib.unc.edu). Send a message to
-sybperl-l-request@trln.lib.unc.edu with 'subscribe your name'
+(sybperl-l@listproc.net). Send a message to
+listproc@list.cren.net with 'subscribe Sybperl-L your name'
 in the body to subscribe to the list.
 
 

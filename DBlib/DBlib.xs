@@ -1,5 +1,5 @@
 /* -*-C-*-
- *	@(#)DBlib.xs	1.44	06/13/98
+ *	@(#)DBlib.xs	1.46	11/06/98
  */	
 
 
@@ -22,6 +22,17 @@
 #if !defined(dTHR)
 #define dTHR	extern int errno
 #endif
+
+#if !defined(PL_na)
+#define PL_na na
+#endif
+#if !defined(PL_sv_undef)
+#define PL_sv_undef sv_undef
+#endif
+#if !defined(PL_dirty)
+#define PL_dirty dirty
+#endif
+
 
 #include <sybfront.h>
 #include <sybdb.h>
@@ -400,7 +411,7 @@ newdbh(info, package, attr_ref)
     
     thv = (HV*)sv_2mortal((SV*)newHV());
 
-    if((attr_ref != &sv_undef)) {
+    if((attr_ref != &PL_sv_undef)) {
 	if(!SvROK(attr_ref))
 	    warn("Attributes parameter is not a reference");
 	else
@@ -753,7 +764,7 @@ static int CS_PUBLIC err_handler(db, severity, dberr, oserr, dberrstr, oserrstr)
 	    XPUSHs(sv_2mortal(rv));
 	}
 	else
-	    XPUSHs(&sv_undef);
+	    XPUSHs(&PL_sv_undef);
 	    
 	XPUSHs(sv_2mortal (newSViv (severity)));
 	XPUSHs(sv_2mortal (newSViv (dberr)));
@@ -761,11 +772,11 @@ static int CS_PUBLIC err_handler(db, severity, dberr, oserr, dberrstr, oserrstr)
 	if (dberrstr && *dberrstr)
 	    XPUSHs(sv_2mortal (newSVpv (dberrstr, 0)));
 	else
-	    XPUSHs(&sv_undef);
+	    XPUSHs(&PL_sv_undef);
 	if (oserrstr && *oserrstr)
 	    XPUSHs(sv_2mortal (newSVpv (oserrstr, 0)));
 	else
-	    XPUSHs(&sv_undef);
+	    XPUSHs(&PL_sv_undef);
 
 	PUTBACK;
 	if((count = perl_call_sv(err_callback.sub, G_SCALAR)) != 1)
@@ -819,7 +830,7 @@ static int CS_PUBLIC msg_handler(db, msgno, msgstate, severity, msgtext, srvname
 	    XPUSHs(sv_2mortal(rv));
 	}
 	else
-	    XPUSHs(&sv_undef);
+	    XPUSHs(&PL_sv_undef);
 
 	XPUSHs(sv_2mortal (newSViv (msgno)));
 	XPUSHs(sv_2mortal (newSViv (msgstate)));
@@ -827,15 +838,15 @@ static int CS_PUBLIC msg_handler(db, msgno, msgstate, severity, msgtext, srvname
 	if (msgtext && *msgtext)
 	    XPUSHs(sv_2mortal (newSVpv (msgtext, 0)));
 	else
-	    XPUSHs(&sv_undef);
+	    XPUSHs(&PL_sv_undef);
 	if (srvname && *srvname)
 	    XPUSHs(sv_2mortal (newSVpv (srvname, 0)));
 	else
-	    XPUSHs(&sv_undef);
+	    XPUSHs(&PL_sv_undef);
 	if (procname && *procname)
 	    XPUSHs(sv_2mortal (newSVpv (procname, 0)));
 	else
-	    XPUSHs(&sv_undef);
+	    XPUSHs(&PL_sv_undef);
 	XPUSHs(sv_2mortal (newSViv (line)));
 
 	PUTBACK;
@@ -879,7 +890,7 @@ setAppName(ptr)
     {
 	char scriptname[256];
 	char *p;
-	strcpy(scriptname, SvPV(sv, na));
+	strcpy(scriptname, SvPV(sv, PL_na));
 	if((p = strrchr(scriptname, '/')))
 	    ++p;
 	else
@@ -919,7 +930,7 @@ initialize()
 	if((sv = perl_get_sv("Sybase::DBlib::Version", TRUE|GV_ADDMULTI)))
 	{
 	    char buff[256];
-	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib version 1.44 06/13/98\n\nCopyright (c) 1991-1997 Michael Peppler\n\n",
+	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib version 1.46 11/06/98\n\nCopyright (c) 1991-1998 Michael Peppler\n\n",
 		    SYBPLVER);
 	    sv_setnv(sv, atof(SYBPLVER));
 	    sv_setpv(sv, buff);
@@ -3143,7 +3154,7 @@ constant(name,arg)
 	int		arg
 
 void
-dblogin(package="Sybase::DBlib",user=NULL,pwd=NULL,server=NULL,appname=NULL,attr=&sv_undef)
+dblogin(package="Sybase::DBlib",user=NULL,pwd=NULL,server=NULL,appname=NULL,attr=&PL_sv_undef)
 	char *	package
 	char *	user
 	char *	pwd
@@ -3192,7 +3203,7 @@ dblogin(package="Sybase::DBlib",user=NULL,pwd=NULL,server=NULL,appname=NULL,attr
 }
 
 void
-dbopen(package="Sybase::DBlib",server=NULL,appname=NULL,attr=&sv_undef)
+dbopen(package="Sybase::DBlib",server=NULL,appname=NULL,attr=&PL_sv_undef)
 	char *	package
 	char *	server
 	char *	appname
@@ -3237,7 +3248,7 @@ CODE:
 	XSRETURN_EMPTY;
     }
  
-    if(dirty && !info)
+    if(PL_dirty && !info)
     {
 	if(debug_level & TRACE_DESTROY)
 	    warn("Skipping Destroying %s (dirty)", neatsvpv(dbp, 0));
@@ -3372,9 +3383,12 @@ dbresults(dbp)
 	SV *	dbp
 CODE:
 {
-    DBPROCESS *dbproc = getDBPROC(dbp);
+    ConInfo *info = get_ConInfo(dbp);
+    DBPROCESS *dbproc = info->dbproc;
 
     RETVAL = dbresults(dbproc);
+
+    hv_clear(info->hv);
 
     if(debug_level & TRACE_RESULTS)
 	warn("%s->dbresults == %d",
@@ -3410,7 +3424,8 @@ RETVAL
 
 
 void
-dbpoll(milliseconds)
+dbpoll(dbp, milliseconds)
+	SV *	dbp
 	int	milliseconds
 PPCODE:
 {
@@ -3421,7 +3436,11 @@ PPCODE:
     HV *hv = NULL;
     SV *rv;
 
-    ret = dbpoll(NULL, milliseconds, &dbproc, &reason);
+    if(SvROK(dbp)) {
+	dbproc = getDBPROC(dbp);
+    }
+
+    ret = dbpoll(dbproc, milliseconds, &dbproc, &reason);
     if(ret == SUCCEED) {
 	switch(reason) {
 	case DBRESULT:
@@ -3433,7 +3452,7 @@ PPCODE:
 	    } 
 	default:
 	    if(!hv)
-		XPUSHs(&sv_undef);
+		XPUSHs(&PL_sv_undef);
 	    XPUSHs(sv_2mortal(newSViv(reason)));
 	    break;
 	}
@@ -3462,7 +3481,7 @@ dbsetopt(dbp, option, c_val=NULL, i_val=-1)
 {
     DBPROCESS *dbproc = NULL;
 
-    if(dbp != &sv_undef)
+    if(dbp != &PL_sv_undef)
 	dbproc = getDBPROC(dbp);
 
     RETVAL = dbsetopt(dbproc, option, c_val, i_val);
@@ -3479,7 +3498,7 @@ dbclropt(dbp, option, c_val=NULL)
 {
     DBPROCESS *dbproc = NULL;
 
-    if(dbp != &sv_undef)
+    if(dbp != &PL_sv_undef)
 	dbproc = getDBPROC(dbp);
 
     RETVAL = dbclropt(dbproc, option, c_val);
@@ -4011,7 +4030,7 @@ PPCODE:
 	if(!data && !len)
 	{
 	    if(dbNullIsUndef)
-		sv = &sv_undef;
+		sv = &PL_sv_undef;
 	    else
 		sv = newSVpv("NULL", 0);
 	    if(debug_level & TRACE_FETCH)
@@ -4205,7 +4224,7 @@ CODE:
 	Safefree(buff);
     }
     else
-	ST(0) = &sv_undef;
+	ST(0) = &PL_sv_undef;
 }
 
 void
@@ -4241,7 +4260,7 @@ CODE:
 	Safefree(buff);
     }
     else
-	ST(0) = &sv_undef;
+	ST(0) = &PL_sv_undef;
 }
 
 char *
@@ -4348,13 +4367,13 @@ dberrhandle(err_handle)
 
     if(err_callback.sub)
 	ret = newSVsv(err_callback.sub);
-    if(err_handle == &sv_undef)
+    if(err_handle == &PL_sv_undef)
 	err_callback.sub = NULL;
     else
     {
 	if(!SvROK(err_handle))
 	{
-	    name = SvPV(err_handle, na);
+	    name = SvPV(err_handle, PL_na);
 	    if((err_handle = (SV*) perl_get_cv(name, FALSE)))
 		if(err_callback.sub == (SV*) NULL)
 		    err_callback.sub = newSVsv(newRV(err_handle));
@@ -4385,13 +4404,13 @@ dbmsghandle(msg_handle)
 
     if(msg_callback.sub)
 	ret = newSVsv(msg_callback.sub);
-    if(msg_handle == &sv_undef)
+    if(msg_handle == &PL_sv_undef)
 	msg_callback.sub = NULL;
     else
     {
 	if(!SvROK(msg_handle))
 	{
-	    name = SvPV(msg_handle, na);
+	    name = SvPV(msg_handle, PL_na);
 	    if((msg_handle = (SV*) perl_get_cv(name, FALSE)))
 		if(msg_callback.sub == (SV*)NULL)
 		    msg_callback.sub = newSVsv(newRV(msg_handle));
@@ -4594,7 +4613,7 @@ bcp_sendrow(dbp, ...)
 	    {
 		svp = av_fetch(av, i, 0);
 		bcp_data->colPtr[i] = (BYTE*)SvPV(*svp, slen);
-		if(*svp == &sv_undef)
+		if(*svp == &PL_sv_undef)
 		    bcp_collen(dbproc, 0, i+1);
 		else
 		    bcp_collen(dbproc, slen, i+1);
@@ -4603,7 +4622,7 @@ bcp_sendrow(dbp, ...)
 	    break;
 	}
 	bcp_data->colPtr[j-1] = (BYTE*)SvPV(sv, slen);
-	if(sv == &sv_undef)	/* it's a null data value */
+	if(sv == &PL_sv_undef)	/* it's a null data value */
 	    bcp_collen(dbproc, 0, j);
 	else
 	    bcp_collen(dbproc, slen, j);
@@ -5308,6 +5327,7 @@ dbmnyndigit(dbp, m1)
     XPUSHs(sv_2mortal(newSViv((int)bresult)));
 }
 
+
 int
 dbmnycmp(dbp, m1, m2)
 	SV *	dbp
@@ -5331,6 +5351,37 @@ dbmnycmp(dbp, m1, m2)
 }
  OUTPUT:
 RETVAL
+
+void
+dbcomputeinfo(dbp, computeID, column)
+	SV *	dbp
+	int 	computeID
+	int	column
+  PPCODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+    int retval;
+
+    retval = dbaltcolid(dbproc, computeID, column);
+    XPUSHs(sv_2mortal(newSVpv("colid", 0)));
+    XPUSHs(sv_2mortal(newSViv(retval)));
+
+    retval = dbaltlen(dbproc, computeID, column);
+    XPUSHs(sv_2mortal(newSVpv("len", 0)));
+    XPUSHs(sv_2mortal(newSViv(retval)));
+
+    retval = dbaltop(dbproc, computeID, column);
+    XPUSHs(sv_2mortal(newSVpv("op", 0)));
+    XPUSHs(sv_2mortal(newSViv(retval)));
+
+    retval = dbalttype(dbproc, computeID, column);
+    XPUSHs(sv_2mortal(newSVpv("type", 0)));
+    XPUSHs(sv_2mortal(newSViv(retval)));
+
+    retval = dbaltutype(dbproc, computeID, column);
+    XPUSHs(sv_2mortal(newSVpv("utype", 0)));
+    XPUSHs(sv_2mortal(newSViv(retval)));
+}
 
 int
 DBDEAD(dbp)
@@ -5357,7 +5408,7 @@ CODE:
 RETVAL
 
 void
-open_commit(package="Sybase::DBlib",user=NULL,pwd=NULL,server=NULL,appname=NULL,attr=&sv_undef)
+open_commit(package="Sybase::DBlib",user=NULL,pwd=NULL,server=NULL,appname=NULL,attr=&PL_sv_undef)
 	char *	package
 	char *	user
 	char *	pwd
@@ -5890,7 +5941,7 @@ crack(valp)
 }
 
 int
-cmp(valp, valp2, ord = &sv_undef)
+cmp(valp, valp2, ord = &PL_sv_undef)
 	SV *	valp
 	SV *	valp2
 	SV *	ord
@@ -5911,7 +5962,7 @@ cmp(valp, valp2, ord = &sv_undef)
     
     if(!SvROK(valp2))
     {
-	dt = to_datetime(SvPV(valp2, na));
+	dt = to_datetime(SvPV(valp2, PL_na));
 	d2 = &dt;
     }
     else
@@ -5919,7 +5970,7 @@ cmp(valp, valp2, ord = &sv_undef)
 	sv = (SV *)SvRV(valp2);
 	d2 = (DateTime *)SvIV(sv);
     }
-    if(ord != &sv_undef && SvTRUE(ord))
+    if(ord != &PL_sv_undef && SvTRUE(ord))
     {
 	tmp = d1;
 	d1 = d2;
@@ -5957,7 +6008,7 @@ calc(valp, days, msecs = 0)
 
 
 void
-diff(valp, valp2, ord = &sv_undef)
+diff(valp, valp2, ord = &PL_sv_undef)
 	SV *	valp
 	SV *	valp2
 	SV *	ord
@@ -5975,7 +6026,7 @@ diff(valp, valp2, ord = &sv_undef)
     
     if(!SvROK(valp2))
     {
-	dt = to_datetime(SvPV(valp2, na));
+	dt = to_datetime(SvPV(valp2, PL_na));
 	d2 = &dt;
     }
     else
@@ -5983,7 +6034,7 @@ diff(valp, valp2, ord = &sv_undef)
 	sv = (SV *)SvRV(valp2);
 	d2 = (DateTime *)SvIV(sv);
     }
-    if(ord != &sv_undef && SvTRUE(ord))
+    if(ord != &PL_sv_undef && SvTRUE(ord))
     {
 	tmp = d1;
 	d1 = d2;
@@ -6079,7 +6130,7 @@ set(valp, str)
 }
 
 int
-cmp(valp, valp2, ord = &sv_undef)
+cmp(valp, valp2, ord = &PL_sv_undef)
 	SV *	valp
 	SV *	valp2
 	SV *	ord
@@ -6111,7 +6162,7 @@ cmp(valp, valp2, ord = &sv_undef)
 	sv = (SV *)SvRV(valp2);
 	m2 = (Money *)SvIV(sv);
     }
-    if(ord != &sv_undef && SvTRUE(ord))
+    if(ord != &PL_sv_undef && SvTRUE(ord))
     {
 	tmp = m1;
 	m1 = m2;
@@ -6127,7 +6178,7 @@ cmp(valp, valp2, ord = &sv_undef)
 RETVAL
 
 void
-calc(valp1, valp2, op, ord = &sv_undef)
+calc(valp1, valp2, op, ord = &PL_sv_undef)
 	SV *	valp1
 	SV *	valp2
 	char	op
@@ -6160,7 +6211,7 @@ calc(valp1, valp2, op, ord = &sv_undef)
 	IV tmp = SvIV((SV*)SvRV(valp2));
 	m2 = (Money *) tmp;
     }
-    if(ord != &sv_undef && SvTRUE(ord))
+    if(ord != &PL_sv_undef && SvTRUE(ord))
     {
 	tmp = m1;
 	m1 = m2;
@@ -6202,7 +6253,7 @@ FETCH(sv, keysv)
 CODE:
 {
     ConInfo *info = get_ConInfoFromMagic((HV*)SvRV(sv));
-    SV *valuesv = attr_fetch(info, SvPV(keysv, na), sv_len(keysv));
+    SV *valuesv = attr_fetch(info, SvPV(keysv, PL_na), sv_len(keysv));
     ST(0) = valuesv;
 }
 
@@ -6215,5 +6266,5 @@ CODE:
 {
     ConInfo *info = get_ConInfoFromMagic((HV*)SvRV(sv));
 
-    attr_store(info, SvPV(keysv, na), sv_len(keysv), valuesv, 0);
+    attr_store(info, SvPV(keysv, PL_na), sv_len(keysv), valuesv, 0);
 }

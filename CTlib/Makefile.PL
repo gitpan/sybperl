@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# @(#)Makefile.PL	1.17	11/28/97
+# @(#)Makefile.PL	1.18	11/06/98
 
 
 require 5.002;
@@ -34,9 +34,37 @@ if($^O eq 'MSWin32') {
     $inc_string = "-I$SYBASE/include";
     $def_string = "-DCTLIBVS=$CTLIBVS -DSYBPLVER='\"\${VERSION}\"' $$sattr{EXTRA_DEFS}";
     $lib_string = "-L$SYBASE/lib -lct -lcs -ltcl -lcomn -lintl";
-    $lib_string =~ s/-ltcl/-lsybtcl/ if $^O =~ /linux/i;
+    $lib_string =~ s/-ltcl/-lsybtcl/ if -e "$SYBASE/lib/libsybtcl$Config{_a}";
     $lib_string =~ s/-l/-lsyb_/g if $^O eq 'VMS';
     $lib_string .= " $$sattr{EXTRA_LIBS} -lm";
+
+
+    # Logic to replace normal libs with _r (re-entrant) libs if
+    # usethreads is defined provided by W. Phillip Moore (wpm@ms.com)
+    # I have no idea if this works on Win32 systems (probably not!)
+    if ( $Config{usethreads} eq 'define' ) {
+	opendir(SYBLIB,"$SYBASE/lib")
+	    or die "Unable to opendir $SYBASE/lib: $!\n";
+	
+	my %libname = ();
+	
+	foreach ( readdir(SYBLIB) ) {
+	    next unless /^lib(\S+)\.(so|a)/;
+	    next unless -f "$SYBASE/lib/$_";
+	    $libname{$1} = 1;
+	}
+	
+	closedir(SYBLIB);
+	
+	foreach ( split(/\s+/,$lib_string) ) {
+	    next unless /^-l(\S+)/;
+	    my $oldname = $1;
+	    my $newname = $1 . "_r";
+	    next unless exists $libname{$newname};
+	    $lib_string =~ s/-l$oldname\b/-l$newname/;
+	}
+	
+    }
 }
 
 #####
