@@ -1,5 +1,5 @@
 #!./perl
-# $Id: 3_bcp.t,v 1.1 2003/12/25 17:16:42 mpeppler Exp $
+# $Id: 3_bcp.t,v 1.2 2004/04/13 20:03:06 mpeppler Exp $
 #
 # From:
 #	@(#)bcp.t	1.2	03/22/96
@@ -19,27 +19,11 @@ require 'sybutil.pl';
 
 ######################### End of black magic.
 
-# Find the passwd file:
-@dirs = ('./.', './..', './../..', './../../..');
-foreach (@dirs)
-{
-    if(-f "$_/PWD")
-    {
-	open(PWD, "$_/PWD") || die "$_/PWD is not readable: $!\n";
-	while(<PWD>)
-	{
-	    chop;
-	    s/^\s*//;
-	    next if(/^\#/ || /^\s*$/);
-	    ($l, $r) = split(/=/);
-	    $Uid = $r if($l eq UID);
-	    $Pwd = $r if($l eq PWD);
-	    $Srv = $r if($l eq SRV);
-	}
-	close(PWD);
-	last;
-    }
-}
+use lib 't';
+use _test;
+use vars qw($Pwd $Uid $Srv $Db);
+
+($Uid, $Pwd, $Srv, $Db) = _test::get_info();
 
 ($X = new Sybase::BCP $Uid, $Pwd, $Srv)
     and print "ok 2\n"

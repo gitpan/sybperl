@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# $Id: Makefile.PL,v 1.32 2003/12/29 01:21:24 mpeppler Exp $
+# $Id: Makefile.PL,v 1.33 2004/04/13 20:03:05 mpeppler Exp $
 # @(#)Makefile.PL	1.19	03/26/99
 
 
@@ -88,6 +88,7 @@ if($^O eq 'MSWin32') {
 	
 	closedir(SYBLIB);
 	
+	my $found = 0;
 	foreach ( split(/\s+/,$lib_string) ) {
 	    next unless /^-l(\S+)/;
 	    my $oldname = $1;
@@ -95,6 +96,11 @@ if($^O eq 'MSWin32') {
 	    next unless exists $libname{$newname};
 	    print "Found -l$newname for -l$oldname\n";
 	    $lib_string =~ s/-l$oldname\b/-l$newname/;
+	    ++$found;
+	}
+	if(!$found) {
+	    print "No thread-safe Sybase libraries found.\n";
+	    $def_string .= ' -DNO_THREADS ';
 	}
     }
 

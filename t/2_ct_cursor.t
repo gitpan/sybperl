@@ -1,13 +1,11 @@
 #!./perl
-# $Id: 2_ct_cursor.t,v 1.2 2003/12/25 18:12:00 mpeppler Exp $
+# $Id: 2_ct_cursor.t,v 1.3 2004/04/13 20:03:05 mpeppler Exp $
 #
 # From
 #	@(#)cursor.t	1.5	05/20/97
 
 ######################### We start with some black magic to print on failure.
 
-# Change 1..1 below to 1..last_test_to_print .
-# (It may become useful if the test is moved to ./t subdirectory.)
 
 BEGIN {print "1..22\n";}
 END {print "not ok 1\n" unless $loaded;}
@@ -19,27 +17,12 @@ require 'ctutil.pl';
 
 ######################### End of black magic.
 
-# Find the passwd file:
-@dirs = ('./.', './..', './../..', './../../..');
-foreach (@dirs)
-{
-    if(-f "$_/PWD")
-    {
-	open(PWD, "$_/PWD") || die "$_/PWD is not readable: $!\n";
-	while(<PWD>)
-	{
-	    chop;
-	    s/^\s*//;
-	    next if(/^\#/ || /^\s*$/);
-	    ($l, $r) = split(/=/);
-	    $Uid = $r if($l eq UID);
-	    $Pwd = $r if($l eq PWD);
-	    $Srv = $r if($l eq SRV);
-	}
-	close(PWD);
-	last;
-    }
-}
+use lib 't';
+use _test;
+
+use vars qw($Pwd $Uid $Srv $Db);
+
+($Uid, $Pwd, $Srv, $Db) = _test::get_info();
 
 ($d = new Sybase::CTlib $Uid, $Pwd, $Srv)
     and print "ok 2\n"

@@ -1,5 +1,5 @@
 # -*-Perl-*-
-#	$Id: Makefile.PL,v 1.11 2003/12/31 16:47:07 mpeppler Exp $
+#	$Id: Makefile.PL,v 1.12 2004/04/13 20:03:05 mpeppler Exp $
 require 5.002;
 use ExtUtils::MakeMaker;
 use Config;
@@ -89,13 +89,20 @@ sub configPwd {
     $pwd{UID} = getAns(0) || $pwd{UID};
     print "Password (default: $pwd{PWD}): ";
     $pwd{PWD} = getAns(1) || $pwd{PWD};
+    print "Sybase database to use on $pwd{SRV} (default: $pwd{DB}): ";
+    $pwd{DB} = getAns(0) || $pwd{DB};
 
     warn "\n* Writing login information, including password, to file $written_pwd_file.\n\n";
     # Create the file non-readable by anyone else.
-    my $old_umask = umask(077);
-    die "cannot umask(): $!" if not defined $old_umask;
+    my $old_umask;
+    unless($^O =~ /MSWin32/) {
+	$old_umask = umask(077);
+	die "cannot umask(): $!" unless $old_umask;
+    }
     open(OUT, ">$written_pwd_file") || die "Can't open $written_pwd_file: $!";
-    umask($old_umask) != 077 && die "strange return from umask()";
+    unless($^O =~ /MSWin32/) {
+	umask($old_umask) != 077 && die "strange return from umask()";
+    }
     print OUT <<EOF;
 # This file contains optional login id, passwd and server info for the test
 # programs:

@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# $Id: DBlib.pm,v 1.46 2003/12/31 19:43:22 mpeppler Exp $
+# $Id: DBlib.pm,v 1.48 2004/06/23 14:02:18 mpeppler Exp $
 #
 # From:
 # 	@(#)DBlib.pm	1.35	03/26/99
@@ -226,8 +226,8 @@ use vars qw($DB_ERROR $nsql_strip_whitespace $nsql_deadlock_retrycount
 @EXPORT = qw( dbmsghandle dberrhandle dbrecftos dbexit
 	     BCP_SETL bcp_getl
 	     dbsetlogintime dbsettime DBGETTIME
-	     DBSETLNATLANG DBSETLCHARSET dbsetversion dbversion
-	     DBSETLHOST
+	     DBSETLNATLANG DBSETLCHARSET dbversion
+	     DBSETLHOST DBSETLENCRYPT
 	     dbsetifile dbrpwclr dbrpwset
 	     DBLIBVS  FAIL 
 	     INT_CANCEL INT_CONTINUE INT_EXIT INT_TIMEOUT
@@ -279,6 +279,9 @@ use vars qw($DB_ERROR $nsql_strip_whitespace $nsql_deadlock_retrycount
 	SYBEURCI SYBEUREI SYBEUREM SYBEURES SYBEURMI SYBEUSCT SYBEUTDS SYBEUVBF
 	SYBEUVDT SYBEVDPT SYBEVMS SYBEVOIDRET SYBEWAID SYBEWRIT SYBEXOCI
 	SYBEXTDN SYBEXTN SYBEXTSN SYBEZTXT
+		TRACE_NONE TRACE_ALL TRACE_CREATE TRACE_DESTROY TRACE_SQL
+    TRACE_RESULTS TRACE_FETCH TRACE_CURSOR TRACE_PARAMS	TRACE_OVERLOAD
+		TRACE_CONVERT
 );
 
 tie %Att, 'Sybase::DBlib::Att';

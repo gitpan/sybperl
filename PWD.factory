@@ -1,5 +1,6 @@
-# $Id: PWD.factory,v 1.1 2003/12/29 18:48:32 mpeppler Exp $
+# $Id: PWD.factory,v 1.2 2004/04/13 20:03:05 mpeppler Exp $
 
 SRV=SYBASE
 UID=sa
 PWD=
+DB=

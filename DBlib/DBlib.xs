@@ -1,5 +1,5 @@
 /* -*-C-*-
- * $Id: DBlib.xs,v 1.58 2003/12/25 17:16:03 mpeppler Exp $
+ * $Id: DBlib.xs,v 1.59 2004/06/11 13:04:09 mpeppler Exp $
  *
  * From
  *	@(#)DBlib.xs	1.47	03/26/99
@@ -946,7 +946,7 @@ initialize()
 	if((sv = perl_get_sv("Sybase::DBlib::Version", TRUE|GV_ADDMULTI)))
 	{
 	    char buff[2048];
-	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib $Revision: 1.58 $ $Date: 2003/12/25 17:16:03 $ \n\nCopyright (c) 1991-2001 Michael Peppler\n\nDB-Library version: %s\n",
+	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib $Revision: 1.59 $ $Date: 2004/06/11 13:04:09 $ \n\nCopyright (c) 1991-2001 Michael Peppler\n\nDB-Library version: %s\n",
 		    SYBPLVER, dbversion());
 	    sv_setnv(sv, atof(SYBPLVER));
 	    sv_setpv(sv, buff);
@@ -4533,6 +4533,7 @@ dbrecftos(fname)
 
 char *
 dbversion()
+
 
 int
 dbsetdefcharset(char_set)

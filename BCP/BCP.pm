@@ -1,4 +1,4 @@
-# $Id: BCP.pm,v 1.6 2003/12/26 21:29:27 mpeppler Exp $
+# $Id: BCP.pm,v 1.7 2004/04/13 20:03:05 mpeppler Exp $
 # from	@(#)BCP.pm	1.15	03/05/98
 #
 # Copyright (c) 1996-1999
@@ -285,9 +285,10 @@ use vars qw(@ISA @EXPORT $VERSION $Version);
 @EXPORT = qw(dbmsghandle dberrhandle TRUE FALSE INT_CANCEL SYBESMSG $DB_ERROR);
 
 use strict;
+use warnings;
 
-$VERSION = substr(q$Revision: 1.6 $, 10);
-$Version = q|$Id: BCP.pm,v 1.6 2003/12/26 21:29:27 mpeppler Exp $|;
+$VERSION = substr(q$Revision: 1.7 $, 10);
+$Version = q|$Id: BCP.pm,v 1.7 2004/04/13 20:03:05 mpeppler Exp $|;
 
 my @g_keys = qw(INPUT OUTPUT ERRORS SEPARATOR FIELDS BATCH_SIZE
 	     NULL DATE REORDER CALLBACK TAB_INFO DIRECTION CONDITION

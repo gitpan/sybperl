@@ -1,8 +1,8 @@
 # -*-Perl-*-
-# $Id: CTlib.pm,v 1.39 2003/12/31 19:43:22 mpeppler Exp $
+# $Id: CTlib.pm,v 1.42 2004/06/11 13:04:09 mpeppler Exp $
 # @(#)CTlib.pm	1.27	03/26/99
 
-# Copyright (c) 1995-1997
+# Copyright (c) 1995-2004
 #   Michael Peppler
 #
 #   Parts of this file are
@@ -826,6 +826,7 @@ use vars qw($DB_ERROR $nsql_strip_whitespace $nsql_deadlock_retrycount
 # Other items we are prepared to export if requested
 @EXPORT_OK = qw(TRACE_NONE TRACE_ALL TRACE_CREATE TRACE_DESTROY TRACE_SQL
     TRACE_RESULTS TRACE_FETCH TRACE_CURSOR TRACE_PARAMS	TRACE_OVERLOAD
+		TRACE_CONVERT
     SQLCA_TYPE SQLCODE_TYPE SQLSTATE_TYPE
     CT_BIND CT_BR_COLUMN CT_BR_TABLE CT_CALLBACK CT_CANCEL CT_CAPABILITY
     CT_CLOSE CT_CMD_ALLOC CT_CMD_DROP CT_CMD_PROPS CT_COMMAND CT_COMPUTE_INFO
@@ -990,7 +991,7 @@ sub nsql {
 	    }
 	    next unless $db->ct_fetchable($restype);
 
-	    if($Sybase::CTlib::ct_sql_nostatus && $res_type == &CS_STATUS_RESULT) {
+	    if($Sybase::CTlib::ct_sql_nostatus && $restype == &CS_STATUS_RESULT) {
 		while ($data = $db->ct_fetch(0, 1)) {
 		    ;   #skip return codes from procs...
 		}
@@ -1089,6 +1090,10 @@ Sybase::CTlib - Sybase Client Library API.
     $dbh = Sybase::CTlib->new('user', 'pwd', 'server');
     $dbh->ct_execute("select * from master..sysprocesses");
     while($dbh->ct_results($restype) == CS_SUCCEED) {
+        if($restype == CS_CMD_FAIL) {
+            warn "Command failed!";
+            next;
+        }
 	next unless $dbh->ct_fetchable($restype);
 	while(@data = $dbh->ct_fetch) {
 	    print "@data\n";
@@ -1104,7 +1109,62 @@ make the life of the perl programmer a  little easier.
 
 It is a good idea to have the Sybase Client Library reference manual 
 available when writing Sybase::CTlib programs. The Sybase manuals are
-available on-line at http://sybooks.sybase.com/.
+available on-line at http://sybooks.sybase.com/. This manual is not
+a replacement for the Sybase manuals of Client Library - it is mostly 
+aimed at illustrating the differences between the Perl and C versions
+of the API and to give a basic understanding of the APIs.
+
+=head2 General Information
+
+The basic philosphy of Client Library (CTlib) is to send a command to the
+server, and then process any results and fetch data as needed. Commands can 
+be sent as plain SQL with one or more statements, or they can be sent
+as Remote Procedure Calls (RPCs). 
+
+CTlib can connect and interact with 
+any type of server that understands Sybase's Tabular Data Stream (TDS)
+protocol. This means that you can use CTlib to connect to a Sybase
+database server, a replication server, or any other type of server that
+was built with the Open Server API.
+
+A typical database request starts with a call to ct_execute() with
+the SQL command to be executed. This sends the request to the server. You
+the call ct_results($restype) in a loop until it stops returning CS_SUCCEED.
+ct_results() sets the $restype (the result I<type>) for each result set.
+Some of the result types do not include any fetchable rows, hence the
+ct_fetchable() routine that returns TRUE if a $restype value is one that
+includes fetchable data:
+
+    $dbh->ct_execute("select * from master..sysprocesses");
+    while($dbh->ct_results($restype) == CS_SUCCEED) {
+        if($restype == CS_CMD_FAIL) {
+            warn "Command failed!";
+            next;
+        }
+	next unless $dbh->ct_fetchable($restype);
+	while(@data = $dbh->ct_fetch) {
+	    print "@data\n";
+	}
+    }
+
+ct_execute() will return CS_FAIL if there is an error on the client side.
+Errors that occur on the server will be reported via the server message
+callback handler (see ct_callback()), and will in most cases result
+in a $restype value of CS_CMD_FAIL.
+
+In the case of an error occuring inside a stored procedure or trigger
+the error is I<NOT> reported via a CS_CMD_FAIL $restype. Instead 
+the return status of the stored procedure ($restype of CS_STATUS_RESULT) 
+is set to -4.
+
+It is a good idea to check for error conditions in-line (i.e. check the
+return value of all API calls), to check the value of $restype returned 
+from ct_results() for a possible CS_CMD_FAIL status, to check any 
+stored procedure status value (CS_STATUS_RESULT result set) for a negative
+value (which generally indicates that an error occured in the stored 
+procedure), I<and> install server and client error handlers via ct_callback()
+to flag any errors (server or client messages where the $severity value is 
+greater than 10).
 
 =head2 Routines:
 
@@ -1755,7 +1815,7 @@ $has_identity I<off>, set $id_column to the column number of the identity
 column (remember that the first column is column 1, the second is 2, etc), 
 and pass I<undef> as the values for that column.
 
-See the CTlib/t/xblk.t test script for an example of both letting the
+See the t/2_ct_xblk.t test script for an example of both letting the
 server set the identity values and specifying them directly.
 
 Returns CS_SUCCEED or CS_FAIL.
@@ -1764,6 +1824,16 @@ Returns CS_SUCCEED or CS_FAIL.
 
 Send one row to the server. $data is an array reference, where each element
 is the data for a column in the row.
+
+By default, Sybase::CTlib attempts to convert incoming data to the target
+format. These conversions can in some cases generate warnings, in particular
+for NUMERIC data where the precision of the source data exceeds the
+target column (for example trying to stored 123.456 to a numeric(6,2) 
+column).
+
+If such a conversion fails it generates a warning which is sent to the
+client callback (see ct_callback()). You can convert the warning to an 
+error by returning CS_FAIL from the callback.
 
 Returns CS_SUCCEED or CS_FAIL.
 
@@ -2047,10 +2117,27 @@ This is a no-op. As of sybperl 2.16 B<NUMERIC>, B<DECIMAL> and B<MONEY>
 data retrieved via ct_fetch() is stored as character strings by default
 to ensure no loss of precision.
 
+=item UseBinary
+
+If set then BINARY and IMAGE data items are returned in native form.
+The default is to have BINARY and IMAGE data returned as hex strings.
+
+=item UseBin0x
+
+If set, and if UseBinary is FALSE, then BINARY data fetched from the
+server will be converted to a hex string and prepended with 0x.
+
 =item MaxRows
 
 If non-0, limit the number of data rows that can be retrieve via
 ct_sql(). Default: 0.
+
+=item SkipEED
+
+If set, then I<Extended Error Data> will I<not> be fetched in error
+handlers. The default is to fetch extended error data, which includes
+things like the index name that caused a duplicate insert error, for 
+example.
 
 =back
 
@@ -2225,6 +2312,10 @@ Trace calls to ct_param() (not implemented in Sybase::DBlib).
 
 Trace all overloaded operations involving DateTime, Money or Numeric
 datatypes.
+
+=item * TRACE_CONVERT
+
+Verbose tracing of calls to cs_convert().
 
 =back
 

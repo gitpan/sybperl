@@ -1,11 +1,11 @@
 /* -*-C-*-
  *
- * $Id: CTlib.xs,v 1.63 2003/12/31 19:43:22 mpeppler Exp $
+ * $Id: CTlib.xs,v 1.67 2004/06/11 13:04:09 mpeppler Exp $
  *	@(#)CTlib.xs	1.37	03/26/99
  */
 
 
-/* Copyright (c) 1995-2001
+/* Copyright (c) 1995-2004
    Michael Peppler
 
    Parts of this file are
@@ -40,6 +40,13 @@
 
 #include <ctpublic.h>
 #include <bkpublic.h>
+
+#if !defined(CS_LONGBINARY_TYPE)
+#define CS_LONGBINARY_TYPE CS_BINARY_TYPE
+#endif
+#if !defined(CS_LONGCHAR_TYPE)
+#define CS_LONGBINARY_TYPE CS_CHAR_TYPE
+#endif
 
 #if defined(CS_VERSION_125)
 #define CTLIB_VERSION   CS_VERSION_125
@@ -87,6 +94,9 @@
 #endif
 
 
+/*#define USE_CSLIB_CB 1*/
+
+
 /*
 ** Maximum character buffer for displaying a column
 */
@@ -127,6 +137,7 @@ struct attribs {
     int UseNumeric;
     int UseChar;
     int UseBin0x;
+    int UseBinary;
     int MaxRows;
     int ComputeId;
     int ExtendedError;
@@ -192,6 +203,7 @@ typedef struct
 } CallBackInfo ;
 
 static CallBackInfo server_cb 	= { 0 } ;
+static CallBackInfo cslib_cb 	= { 0 } ;
 static CallBackInfo client_cb 	= { 0 } ;
 static CallBackInfo comp_cb     = { 0 } ;
 
@@ -202,6 +214,7 @@ typedef enum hash_key_id
     HV_use_numeric,
     HV_use_char,
     HV_use_bin0x,
+    HV_use_binary,
     HV_max_rows,
     HV_compute_id,
     HV_extended_error,
@@ -222,6 +235,7 @@ static struct _hash_keys {
     { "UseNumeric",  HV_use_numeric },
     { "UseChar",     HV_use_char },
     { "UseBin0x",    HV_use_bin0x },
+    { "UseBinary",   HV_use_binary },
     { "MaxRows",     HV_max_rows },
     { "ComputeId",   HV_compute_id },
     { "ExtendedError", HV_extended_error },
@@ -247,6 +261,7 @@ static CS_LOCALE  *locale;
 #define TRACE_PARAMS	(1 << 5)
 #define TRACE_OVERLOAD  (1 << 6)
 #define TRACE_SQL	(1 << 7)
+#define TRACE_CONVERT	(1 << 8)
 #define TRACE_ALL	((unsigned int)(~0))
 static unsigned int debug_level = TRACE_NONE;
 
@@ -287,6 +302,8 @@ static CS_RETCODE CS_PUBLIC clientmsg_cb _((CS_CONTEXT*, CS_CONNECTION*, CS_CLIE
 static CS_RETCODE CS_PUBLIC servermsg_cb _((CS_CONTEXT*, CS_CONNECTION*, CS_SERVERMSG*));
 static CS_RETCODE CS_PUBLIC notification_cb _((CS_CONNECTION*, CS_CHAR*, CS_INT));
 static CS_RETCODE CS_PUBLIC completion_cb _((CS_CONNECTION*, CS_COMMAND*, CS_INT, CS_RETCODE));
+static CS_RETCODE CS_PUBLIC cslibmsg_cb _((CS_CONTEXT *, CS_CLIENTMSG *));
+static CS_RETCODE get_cs_msg(CS_CONTEXT *context, CS_CONNECTION *connection);
 
 static void initialize _((void));
 static int not_here _((char*));
@@ -335,6 +352,9 @@ attr_store(info, key, keylen, sv, flag)
 	break;
       case HV_use_bin0x:
 	attr->UseBin0x      = SvTRUE(sv);
+	break;
+      case HV_use_binary:
+	attr->UseBinary     = SvTRUE(sv);
 	break;
       case HV_max_rows:
 	attr->MaxRows       = SvIV(sv);
@@ -405,6 +425,9 @@ attr_fetch(info, key, keylen)
 	break;
       case HV_use_bin0x:
 	sv = newSViv(attr->UseBin0x);
+	break;
+      case HV_use_binary:
+	sv = newSViv(attr->UseBinary);
 	break;
       case HV_max_rows:
 	sv = newSViv(attr->MaxRows);
@@ -651,6 +674,33 @@ neatsvpv(sv, maxlen) /* return a tidy ascii value, for debugging only */
     return v;
 }
 
+static int
+_convert(void *ptr, char *str, CS_LOCALE *locale, CS_DATAFMT *datafmt, 
+	 CS_INT *len)
+{
+  CS_DATAFMT srcfmt;
+  CS_INT retcode;
+  CS_INT reslen;
+
+  memset(&srcfmt, 0, sizeof(srcfmt));
+  srcfmt.datatype  = CS_CHAR_TYPE;
+  srcfmt.maxlength = strlen(str);
+  srcfmt.format    = CS_FMT_NULLTERM;
+  srcfmt.locale    = locale;
+  
+  retcode = cs_convert(context, &srcfmt, str, datafmt,
+		       ptr, &reslen);
+
+  if((debug_level & TRACE_CONVERT)
+     && retcode != CS_SUCCEED || reslen == CS_UNUSED)
+    warn("cs_convert failed (_convert(%s, %d))", str, datafmt->datatype);
+
+  if(len) {
+    *len = reslen;
+  }
+
+  return retcode;
+}
 
 static CS_DATETIME
 to_datetime(str, locale)
@@ -660,6 +710,7 @@ to_datetime(str, locale)
     CS_DATETIME dt;
     CS_DATAFMT srcfmt, destfmt;
     CS_INT reslen;
+    CS_INT retcode;
 
     memset(&dt, 0, sizeof(dt));
 
@@ -678,13 +729,12 @@ to_datetime(str, locale)
     destfmt.locale    = locale;
     destfmt.maxlength = sizeof(CS_DATETIME);
     destfmt.format    = CS_FMT_UNUSED;
-    
-    if (cs_convert(context, &srcfmt, str, &destfmt,
-		   &dt, &reslen) != CS_SUCCEED)
-	warn("cs_convert failed (to_datetime(%s))", str);
+     
+    retcode = cs_convert(context, &srcfmt, str, &destfmt,
+			 &dt, &reslen);
 
-    if(reslen == CS_UNUSED)
-	warn("conversion failed: to_datetime(%s)", str);
+    if(retcode != CS_SUCCEED || reslen == CS_UNUSED)
+	warn("cs_convert failed (to_datetime(%s))", str);
 
     return dt;
 }
@@ -858,6 +908,7 @@ static SV
     
     return sv;
 }
+
     
 static CS_NUMERIC
 to_numeric(str, locale, datafmt, type)
@@ -1052,7 +1103,9 @@ cleanUp(info)
 	    if(!info->coldata[i].ptr &&
 	       info->coldata[i].value.c &&
 	       info->coldata[i].type == CS_CHAR_TYPE ||
-	       info->coldata[i].type == CS_TEXT_TYPE)
+	       info->coldata[i].type == CS_TEXT_TYPE ||
+	       info->coldata[i].type == CS_BINARY_TYPE ||
+	       info->coldata[i].type == CS_IMAGE_TYPE)
 		Safefree(info->coldata[i].value.c);
 	Safefree(info->coldata);
     }
@@ -1131,6 +1184,7 @@ CS_DATAFMT *column;
     {
       case CS_CHAR_TYPE:
       case CS_VARCHAR_TYPE:
+      case CS_LONGCHAR_TYPE:
       case CS_TEXT_TYPE:
       case CS_IMAGE_TYPE:
 	len = column->maxlength;
@@ -1138,6 +1192,7 @@ CS_DATAFMT *column;
 
       case CS_BINARY_TYPE:
       case CS_VARBINARY_TYPE:
+      case CS_LONGBINARY_TYPE:
 	len = (2 * column->maxlength) + 2;
 	break;
 	
@@ -1265,6 +1320,7 @@ describe(info, dbp, restype, textBind)
     int use_money = 0;
     int use_numeric = 0;
     int use_char = 0;
+    int use_binary = 0;
 
     cleanUp(info);
 
@@ -1274,6 +1330,9 @@ describe(info, dbp, restype, textBind)
 	warn("ct_res_info() failed");
 	goto GoodBye;
     }
+    if(debug_level & TRACE_RESULTS)
+      warn("=> %d columns in result set", info->numCols);
+
     if(info->numCols <= 0)
     {
 	warn("ct_res_info() returned 0 columns");
@@ -1307,6 +1366,7 @@ describe(info, dbp, restype, textBind)
     use_money    = info->connection->attr.UseMoney;
     use_numeric  = info->connection->attr.UseNumeric;
     use_char     = info->connection->attr.UseChar;
+    use_binary   = info->connection->attr.UseBinary;
 
     info->numBoundCols = info->numCols;
 
@@ -1343,6 +1403,11 @@ describe(info, dbp, restype, textBind)
 	    sprintf(info->datafmt[i].name, "%s(%d)", agg_op_name, agg_op);
 	}
 	
+	if(debug_level & TRACE_RESULTS)
+	  warn("=> col(%d) %.30s, type %d, length %d", 
+	       i+1, info->datafmt[i].name, info->datafmt[i].datatype,
+	       info->datafmt[i].maxlength);
+
 	info->coldata[i].realtype = info->datafmt[i].datatype;
 	info->coldata[i].sybmaxlength = info->datafmt[i].maxlength;
 
@@ -1379,9 +1444,11 @@ describe(info, dbp, restype, textBind)
 	    
 	  case CS_TEXT_TYPE:
 	  case CS_IMAGE_TYPE:
-	    info->datafmt[i].datatype = CS_TEXT_TYPE;
+	    if(!use_binary) {
+	      info->datafmt[i].datatype = CS_TEXT_TYPE;
+	      info->coldata[i].type = CS_TEXT_TYPE;
+	    }
 	    info->datafmt[i].format   = CS_FMT_UNUSED; /*CS_FMT_NULLTERM;*/
-	    info->coldata[i].type = CS_TEXT_TYPE;
 	    info->coldata[i].value.c = NULL;
 	    if(textBind) {
 		New(902, info->coldata[i].value.c, 
@@ -1440,11 +1507,25 @@ describe(info, dbp, restype, textBind)
 			      &info->coldata[i].valuelen,
 			      &info->coldata[i].indicator);
 	    break;
+
+	  case CS_BINARY_TYPE:
+	  case CS_VARBINARY_TYPE:
+ 	  case CS_LONGBINARY_TYPE:
+	    if(!use_binary)
+	      goto DoChar;
+	    info->datafmt[i].format   = CS_FMT_UNUSED;
+	    info->datafmt[i].datatype = CS_BINARY_TYPE;
+	    New(902, info->coldata[i].value.c, info->datafmt[i].maxlength, char);
+	    info->coldata[i].type = CS_BINARY_TYPE;
+	    retcode = ct_bind(info->cmd, (i + 1), &info->datafmt[i],
+			      info->coldata[i].value.c,
+			      &info->coldata[i].valuelen,
+			      &info->coldata[i].indicator);
+	    break;
 	    
 	  case CS_CHAR_TYPE:
 	  case CS_VARCHAR_TYPE:
-	  case CS_BINARY_TYPE:
-	  case CS_VARBINARY_TYPE:
+	  case CS_LONGCHAR_TYPE:
 	  default:
 	  DoChar:;
 	    info->datafmt[i].maxlength =
@@ -1645,12 +1726,15 @@ fetch2sv(info, doAssoc, wantref)
 	} else {
 	    switch(info->datafmt[i].datatype) {
 	      case CS_TEXT_TYPE:
+ 	      case CS_IMAGE_TYPE:
 		len = info->coldata[i].valuelen;
 		sv_setpvn(sv, info->coldata[i].value.c, len);
 		break;
 	      case CS_CHAR_TYPE:
-		if(info->coldata[i].realtype == CS_BINARY_TYPE && 
-		   info->connection->attr.UseBin0x) {
+	      case CS_LONGCHAR_TYPE:
+		if((info->coldata[i].realtype == CS_BINARY_TYPE ||
+		    info->coldata[i].realtype == CS_LONGBINARY_TYPE) 
+		   && info->connection->attr.UseBin0x) {
 		    char *buff;
 		    Newz(931, buff, info->coldata[i].valuelen+10, char);
 		    strcpy(buff, "0x");
@@ -1660,6 +1744,10 @@ fetch2sv(info, doAssoc, wantref)
 		} else {
 		    sv_setpv(sv, info->coldata[i].value.c);
 		}
+		break;
+	      case CS_BINARY_TYPE:
+	      case CS_LONGBINARY_TYPE:
+	        sv_setpv(sv, info->coldata[i].value.c);
 		break;
 	      case CS_FLOAT_TYPE:
 		sv_setnv(sv, info->coldata[i].value.f);
@@ -1678,7 +1766,7 @@ fetch2sv(info, doAssoc, wantref)
 		break;
 	      default:
 		croak("fetch2sv: unknown datatype: %d, column %d",
-		      info->datafmt[i].datatype, i);
+		      info->datafmt[i].datatype, i+1);
 	    }
 	}
 	if(debug_level & TRACE_FETCH)
@@ -1691,6 +1779,21 @@ fetch2sv(info, doAssoc, wantref)
 	}
     }
 }
+
+
+static CS_RETCODE
+get_cs_msg(CS_CONTEXT *context, CS_CONNECTION *connection)
+{
+  CS_CLIENTMSG msg;
+  CS_INT lastmsg = 0;
+
+  memset((void*)&msg, 0, sizeof(msg));
+  cs_diag(context, CS_STATUS, CS_CLIENTMSG_TYPE, CS_UNUSED,
+	  &lastmsg);
+  cs_diag(context, CS_GET, CS_CLIENTMSG_TYPE, lastmsg, &msg);
+  return clientmsg_cb(context, connection, &msg);
+}
+
 
 static CS_RETCODE CS_PUBLIC
 completion_cb(connection, cmd, function, status)
@@ -1738,6 +1841,60 @@ completion_cb(connection, cmd, function, status)
 /*	warn("Sybase::CTlib: no completion handler is installed"); */
     }
     
+    return CS_SUCCEED;
+}
+
+static CS_RETCODE CS_PUBLIC
+cslibmsg_cb(context, errmsg)
+CS_CONTEXT	*context;
+CS_CLIENTMSG	*errmsg;
+{
+    dTHR;
+    if(cslib_cb.sub)
+    {
+	dSP;
+	int retval, count;
+
+	ENTER;
+	SAVETMPS;
+	PUSHMARK(sp);
+
+	XPUSHs(sv_2mortal(newSViv(CS_LAYER(errmsg->msgnumber))));
+	XPUSHs(sv_2mortal(newSViv(CS_ORIGIN(errmsg->msgnumber))));
+	XPUSHs(sv_2mortal(newSViv(CS_SEVERITY(errmsg->msgnumber))));
+	XPUSHs(sv_2mortal(newSViv(CS_NUMBER(errmsg->msgnumber))));
+	XPUSHs(sv_2mortal(newSVpv(errmsg->msgstring, 0)));
+	if (errmsg->osstringlen > 0)
+	    XPUSHs(sv_2mortal(newSVpv(errmsg->osstring, 0)));
+	else
+	    XPUSHs(&PL_sv_undef);
+    
+	PUTBACK;
+	if((count = perl_call_sv(cslib_cb.sub, G_SCALAR)) != 1)
+	    croak("A cslib handler cannot return a LIST");
+	SPAGAIN;
+	retval = POPi;
+	
+	PUTBACK;
+	FREETMPS;
+	LEAVE;
+	
+	return retval;
+    }
+	
+    fprintf(stderr, "\nCS Library Message:\n");
+    fprintf(stderr, "Message number: LAYER = (%ld) ORIGIN = (%ld) ",
+	    CS_LAYER(errmsg->msgnumber), CS_ORIGIN(errmsg->msgnumber));
+    fprintf(stderr, "SEVERITY = (%ld) NUMBER = (%ld)\n",
+	    CS_SEVERITY(errmsg->msgnumber), CS_NUMBER(errmsg->msgnumber));
+    fprintf(stderr, "Message String: %s\n", errmsg->msgstring);
+    if (errmsg->osstringlen > 0)
+    {
+	fprintf(stderr, "Operating System Error: %s\n",
+		errmsg->osstring);
+    }
+    fflush(stderr);
+
     return CS_SUCCEED;
 }
 
@@ -1811,6 +1968,7 @@ CS_CLIENTMSG	*errmsg;
 
     return CS_SUCCEED;
 }
+
 
 static CS_RETCODE CS_PUBLIC
 servermsg_cb(context, connection, srvmsg)
@@ -1983,18 +2141,6 @@ initialize()
     CS_INT      boolean = CS_FALSE;
     dTHR;
 
-#if 0
-    if((retcode = cs_ctx_alloc(CTLIB_VERSION, &context)) != CS_SUCCEED)
-	croak("Sybase::CTlib initialize: cs_ctx_alloc() failed");
-
-    if((retcode = ct_init(context, CTLIB_VERSION)) != CS_SUCCEED)
-    {
-	cs_ctx_drop(context);
-	context = NULL;
-	croak("Sybase::CTlib initialize: ct_init() failed");
-    }
-#endif
-
 #if defined(CS_VERSION_125)
     cs_ver = CS_VERSION_125;
     retcode = cs_ctx_alloc(cs_ver, &context);
@@ -2020,6 +2166,18 @@ initialize()
 	croak("Sybase::CTlib initialize: cs_ctx_alloc(%d) failed", cs_ver);
 
 /*    warn("context version: %d", cs_ver); */
+
+#if USE_CSLIB_CB
+  if (cs_config(context, CS_SET, CS_MESSAGE_CB,
+		(CS_VOID *)cslibmsg_cb, CS_UNUSED, NULL) != CS_SUCCEED) {
+    /* Release the context structure.      */
+
+    (void)cs_ctx_drop(context);
+    croak("Sybase::CTlib initialize: cs_config(CS_MESSAGE_CB) failed");
+  }
+#else
+  cs_diag(context, CS_INIT, CS_UNUSED, CS_UNUSED, NULL);
+#endif
 
 #if defined(CS_EXTERNAL_CONFIG)
     if(cs_config(context, CS_SET, CS_EXTERNAL_CONFIG, &boolean, CS_UNUSED, NULL) != CS_SUCCEED) {
@@ -2070,7 +2228,7 @@ initialize()
 	if((p = strchr(ocVersion, '\n')))
 	    *p = 0;
 	
-	sprintf(buff, "This is sybperl, version %s\n\nSybase::CTlib $Revision: 1.63 $ $Date: 2003/12/31 19:43:22 $\n\nCopyright (c) 1995-2001 Michael Peppler\nPortions Copyright (c) 1995 Sybase, Inc.\n\nOpenClient version: %s\n",
+	sprintf(buff, "This is sybperl, version %s\n\nSybase::CTlib $Revision: 1.67 $ $Date: 2004/06/11 13:04:09 $\n\nCopyright (c) 1995-2001 Michael Peppler\nPortions Copyright (c) 1995 Sybase, Inc.\n\nOpenClient version: %s\n",
 		SYBPLVER, ocVersion);
 	sv_setnv(sv, atof(SYBPLVER));
 	sv_setpv(sv, buff);
@@ -5710,6 +5868,8 @@ int arg;
       case 'T':
 	if (strEQ(name, "TRACE_NONE"))
 	    return TRACE_NONE;
+	if (strEQ(name, "TRACE_CONVERT"))
+	    return TRACE_CONVERT;
 	if (strEQ(name, "TRACE_DESTROY"))
 	    return TRACE_DESTROY;
 	if (strEQ(name, "TRACE_CREATE"))
@@ -5770,6 +5930,7 @@ ct_connect(package="Sybase::CTlib", user=NULL, pwd=NULL, server=NULL, appname=NU
     CS_INT len;
     SV *sv;
     HV *hv;
+    char *p;
 
     if((retcode = ct_con_alloc(context, &connection)) != CS_SUCCEED)
 	warn("ct_con_alloc failed");
@@ -5801,6 +5962,7 @@ ct_connect(package="Sybase::CTlib", user=NULL, pwd=NULL, server=NULL, appname=NU
     }
 #endif
 
+
     if(attr && attr != &PL_sv_undef && SvROK(attr)) {
 	SV **svp = hv_fetch((HV*)SvRV(attr), "CON_PROPS", 9, 0);
 	SV *sv;
@@ -5813,7 +5975,6 @@ ct_connect(package="Sybase::CTlib", user=NULL, pwd=NULL, server=NULL, appname=NU
 	    } props[] = {
 		{ "CS_HOSTNAME", CS_HOSTNAME, CS_CHAR_TYPE},
 		{ "CS_ANSI_BINDS", CS_ANSI_BINDS, CS_INT_TYPE},
-		{ "CS_CHARSETCNV", CS_CHARSETCNV, CS_INT_TYPE},
 		{ "CS_PACKETSIZE", CS_PACKETSIZE, CS_INT_TYPE},
 		{ "CS_SEC_APPDEFINED", CS_SEC_APPDEFINED, CS_INT_TYPE},
 		{ "CS_SEC_CHALLENGE", CS_SEC_CHALLENGE, CS_INT_TYPE},
@@ -5824,6 +5985,15 @@ ct_connect(package="Sybase::CTlib", user=NULL, pwd=NULL, server=NULL, appname=NU
 		{ "CS_HAFAILOVER", CS_HAFAILOVER, CS_INT_TYPE},
 #endif
 		{ "CS_BULK_LOGIN", CS_BULK_LOGIN, CS_INT_TYPE},
+#if defined(CS_SEC_NETWORKAUTH)
+		{ "CS_SEC_NETWORKAUTH", CS_SEC_NETWORKAUTH, CS_INT_TYPE},
+#endif
+#if defined(CS_SEC_SERVERPRINCIPAL)
+		{ "CS_SEC_SERVERPRINCIPAL", CS_SEC_SERVERPRINCIPAL, CS_CHAR_TYPE},
+#endif
+#if defined(CS_SERVERADDR)
+		{ "CS_SERVERADDR", CS_SERVERADDR, CS_CHAR_TYPE},
+#endif
 		{ "CS_SYB_LANG", CS_SYB_LANG, -1 },
 		{ "CS_SYB_CHARSET", CS_SYB_CHARSET, -1 },
 		{ "CS_DATA_LCHAR", CS_DATA_LCHAR, -2 },
@@ -5848,9 +6018,6 @@ ct_connect(package="Sybase::CTlib", user=NULL, pwd=NULL, server=NULL, appname=NU
 			continue;
 		    }
 		    if(props[i].type == CS_CHAR_TYPE) {
-		    /* CS_CHARSETCNV is not settable - I was simply mistaken */
-			if(props[i].attr == CS_CHARSETCNV)
-			    continue;
 			ret = ct_con_props(connection, CS_SET, props[i].attr,
 					   SvPV(*svp, PL_na), CS_NULLTERM, NULL);
 		    } else {
@@ -5874,6 +6041,22 @@ ct_connect(package="Sybase::CTlib", user=NULL, pwd=NULL, server=NULL, appname=NU
 
     }
 
+    if((p = strchr(server, ':'))) {
+#if defined(CS_SERVERADDR)
+	if(*p)
+	    *p = ' '; 
+	warn("Using CS_SERVERADDR for %s", server);
+	if((retcode = ct_con_props(connection, CS_SET, CS_SERVERADDR,
+				   (CS_VOID*)server,
+				   CS_NULLTERM, (CS_INT*)NULL)) != CS_SUCCEED)
+	{
+	   warn("ct_con_props(CS_SERVERADDR, %s) failed", server);
+	}
+#else
+	croak("This version of Sybase::CTlib doesn't support the CS_SERVERADDR property");
+#endif
+    }
+
     if (retcode == CS_SUCCEED)
     {
 	/* make sure that CS_USERDATA for this connection is NULL - needed
@@ -5889,6 +6072,7 @@ ct_connect(package="Sybase::CTlib", user=NULL, pwd=NULL, server=NULL, appname=NU
 
     if(retcode != CS_SUCCEED)
     {
+	warn("connection failed...");
 	if(connection)
 	    ct_con_drop(connection);
 	ST(0) = sv_newmortal();
@@ -6813,6 +6997,9 @@ CODE:
 
     switch(type)
     {
+      case CS_MESSAGE_CB:
+	ci = &cslib_cb;
+	break;
       case CS_CLIENTMSG_CB:
 	ci = &client_cb;
 	break;
@@ -7463,7 +7650,10 @@ CODE:
     I32 len;
     STRLEN slen;
     SV **svp;
-
+    CS_INT vlen;
+#if !defined(USE_CSLIB_CB)
+    cs_diag(context, CS_CLEAR, CS_CLIENTMSG_TYPE, CS_UNUSED, NULL);
+#endif
     if(!SvROK(data)) {
 	warn("Usage: $dbh->blk_rowxfer($arrayref)");
 	ret = CS_FAIL;
@@ -7493,59 +7683,39 @@ CODE:
 	    info->coldata[i].ptr = SvPV(*svp, slen);
 	    info->coldata[i].indicator = 0;
 
+	    /* special handling for NUMERIC/DECIMAL needed because
+	       of conversion errors that occur when the precision/scale is
+	       out of range of the target datatype */
 	    switch(info->datafmt[i].datatype) {
-	      case CS_INT_TYPE:
-	      case CS_SMALLINT_TYPE:
-	      case CS_TINYINT_TYPE:
-	      case CS_BIT_TYPE:
-		info->datafmt[i].datatype = CS_INT_TYPE;
-		info->coldata[i].valuelen = sizeof(CS_INT);
-		info->coldata[i].value.i = atoi(info->coldata[i].ptr);
-		ptr = &info->coldata[i].value.i;
-		break;
 	      case CS_NUMERIC_TYPE:
 	      case CS_DECIMAL_TYPE:
-		info->coldata[i].value.num = 
-		    to_numeric(info->coldata[i].ptr, info->locale, 
-			       &info->datafmt[i],
-			       0);
-		info->coldata[i].valuelen = sizeof(info->coldata[i].value.num);
+		if(_convert(&info->coldata[i].value.num,  
+			    info->coldata[i].ptr, info->locale, 
+			    &info->datafmt[i], &vlen) != CS_SUCCEED) {
+		  /* If the error handler returns CS_FAIL, then FAIL this
+		     row! */
+#if !defined(USE_CSLIB_CB)
+		  if(get_cs_msg(context, info->connection->connection) 
+		     != CS_SUCCEED)
+		    goto FAIL;
+#else
+		  warn("_convert() failed");
+#endif
+		}
+		info->coldata[i].valuelen = (vlen != CS_UNUSED ? vlen : sizeof(info->coldata[i].value.num));
 		ptr = &info->coldata[i].value.num;
 		break;
-	      case CS_MONEY_TYPE:
-	      case CS_MONEY4_TYPE:
-		info->datafmt[i].datatype = CS_MONEY_TYPE;
-		info->coldata[i].valuelen = sizeof(CS_MONEY);
-		info->coldata[i].value.mn = 
-		    to_money(info->coldata[i].ptr, info->locale);
-		ptr = &info->coldata[i].value.mn;
-		break;
-	      case CS_REAL_TYPE:
-	      case CS_FLOAT_TYPE:
-		info->datafmt[i].datatype = CS_FLOAT_TYPE;
-		info->coldata[i].valuelen = sizeof(CS_FLOAT);
-		info->coldata[i].value.f = atof(info->coldata[i].ptr);
-		ptr = &info->coldata[i].value.f;
-		break;
-#if 0
 	      case CS_BINARY_TYPE:
-		phs->datafmt.datatype = CS_BINARY_TYPE;
-		value = phs->sv_buf;
-		break;
-#endif
-
-	      case CS_DATETIME_TYPE:
-	      case CS_DATETIME4_TYPE:
-		info->datafmt[i].datatype = CS_DATETIME_TYPE;
-		info->coldata[i].value.dt = to_datetime(info->coldata[i].ptr,
-							info->locale);
-
-		info->coldata[i].valuelen = sizeof(info->coldata[i].value.dt);
-		ptr = &info->coldata[i].value.dt;
+	      case CS_LONGBINARY_TYPE:
+	      case CS_LONGCHAR_TYPE:
+	      case CS_TEXT_TYPE:
+	      case CS_IMAGE_TYPE:
+		ptr = info->coldata[i].ptr;
+		info->coldata[i].valuelen = slen;
 		break;
 	      default:
+		info->datafmt[i].datatype = CS_CHAR_TYPE;
 		ptr = info->coldata[i].ptr;
-		/*info->coldata[i].valuelen = SvCUR(*svp);*/
 		info->coldata[i].valuelen = slen;
 		break;
 	    }
@@ -7594,6 +7764,18 @@ CODE:
 
     blkCleanUp(info);
 }
+
+int
+thread_enabled()
+    CODE:
+{
+    RETVAL = 0;
+#if defined(_REENTRANT) && !defined(NO_THREADS)
+    RETVAL = 1;
+#endif
+}
+OUTPUT:
+RETVAL
 
 void
 newdate(dbp=&PL_sv_undef,dt=NULL)

@@ -18,6 +18,7 @@ t/1_db_dblib.t
 t/1_db_money.t
 t/5_sybperl_dbmoney.t
 t/5_sybperl.t
+t/_test.pm
 CHANGES
 CONFIG
 CTlib/CTlib.pm

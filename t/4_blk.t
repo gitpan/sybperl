@@ -1,5 +1,5 @@
 #!./perl
-# $Id: 4_blk.t,v 1.2 2003/12/29 00:03:23 mpeppler Exp $
+# $Id: 4_blk.t,v 1.3 2004/04/13 20:03:06 mpeppler Exp $
 #
 # From:
 #	@(#)bcp.t	1.2	03/22/96
@@ -13,28 +13,11 @@ use Sybase::BLK;
 
 ok(1);      # loaded.
 
-# Find the passwd file:
-my @dirs = ('./.', './..', './../..', './../../..');
-my ($Pwd, $Uid, $Srv);
-foreach (@dirs)
-{
-    if(-f "$_/PWD")
-    {
-	open(PWD, "$_/PWD") || die "$_/PWD is not readable: $!\n";
-	while(<PWD>)
-	{
-	    chop;
-	    s/^\s*//;
-	    next if(/^\#/ || /^\s*$/);
-	    my ($l, $r) = split(/=/);
-	    $Uid = $r if($l eq 'UID');
-	    $Pwd = $r if($l eq 'PWD');
-	    $Srv = $r if($l eq 'SRV');
-	}
-	close(PWD);
-	last;
-    }
-}
+use lib 't';
+use _test;
+use vars qw($Pwd $Uid $Srv $Db);
+
+($Uid, $Pwd, $Srv, $Db) = _test::get_info();
 
 my $X = new Sybase::BLK $Uid, $Pwd, $Srv;
 ok(defined($X));		# 2

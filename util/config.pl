@@ -1,5 +1,5 @@
 # -*-Perl-*-
-#	$Id: config.pl,v 1.11 2003/12/27 01:33:13 mpeppler Exp $
+#	$Id: config.pl,v 1.12 2004/04/13 20:03:06 mpeppler Exp $
 #
 # Extract relevant info from the CONFIG files.
 
@@ -11,7 +11,7 @@ use strict;
 my @dirs = ('.', '..', '../..', '../../..');
 
 my $syb_version;
-my $VERSION;
+use vars qw($VERSION);
 
 #use vars q($MM_VERSION);
 
@@ -118,9 +118,20 @@ sub getExtraLibs {
     if(!defined($syb_version)) {
 	my $libct;
 
-	foreach (qw(libct.a libct.so libct.sl libct64.a libct64.so libct64.sl)) {
+	my @libs = qw(libct.a libct.so libct.sl libct64.a libct64.so libct64.sl);
+	foreach (@libs) {
 	    $libct = "$lib/$_";
 	    last if -e $libct;
+	}
+	if(!defined($libct)) {
+	    @libs = map { s/libct/libsybct/ } @libs;
+	    foreach (@libs) {
+		$libct = "$lib/$_";
+		last if -e $libct;
+	    }
+	}
+	if(!defined($libct)) {
+	    warn "Can't find a Client-Library file anywhwere...";
 	}
 
 	my $version = `strings $libct`;
@@ -134,11 +145,12 @@ sub getExtraLibs {
     }
 
     opendir(DIR, "$lib") || die "Can't access $lib: $!";
-    my %files = map { $_ =~ s/lib([^\.]+)\..*/$1/; $_ => 1 } grep(/lib/, readdir(DIR));
+    my %files = map { $_ =~ s/lib([^\.]+)\..*/$1/; $_ => 1 } grep(/lib/ && -f "$dir/lib/$_", readdir(DIR));
     closedir(DIR);
 
     my %x = map {$_ => 1} split(' ', $cfg);
     my $f;
+    my $dlext = $Config{dlext} || 'so';
     foreach $f (keys(%x)) {
 	my $file = $f;
 	$file =~ s/-l//;
@@ -146,13 +158,16 @@ sub getExtraLibs {
 	delete($x{$f}) unless (exists($files{$file}) || $f =~ /dnet_stub/);
     }
     
-    foreach $f (qw(insck tli sdna dnet_stub tds)) {
-	$x{"-l$f"} = 1 if exists $files{$f};
+    foreach $f (qw(insck tli sdna dnet_stub tds skrb gss)) {
+	$x{"-l$f"} = 1 if exists $files{$f}  && -f "$dir/lib/lib$f.$dlext";
     }
     if($syb_version gt '11') {
 	delete($x{-linsck});
 	delete($x{-ltli});
     }
+#    if($version ge '12.5.1') {
+#	delete($x{-lskrb});
+#    }
 
     join(' ', keys(%x));
 }

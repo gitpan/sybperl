@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# $Id: Sybperl.pm,v 1.32 2003/12/24 21:48:43 mpeppler Exp $
+# $Id: Sybperl.pm,v 1.33 2004/06/11 13:04:09 mpeppler Exp $
 #
 # From
 # 	@(#)Sybperl.pm	1.27	03/26/98
@@ -114,7 +114,7 @@ tie $dbBin0x, Sybase::Sybperl::Attribs, 'dbBin0x', 0;
 	     dbmsghandle dberrhandle dbexit dbrecftos
 	     BCP_SETL bcp_getl
 	     dbsetlogintime dbsettime DBGETTIME
-	     DBSETLNATLANG DBSETLCHARSET dbsetversion dbversion
+	     DBSETLNATLANG DBSETLCHARSET dbversion
 	     dbsetifile dbrpwclr dbrpwset
 	     DBLIBVS FAIL
 	     INT_CANCEL INT_CONTINUE	INT_EXIT INT_TIMEOUT

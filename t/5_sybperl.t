@@ -8,27 +8,11 @@ require 'sybperl.pl';
 
 # This test file is still under construction...
 
-# Find the passwd file:
-@dirs = ('./.', './..', './../..', './../../..');
-foreach (@dirs)
-{
-    if(-f "$_/PWD")
-    {
-	open(PWD, "$_/PWD") || die "$_/PWD is not readable: $!\n";
-	while(<PWD>)
-	{
-	    chop;
-	    s/^\s*//;
-	    next if(/^\#/ || /^\s*$/);
-	    ($l, $r) = split(/=/);
-	    $Uid = $r if($l eq UID);
-	    $Pwd = $r if($l eq PWD);
-	    $Srv = $r if($l eq SRV);
-	}
-	close(PWD);
-	last;
-    }
-}
+use lib 't';
+use _test;
+use vars qw($Pwd $Uid $Srv $Db);
+
+($Uid, $Pwd, $Srv, $Db) = _test::get_info();
 
 # A couple of things to silence some warnings...
 $dummy = $NO_MORE_ROWS;
