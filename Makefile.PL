@@ -1,5 +1,5 @@
 # -*-Perl-*-
-#	$Id: Makefile.PL,v 1.5 2001/10/29 19:24:49 mpeppler Exp $
+#	$Id: Makefile.PL,v 1.6 2002/01/11 23:50:28 mpeppler Exp $
 require 5.002;
 use ExtUtils::MakeMaker;
 use Config;
@@ -52,7 +52,7 @@ WriteMakefile('DISTNAME' => "sybperl",
 		AUTHOR     => 'Michael Peppler (mpeppler@peppler.org)') : ()),
 	      ($] >= 5.005 && $^O eq 'MSWin32' && 
 	       $Config{archname} =~ /-object\b/i ? (CAPI => 'TRUE') :()),
-              'MAN3PODS' => 'pod/sybperl.pod'
+              'MAN3PODS' => { 'pod/sybperl.pod' => 'blib/man3/sybperl.3' }
 	      );
 
 
@@ -102,7 +102,7 @@ EOF
 }
 
 sub getAns {
-    my $ans = <>;
+    my $ans = <STDIN>;
     chomp($ans);
     $ans;
 }

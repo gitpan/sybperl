@@ -1,5 +1,5 @@
 /* -*-C-*-
- * $Id: DBlib.xs,v 1.54 2001/09/06 21:13:47 mpeppler Exp $
+ * $Id: DBlib.xs,v 1.55 2002/01/11 23:50:29 mpeppler Exp $
  *
  * From
  *	@(#)DBlib.xs	1.47	03/26/99
@@ -512,6 +512,7 @@ static ConInfo *
 get_ConInfoFromMagic(hv)
     HV *hv;
 {
+    dTHR;
     ConInfo *info = NULL;
     IV i;
     MAGIC *m;
@@ -941,7 +942,7 @@ initialize()
 	if((sv = perl_get_sv("Sybase::DBlib::Version", TRUE|GV_ADDMULTI)))
 	{
 	    char buff[2048];
-	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib $Revision: 1.54 $ $Date: 2001/09/06 21:13:47 $ \n\nCopyright (c) 1991-2001 Michael Peppler\n\nDB-Library version: %s\n",
+	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib $Revision: 1.55 $ $Date: 2002/01/11 23:50:29 $ \n\nCopyright (c) 1991-2001 Michael Peppler\n\nDB-Library version: %s\n",
 		    SYBPLVER, dbversion());
 	    sv_setnv(sv, atof(SYBPLVER));
 	    sv_setpv(sv, buff);
@@ -4566,6 +4567,15 @@ DBSETLPACKET(packet_size)
 {
     DBSETLPACKET(login, packet_size);
 }
+
+void
+DBSETLHOST(host)
+	char *	host
+  CODE:
+{
+    DBSETLHOST(login, host);
+}
+
 
 int
 dbgetpacket(dbp)

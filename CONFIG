@@ -59,8 +59,14 @@ EXTRA_LIBS=-linsck
 # to connect to an MS-SQL 7 server.
 # Add -DTDS_DBOPEN_HACK if you are building with the FreeTDS libraries, and
 # you have configured freetds with --enable-dbm-conflict-fix.
+# Add -DNOBLK if you don't have the libblk.a library available (e.g. FreeTDS)
 EXTRA_DEFS=-DDO_TIE
 
+#
+# Uncomment this if you are building sybperl in 64bit mode
+# with the 12.5 (or later) OpenClient on a 64 bit OS.
+#
+#BUILD_TYPE=64
 
 # LINKTYPE
 # If you wish to link Sybase::DBlib and/or Sybase::CTlib statically

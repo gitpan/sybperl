@@ -1,4 +1,4 @@
-# $Id: BLK.pm,v 1.3 2001/12/13 00:06:09 mpeppler Exp $
+# $Id: BLK.pm,v 1.4 2002/06/27 22:43:25 mpeppler Exp $
 #
 # Shamelessly copied 2001 from Sybase::BCP and transformed magically
 # into Sybase::BLK by Scott Zetlan
@@ -48,7 +48,7 @@ table 'mydb.dbo.bar'. The fields in the file are separated by a '|'.
     $bcp = new Sybase::BLK $user, $passwd;
     $bcp->config(INPUT => 'foo.bcp',
 		 OUTPUT => 'mydb.dbo.bar',
-		 SEPARATOR => '|');
+		 SEPARATOR => '\|');
     $bcp->run;
 
 That's it!
@@ -137,7 +137,9 @@ The file where invalid rows should be recorded. Default: bcp.err.
 
 The pattern that separates fields in the input file, or that should be used
 to separate fields in the output file. Since this pattern is passed to 
-B<split>, it can be a regular expression.  Default: TAB.
+B<split>, it can be a regular expression.  This also means that any
+regular expression meta-characters in the pattern (e.g. '|' need to be
+escaped with a '\'. Default: TAB.
 
 =item RECORD_SEPARATOR
 
@@ -269,7 +271,7 @@ to handle the skipping.
 			     3 => 'date',
 			     2 => 'seq_no',
 			     11 => 'broker'},
-	         SEPARATOR => '|');
+	         SEPARATOR => '\|');
     $bcp->run;
 
 
@@ -307,7 +309,7 @@ use vars qw(@ISA @EXPORT $VERSION $Version);
 use strict;
 
 $VERSION = '0.01';
-$Version = '$Id: BLK.pm,v 1.3 2001/12/13 00:06:09 mpeppler Exp $';
+$Version = '$Id: BLK.pm,v 1.4 2002/06/27 22:43:25 mpeppler Exp $';
 
 my @g_keys = qw(INPUT OUTPUT ERRORS SEPARATOR FIELDS BATCH_SIZE
 		NULL DATE REORDER CALLBACK TAB_INFO DIRECTION CONDITION

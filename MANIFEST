@@ -19,6 +19,8 @@ CTlib/README
 CTlib/t/ctlib.t
 CTlib/t/cursor.t
 CTlib/t/nsql.t
+CTlib/t/prepare.t
+CTlib/t/xblk.t
 DBlib/DBlib.pm.in
 DBlib/DBlib.xs
 DBlib/Makefile.PL

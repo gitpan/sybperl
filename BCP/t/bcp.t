@@ -1,5 +1,5 @@
 #!./perl
-# $Id: bcp.t,v 1.2 2001/08/09 00:02:01 mpeppler Exp $
+# $Id: bcp.t,v 1.3 2002/01/11 23:50:28 mpeppler Exp $
 #
 # From:
 #	@(#)bcp.t	1.2	03/22/96
@@ -47,7 +47,7 @@ foreach (@dirs)
 -- The supplied login id/password combination may be invalid\n";
 
 $X->sql("select \@\@version", sub { $version = $_[0]; });
-$version =~ s|[^/]+/([\d.]+)/.*|$1|;
+$version =~ s|[^/]+/([\d.]+)[^/]+/.*|$1|;
 print "$version\n";
 if($version gt '11.9') {
     $lock = "lock allpages";

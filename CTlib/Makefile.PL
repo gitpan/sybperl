@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# $Id: Makefile.PL,v 1.24 2001/10/02 16:06:02 mpeppler Exp $
+# $Id: Makefile.PL,v 1.25 2002/01/11 23:50:29 mpeppler Exp $
 # @(#)Makefile.PL	1.19	03/26/99
 
 
@@ -44,9 +44,9 @@ if($^O eq 'MSWin32') {
     $inc_string = "-I$SYBASE\\include";
     $def_string = "-DCTLIBVS=$CTLIBVS -DSYBPLVER=\\\"$VERSION\\\" $$sattr{EXTRA_DEFS}";
     if($$sattr{BORLAND_LIBS}) {
-	$lib_string = "-L$SYBASE\\blib -llibcs -llibct -llibcomn";
+	$lib_string = "-L$SYBASE\\blib -llibcs -llibct -llibcomn -llibblk";
     } else {
-	$lib_string = "-L$SYBASE\\lib -llibcs -llibct -llibcomn";
+	$lib_string = "-L$SYBASE\\lib -llibcs -llibct -llibcomn -llibblk";
     }
 } else {
     $inc_string = "-I$SYBASE/include";
@@ -91,6 +91,35 @@ if($^O eq 'MSWin32') {
 	}
 	
     }
+    # If we are building for a 64 bit platform that also supports 32 bit
+    # (i.e. Solaris 8, HP-UX11, etc) then we need to make some adjustments
+    if($$sattr{BUILD_TYPE} == 64) {
+	$def_string .= ' -DSYB_LP64';
+
+	print "Running in 64bit mode - looking for '64' libraries...\n";
+	opendir(SYBLIB,"$SYBASE/lib")
+	    or die "Unable to opendir $SYBASE/lib: $!\n";
+	
+	my %libname = ();
+	
+	foreach ( readdir(SYBLIB) ) {
+	    next unless -f "$SYBASE/lib/$_";
+	    next unless /^lib(\S+)\.(so|a)/;
+	    $libname{$1} = 1;
+	}
+	
+	closedir(SYBLIB);
+	
+	foreach ( split(/\s+/,$lib_string) ) {
+	    next unless /^-l(\S+)/;
+	    my $oldname = $1;
+	    my $newname = $1 . '64';
+	    next unless exists $libname{$newname};
+	    print "Found -l$newname for -l$oldname\n";
+	    $lib_string =~ s/-l$oldname\b/-l$newname/;
+	}
+	
+    }
 }
 
 #####
@@ -123,7 +152,7 @@ else
 		'XSPROTOARG' => '-prototypes');
     if($^O ne VMS && $^O ne 'MSWin32') {
 	$opts{'LDDLFLAGS'} = "-L$SYBASE/lib $Config{lddlflags}";
-	$opts{'LDFLAGS'}   = "-L$SYBASE/lib $Config{lddlflags}";
+#	$opts{'LDFLAGS'}   = "-L$SYBASE/lib $Config{lddlflags}";
     }
     WriteMakefile(%opts);
 }

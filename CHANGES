@@ -1,4 +1,22 @@
-	$Id: CHANGES,v 1.10 2001/10/30 21:34:30 mpeppler Exp $
+	$Id: CHANGES,v 1.11 2002/06/27 22:43:25 mpeppler Exp $
+
+2.15    Various bug fixes
+
+        Support for 64bit OpenClient on platforms that support this
+        (Thanks to Pamela Schulz for her help with this)
+        Added CTlib/t/xblk.t and CTlib/t/prepare.t test scripts.
+	CS_BLK_CANCEL was not exported.
+	For building with FreeTDS you can now add -DNOBLK to the 
+	EXTRA_DEFS line in CONFIG.
+
+	Bug Fixes
+	468   Makefile.PL has syntax error when used with perl 5.8.x
+	460   Idem.
+	439   Makefile.PL fails for very old Sybase installation (i.e.
+              installation with no CT-Library)
+	423   Fix Makefile.PL for Win32 builds.
+	422   t/bcp.t fails against 11.0.3.3 linux servers.
+
 
 2.14	And more (minor) bug fixes
 

@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# $Id: Makefile.PL,v 1.22 2000/11/15 00:31:45 mpeppler Exp $
+# $Id: Makefile.PL,v 1.23 2002/01/11 23:50:29 mpeppler Exp $
 #	@(#)Makefile.PL	1.19	03/26/99
 
 require 5.002;
@@ -47,6 +47,37 @@ if($^O eq 'MSWin32') {
     $lib_string = "-L$SYBASE/lib -lsybdb $$sattr{EXTRA_LIBS} -lm";
     $lib_string =~ s/sybdb/syb_db/ if $^O eq 'VMS';
     $lib_string =~ s/-lsdna// if $^O eq 'dec_osf';
+
+    # If we are building for a 64 bit platform that also supports 32 bit
+    # (i.e. Solaris 8, HP-UX11, etc) then we need to make some adjustments
+    if($$sattr{BUILD_TYPE} == 64) {
+	$def_string .= ' -DSYB_LP64';
+
+	print "Running in 64bit mode - looking for '64' libraries...\n";
+	opendir(SYBLIB,"$SYBASE/lib")
+	    or die "Unable to opendir $SYBASE/lib: $!\n";
+	
+	my %libname = ();
+	
+	foreach ( readdir(SYBLIB) ) {
+	    next unless -f "$SYBASE/lib/$_";
+	    next unless /^lib(\S+)\.(so|a)/;
+	    $libname{$1} = 1;
+	}
+	
+	closedir(SYBLIB);
+	
+	foreach ( split(/\s+/,$lib_string) ) {
+	    next unless /^-l(\S+)/;
+	    my $oldname = $1;
+	    my $newname = $1 . '64';
+	    next unless exists $libname{$newname};
+	    print "Found -l$newname for -l$oldname\n";
+	    $lib_string =~ s/-l$oldname\b/-l$newname/;
+	}
+	
+    }
+
 }
 $linktype = defined($$sattr{LINKTYPE}) ? $$sattr{LINKTYPE} : 'dynamic';
 
@@ -79,7 +110,7 @@ else
 		'LINKTYPE' => $linktype,);
     if($^O ne 'VMS' && $^O ne 'MSWin32') {
 	$opts{'LDDLFLAGS'} = "-L$SYBASE/lib $Config{lddlflags}";
-	$opts{'LDFLAGS'}   = "-L$SYBASE/lib $Config{lddlflags}";
+#	$opts{'LDFLAGS'}   = "-L$SYBASE/lib $Config{lddlflags}";
     }
     WriteMakefile( %opts );
 }

@@ -1,5 +1,5 @@
 # -*-Perl-*-
-#	$Id: config.pl,v 1.7 2001/09/06 21:13:46 mpeppler Exp $
+#	$Id: config.pl,v 1.8 2002/06/27 22:43:25 mpeppler Exp $
 #
 # Extract relevant info from the CONFIG and patchlevel.h files.
 
@@ -160,7 +160,7 @@ sub checkLib {
     }
 
     opendir(DIR, "$dir/lib") || die "Can't access $dir/lib: $!";
-    my @files = grep(/libct/i, readdir(DIR));
+    my @files = grep(/libct|libsybdb/i, readdir(DIR));
     closedir(DIR);
 
     scalar(@files);

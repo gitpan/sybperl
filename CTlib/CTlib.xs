@@ -1,6 +1,6 @@
 /* -*-C-*-
  *
- * $Id: CTlib.xs,v 1.51 2001/10/30 21:34:31 mpeppler Exp $
+ * $Id: CTlib.xs,v 1.53 2002/06/27 22:43:25 mpeppler Exp $
  *	@(#)CTlib.xs	1.37	03/26/99
  */
 
@@ -74,6 +74,17 @@
 #define MIN(X,Y)	(((X) < (Y)) ? (X) : (Y))
 #endif
 
+/* Stub out blk_*() calls, for FreeTDS */
+#if defined(NOBLK)
+#define blk_drop(s)             not_here("blk_drop");
+#define blk_init(a, b, c, d)    not_here("blk_init");
+#define blk_alloc(a, b, c)      not_here("blk_alloc");
+#define blk_props(a, b, c, d, e, f)   not_here("blk_props");
+#define blk_describe(a, b, c)   not_here("blk_describe");
+#define blk_bind(a, b, c, d, e, f)    not_here("blk_bind");
+#define blk_rowxfer(a)          not_here("blk_rowxfer");
+#define blk_done(a, b, c)       not_here("blk_done");
+#endif
 
 
 /*
@@ -529,6 +540,7 @@ static ConInfo *
 get_ConInfoFromMagic(hv)
     HV *hv;
 {
+    dTHR;
     ConInfo *info = NULL;
     IV i;
     MAGIC *m;
@@ -1935,10 +1947,12 @@ static void
 initialize()
 {
     SV 		*sv;
-    CS_RETCODE	retcode;
+    CS_RETCODE	retcode = CS_FAIL;
     CS_INT	netio_type = CS_SYNC_IO;
+    CS_INT      cs_ver;
     dTHR;
 
+#if 0
     if((retcode = cs_ctx_alloc(CTLIB_VERSION, &context)) != CS_SUCCEED)
 	croak("Sybase::CTlib initialize: cs_ctx_alloc() failed");
 
@@ -1948,6 +1962,39 @@ initialize()
 	context = NULL;
 	croak("Sybase::CTlib initialize: ct_init() failed");
     }
+#endif
+
+#if defined(CS_VERSION_125)
+    cs_ver = CS_VERSION_125;
+    retcode = cs_ctx_global(cs_ver, &context);
+#if defined(CS_VERSION_120)
+    if(retcode != CS_SUCCEED) {
+	cs_ver = CS_VERSION_120;
+	retcode = cs_ctx_global(cs_ver, &context);
+    }
+#if defined(CS_VERSION_110)
+    if(retcode != CS_SUCCEED) {
+	cs_ver = CS_VERSION_110;
+	retcode = cs_ctx_global(cs_ver, &context);
+    }
+#endif
+#endif
+#endif
+    if(retcode != CS_SUCCEED) {
+	cs_ver = CS_VERSION_100;
+	retcode = cs_ctx_global(cs_ver, &context);
+    }
+
+    if(retcode != CS_SUCCEED)
+	croak("Sybase::CTlib initialize: cs_ctx_alloc(%d) failed", cs_ver);
+
+/*    warn("context version: %d", cs_ver); */
+
+    if((retcode = ct_init(context, cs_ver)) != CS_SUCCEED) {
+	context = NULL;
+	croak("Sybase::CTlib initialize: ct_init(%d) failed", cs_ver);
+    }
+
 
     if((retcode = ct_callback(context, NULL, CS_SET, CS_CLIENTMSG_CB,
 			  (CS_VOID *)clientmsg_cb)) != CS_SUCCEED)
@@ -1964,7 +2011,7 @@ initialize()
 			      (CS_VOID *)completion_cb)) != CS_SUCCEED)
 	croak("Sybase::CTlib initialize: ct_callback(completion) failed");
 
-    if((retcode = ct_config(context, CS_SET, CS_NETIO, &netio_type, 
+    if((retcode = ct_config(context, CS_SET, CS_NETIO, (CS_VOID*)&netio_type, 
 			    CS_UNUSED, NULL)) != CS_SUCCEED)
 	croak("Sybase::CTlib initialize: ct_config(netio) failed");
 
@@ -1986,7 +2033,7 @@ initialize()
 	if((p = strchr(ocVersion, '\n')))
 	    *p = 0;
 	
-	sprintf(buff, "This is sybperl, version %s\n\nSybase::CTlib $Revision: 1.51 $ $Date: 2001/10/30 21:34:31 $\n\nCopyright (c) 1995-2001 Michael Peppler\nPortions Copyright (c) 1995 Sybase, Inc.\n\nOpenClient version: %s\n",
+	sprintf(buff, "This is sybperl, version %s\n\nSybase::CTlib $Revision: 1.53 $ $Date: 2002/06/27 22:43:25 $\n\nCopyright (c) 1995-2001 Michael Peppler\nPortions Copyright (c) 1995 Sybase, Inc.\n\nOpenClient version: %s\n",
 		SYBPLVER, ocVersion);
 	sv_setnv(sv, atof(SYBPLVER));
 	sv_setpv(sv, buff);
@@ -7021,11 +7068,12 @@ ct_param(dbp, sv_params)
       case CS_TEXT_TYPE:
       case CS_IMAGE_TYPE:
 	warn("CS_TEXT_TYPE or CS_IMAGE_TYPE is invalid for ct_param - converting to CS_CHAR_TYPE");
-      case CS_CHAR_TYPE:
-      case CS_VARCHAR_TYPE:
+
       case CS_BINARY_TYPE:
       case CS_VARBINARY_TYPE:
-	    
+
+      case CS_CHAR_TYPE:
+      case CS_VARCHAR_TYPE:
       default:			/* assume CS_CHAR_TYPE */
 	datafmt.datatype = CS_CHAR_TYPE;
 	if(svp || datafmt.status == CS_RETURN)
@@ -7382,7 +7430,7 @@ CODE:
 	svp = av_fetch(av, i, 0);
 	info->datafmt[i].format = CS_FMT_UNUSED;
 	info->datafmt[i].count = 1;
-	if(!SvOK(*svp)) {
+	if(!svp || !SvOK(*svp)) {
 	    info->coldata[i].indicator = 0;
 	    ptr = "foo";
 	    info->coldata[i].valuelen = 0;
