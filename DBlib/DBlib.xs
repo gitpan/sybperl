@@ -1,5 +1,5 @@
 /* -*-C-*-
- *	@(#)DBlib.xs	1.43	03/26/98
+ *	@(#)DBlib.xs	1.44	06/13/98
  */	
 
 
@@ -919,7 +919,7 @@ initialize()
 	if((sv = perl_get_sv("Sybase::DBlib::Version", TRUE|GV_ADDMULTI)))
 	{
 	    char buff[256];
-	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib version 1.43 03/26/98\n\nCopyright (c) 1991-1997 Michael Peppler\n\n",
+	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib version 1.44 06/13/98\n\nCopyright (c) 1991-1997 Michael Peppler\n\n",
 		    SYBPLVER);
 	    sv_setnv(sv, atof(SYBPLVER));
 	    sv_setpv(sv, buff);
@@ -1312,6 +1312,30 @@ int arg;
 	if (strEQ(name, "DBRPCRETURN"))
 #ifdef DBRPCRETURN
 	    return DBRPCRETURN;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "DBRESULT"))
+#ifdef DBRESULT
+	    return DBRESULT;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "DBNOTIFICATION"))
+#ifdef DBNOTIFICATION
+	    return DBNOTIFICATION;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "DBINTERUPT"))
+#ifdef DBINTERUPT
+	    return DBINTERUPT;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "DBTIMEOUT"))
+#ifdef DBTIMEOUT
+	    return DBTIMEOUT;
 #else
 	    goto not_there;
 #endif
@@ -3328,6 +3352,22 @@ CODE:
 RETVAL
 
 int
+dbsqlsend(dbp)
+	SV *	dbp
+CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = dbsqlsend(dbproc);
+
+    if(debug_level & TRACE_RESULTS)
+	warn("%s->dbsqlsend == %d",
+	     neatsvpv(dbp, 0), RETVAL);
+}
+ OUTPUT:
+RETVAL
+
+int
 dbresults(dbp)
 	SV *	dbp
 CODE:
@@ -3367,6 +3407,40 @@ CODE:
 }
  OUTPUT:
 RETVAL
+
+
+void
+dbpoll(milliseconds)
+	int	milliseconds
+PPCODE:
+{
+    DBPROCESS *dbproc = NULL;
+    int reason;
+    RETCODE ret;
+    SV *sv;
+    HV *hv = NULL;
+    SV *rv;
+
+    ret = dbpoll(NULL, milliseconds, &dbproc, &reason);
+    if(ret == SUCCEED) {
+	switch(reason) {
+	case DBRESULT:
+	case DBNOTIFICATION:
+	    if(dbproc && !DBDEAD(dbproc) && (hv = (HV*)dbgetuserdata(dbproc))) 
+	    {
+		rv = newRV((SV*)hv);
+		XPUSHs(sv_2mortal(rv));
+	    } 
+	default:
+	    if(!hv)
+		XPUSHs(&sv_undef);
+	    XPUSHs(sv_2mortal(newSViv(reason)));
+	    break;
+	}
+    }
+}
+
+
 
 void
 dbfreebuf(dbp)

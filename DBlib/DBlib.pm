@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# @(#)DBlib.pm	1.32	03/05/98
+# @(#)DBlib.pm	1.33	06/13/98
 
 # Copyright (c) 1991-1997
 #   Michael Peppler
@@ -383,6 +383,10 @@ sub r_sql {
 #
 # Enhanced sql routine.
 # 
+
+sub DB_ERROR { return $DB_ERROR; }
+ 
+
 sub nsql {
     my ($db,$sql,$type) = @_;
     my (@res,@data,%data);
@@ -396,15 +400,9 @@ sub nsql {
 
     undef $DB_ERROR;
  
-    unless ( $db->dbcmd($sql) ) {
-      $DB_ERROR = "Unable to submit SQL to Sybase server.";
-      return undef;
-    }
-
-    unless ( $db->dbsqlexec ) {
-      $DB_ERROR = "Error executing SQL.";
-      return undef;
-    }
+    return unless $db->dbcmd($sql);
+  
+    return unless $db->dbsqlexec;
 
     while ( $db->dbresults != $db->NO_MORE_RESULTS ) {
       if ( ref $type eq "HASH" || $type eq "HASH" ) {
@@ -430,7 +428,7 @@ sub nsql {
     #
     # If we picked any sort of error, then don't feed the data back.
     #
-    return ( $DB_ERROR ? undef : @res );
+    return ( $DB_ERROR ? () : @res );
 
 }
 
@@ -443,7 +441,7 @@ sub nsql_error_handler {
       $DB_ERROR .= "OS Error: $os_error_msg\n" if defined $os_error_msg;
     }
 
-    $db->INT_CANCEL;
+    INT_CANCEL;
 }
 
 sub nsql_message_handler {
@@ -457,6 +455,8 @@ sub nsql_message_handler {
       $DB_ERROR .= "Procedure: $procedure\n" if defined $procedure;
       $DB_ERROR .= "Line: $line\n" if defined $line;
       $DB_ERROR .= "Text: $text\n";
+
+      return unless ref $db;
       
       my ($lineno) = 1;
       my $row;

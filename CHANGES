@@ -1,4 +1,10 @@
-	@(#)CHANGES	1.18	03/26/98
+	%W%	%G%
+
+2.09_05 DBlib asynch calls
+
+	Added dbpoll(), dbsqlsend() to allow asynchronous calls to Sybase.
+
+	Applied W. Philipp Moore's patch to the nsql() routine.
 
 2.09_04 DBlib dbreg*() calls
 

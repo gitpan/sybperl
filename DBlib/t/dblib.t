@@ -1,8 +1,8 @@
 #!./perl
 
-#	@(#)dblib.t	1.18	06/27/97
+#	%W%	%G%
 
-print "1..19\n";
+print "1..22\n";
 
 use Sybase::DBlib qw(2.04);
 
@@ -117,6 +117,31 @@ $ref = $X->sql("select getdate()");
 (ref(${$$ref[0]}[0]) eq 'Sybase::DBlib::DateTime')
     and print "ok 19\n"
     or print "not ok 19\n";
+
+$X->dbcmd("select * from master..sysprocesses");
+$X->dbsqlsend;
+my ($x, $reason) = Sybase::DBlib::dbpoll(-1);
+(ref($x) eq 'Sybase::DBlib') 
+    and print "ok 20\n"
+    or print "not ok 20\n";
+
+($reason == &Sybase::DBlib::DBRESULT)
+    and print "ok 21\n"
+    or print "not ok 21\n";
+    
+($x->dbsqlok == SUCCEED)
+    and print "ok 22\n"
+    or print "not ok 22\n";
+
+while($x->dbresults != NO_MORE_RESULTS) {
+    while(@dat = $x->dbnextrow) {
+	foreach (@dat) {
+	    $_ = '' unless $_;
+	}
+	print "@dat\n";
+    }
+}
+					 
 
 sub message_handler
 {
