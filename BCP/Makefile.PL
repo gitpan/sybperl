@@ -1,4 +1,4 @@
-#	@(#)Makefile.PL	1.6	06/02/97
+#	@(#)Makefile.PL	1.7	03/26/99
 
 require 5.002;
 use ExtUtils::MakeMaker;
@@ -35,6 +35,11 @@ else
 {
     WriteMakefile('NAME' => "Sybase::BCP",
 		  'VERSION' => "$VERSION",
+		  ($] >= 5.005 ?
+		   (ABSTRACT   => 'Sybase Bulk-Copy modules',
+		    AUTHOR     => 'Michael Peppler (mpeppler@mbay.net)') : ()),
+		  ($] >= 5.005 && $^O eq 'MSWin32' && 
+		   $Config{archname} =~ /-object\b/i ? (CAPI => 'TRUE') :()),
 		  'NEEDS_LINKING' => 1,
 		  'dist' => {'TARFLAGS' => "cvfF", 'COMPRESS' => "gzip"},
 		  );

@@ -1,4 +1,4 @@
-		     @(#)README	1.28	11/06/98
+		     %W%	%G%
 
 			   sybperl 2.0
 	
@@ -323,7 +323,7 @@ Once you have answered these eight questions, you can proceed:
       except for Sybase::BCP which creates a temp table (#bcp) to test
       the bulk copy features.
       
-   6) Type: make test
+   7) Type: make test
       If you decided to use static loading then a new perl binary will
       be generated at this point.
 
@@ -333,6 +333,14 @@ Once you have answered these eight questions, you can proceed:
       includes /usr/lib on Solaris 2.x (which has its own libintl.so
       just to confuse the issue!).  See points d) and e) above.
 
+      If you get an error message similar to 
+	     "ERROR: Undefined symbol: bsd_tcp"
+      then you are on a system that requires the -linsck library (this 
+      is a Sybase library). Linux, SunOS 4.x, HP-UX and AIX all
+      require this library.
+      Edit the CONFIG file and add -linsck to the EXTRA_LIBS line, and
+      go back to step 3. 
+
       If you are using perl 5.003 or earlier you will get an error
       in the dbmoney.t script. This is due to a change in the
       behaviour of the AutoLoader between perl 5.003 and perl 5.004.
@@ -340,15 +348,15 @@ Once you have answered these eight questions, you can proceed:
       Sybperl/Sybperl.pm and move the __END__ tag to the very end
       of the file.
       
-   7) If everything went OK, type: make install
+   8) If everything went OK, type: make install
       Note that the man page does not get installed automatically. To
       install the documentation, cd to the pod directory, and read the
       README file there.
       Also note that even if you've asked for static linking and a
       perl binary has been built in the sybperl source directory, no
-      perl binary gets installed (see step 8).
+      perl binary gets installed (see step 9).
 
-   8) If the LINKTYPE is static type:
+   9) If the LINKTYPE is static type:
 
 	 make -f Makefile.aperl inst_perl MAP_TARGET=perl
 
@@ -356,7 +364,7 @@ Once you have answered these eight questions, you can proceed:
       using dynamic linking as the existing Perl binary will load the
       new code dynamically when required.
 
-   9) Read the manual :-)
+  10) Read the manual :-)
 
       Look for it in the pod/ directory. You can create .man or .html
       versions from the .pod file by using pod2man or pod2html, both

@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# @(#)Makefile.PL	1.18	11/06/98
+# @(#)Makefile.PL	1.19	03/26/99
 
 
 require 5.002;
@@ -89,7 +89,12 @@ else
 		  'DEFINE'	=> $def_string,
 		  'INC'	=> $inc_string,
 		  'LINKTYPE' => $linktype,
-		  'XSPROTOARG' => '-prototypes');
+		($] >= 5.005 ?
+		 (ABSTRACT   => 'Sybase OpenClient API modules',
+		  AUTHOR     => 'Michael Peppler (mpeppler@mbay.net)') : ()),
+		($] >= 5.005 && $^O eq 'MSWin32' && 
+		 $Config{archname} =~ /-object\b/i ? (CAPI => 'TRUE') :()),
+		'XSPROTOARG' => '-prototypes');
     if($^O ne VMS && $^O ne 'MSWin32') {
 	$opts{'LDDLFLAGS'} = "-L$SYBASE/lib $Config{lddlflags}";
 	$opts{'LDFLAGS'}   = "-L$SYBASE/lib $Config{lddlflags}";

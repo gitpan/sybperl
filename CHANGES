@@ -1,4 +1,11 @@
-	@(#)CHANGES	1.19	11/06/98
+	@(#)CHANGES	1.20	03/26/99
+
+2.10_01
+
+	Added dbbylist().
+	Added DBIORDESC() and DBIOWDESC() (contributed by David Worenklein)
+	Modifications to nsql() contributed by W. Phillip Moore.
+	Added minimal support for languages and charsets to Sybase::CTlib.
 
 2.10    CTlib TEXT/IMAGE handling
 

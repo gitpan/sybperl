@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# @(#)CTlib.pm	1.26	12/30/97
+# @(#)CTlib.pm	1.27	03/26/99
 
 # Copyright (c) 1995-1997
 #   Michael Peppler
@@ -14,6 +14,7 @@
 
 require 5.002;
 
+use strict;
 
 package Sybase::CTlib::_attribs;
 
@@ -266,7 +267,10 @@ use subs qw(CS_SUCCEED CS_FAIL CS_CMD_DONE CS_ROW_COUNT
   CS_ROW_RESULT CS_PARAM_RESULT CS_STATUS_RESULT CS_CURSOR_RESULT
   CS_COMPUTE_RESULT CS_CANCEL_CURRENT);
 
-use vars qw(%Att);
+use vars qw(%Att @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $AUTOLOAD 
+	    $res_type %fetchable);
+
+%EXPORT_TAGS = (minimal => [qw(CS_SUCCEED CS_FAIL ct_callback CS_CMD_FAIL)]);
 
 @ISA = qw(Exporter DynaLoader);
 # Items to export into callers namespace by default
@@ -821,7 +825,7 @@ use vars qw(%Att);
 );
 
 
-tie %Att, Sybase::CTlib::Att;
+tie %Att, 'Sybase::CTlib::Att';
 
 sub AUTOLOAD {
     my $constname;
@@ -877,7 +881,8 @@ sub ct_sql
     my $fail = 0;
 
     if($db->{'MaxRows'}) {
-	$db->ct_options(&CS_SET, &CS_OPT_ROWCOUNT, $max, &CS_INT_TYPE);
+	$db->ct_options(&CS_SET, &CS_OPT_ROWCOUNT, $db->{MaxRows},
+			&CS_INT_TYPE);
     }
     ($db->ct_execute($cmd) == &CS_SUCCEED) || return undef;
 

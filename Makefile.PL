@@ -1,5 +1,5 @@
 # -*-Perl-*-
-#	@(#)Makefile.PL	1.22	03/20/98
+#	@(#)Makefile.PL	1.23	03/26/99
 require 5.002;
 use ExtUtils::MakeMaker;
 use Config;
@@ -45,6 +45,11 @@ WriteMakefile('DISTNAME' => "sybperl",
 	      'dist' => {'TARFLAGS' => "cvfF", 'COMPRESS' => "gzip"},
 	      'LINKTYPE' => $linktype,
 	      'XSPROTOARG' => '-prototypes',
+	      ($] >= 5.005 ?
+	       (ABSTRACT   => 'Sybase API modules',
+		AUTHOR     => 'Michael Peppler (mpeppler@mbay.net)') : ()),
+	      ($] >= 5.005 && $^O eq 'MSWin32' && 
+	       $Config{archname} =~ /-object\b/i ? (CAPI => 'TRUE') :()),
               'MAN3PODS' => 'pod/sybperl.pod'
 	      );
 

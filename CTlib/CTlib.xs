@@ -1,5 +1,5 @@
 /* -*-C-*-
- *	@(#)CTlib.xs	1.36	11/06/98
+ *	@(#)CTlib.xs	1.37	03/26/99
  */
 
 
@@ -25,15 +25,16 @@
 #define dTHR 	extern int errno
 #endif
 
-#if !defined(PL_na)
+#include "patchlevel.h"		/* this is the perl patchlevel.h */
+
+#if PATCHLEVEL < 5 && SUBVERSION < 5
+
 #define PL_na na
-#endif
-#if !defined(PL_sv_undef)
 #define PL_sv_undef sv_undef
-#endif
-#if !defined(PL_dirty)
 #define PL_dirty dirty
+
 #endif
+
 
 #include <ctpublic.h>
 
@@ -45,6 +46,7 @@
 #ifndef MIN
 #define MIN(X,Y)	(((X) < (Y)) ? (X) : (Y))
 #endif
+
 
 
 /*
@@ -119,13 +121,12 @@ typedef struct _con_info
 
     CS_IODESC iodesc;
 
-/*    CS_LOCALE *locale; */
+    CS_LOCALE *locale;
 
     AV *av;
     HV *hv;
 
     HV *magic;
-    SV *handle;
 
     struct _con_info *next;
 } ConInfo;
@@ -198,16 +199,16 @@ static SV *newdbh _((ConInfo *, char *, SV*));
 static ConInfo *get_ConInfoFromMagic _((HV*));
 static ConInfo *get_ConInfo _((SV*));
 static char *neatsvpv _((SV*, STRLEN));
-static CS_DATETIME to_datetime _((char*));
-static char *from_datetime _((CS_DATETIME*));
+static CS_DATETIME to_datetime _((char*, CS_LOCALE*));
+static char *from_datetime _((CS_DATETIME*, CS_LOCALE*));
 static SV *newdate _((CS_DATETIME*));
-static CS_MONEY to_money _((char *));
-static char *from_money _((CS_MONEY*));
-static CS_FLOAT money2float _((CS_MONEY *));
+static CS_MONEY to_money _((char *, CS_LOCALE*));
+static char *from_money _((CS_MONEY*, CS_LOCALE*));
+static CS_FLOAT money2float _((CS_MONEY *, CS_LOCALE*));
 static SV *newmoney _((CS_MONEY*));
-static CS_NUMERIC to_numeric _((char*));
-static char *from_numeric _((CS_NUMERIC*));
-static CS_FLOAT numeric2float _((CS_NUMERIC *));
+static CS_NUMERIC to_numeric _((char*, CS_LOCALE*));
+static char *from_numeric _((CS_NUMERIC*, CS_LOCALE*));
+static CS_FLOAT numeric2float _((CS_NUMERIC *, CS_LOCALE*));
 static SV *newnumeric _((CS_NUMERIC*));
 static CS_CONNECTION *get_con _((SV*));
 static CS_COMMAND *get_cmd _((SV*));
@@ -375,15 +376,18 @@ newdbh(info, package, attr_ref)
        scope. */
     sv = newSViv((IV)info);
     sv_magic((SV*)thv, sv, '~', "CTlib", 5);
-    rv = newRV((SV*)thv);
+    SvRMAGICAL_on((SV*)thv);
 
+    rv = newRV((SV*)thv);
     stash = gv_stashpv("Sybase::CTlib::_attribs", TRUE);
     (void)sv_bless(rv, stash);
-    hv = (HV*)sv_2mortal((SV*)newHV());
 
+    hv = (HV*)sv_2mortal((SV*)newHV());
+    sv_magic((SV*)hv, sv, '~', "CTlib", 5);
     /* Turn on the 'tie' magic */
     sv_magic((SV*)hv, rv, 'P', Nullch, 0);
-    sv_magic((SV*)hv, sv, '~', "CTlib", 5);
+
+    SvRMAGICAL_on((SV*)hv);
 
     info->magic = hv;    
 
@@ -445,7 +449,7 @@ newdbh(info, package, attr_ref)
 
     rv = newRV((SV*)hv);
     stash = gv_stashpv(package, TRUE);
-    info->handle = sv = sv_bless(rv, stash);
+    sv = sv_bless(rv, stash);
         
     return sv;
 }
@@ -539,8 +543,9 @@ neatsvpv(sv, maxlen) /* return a tidy ascii value, for debugging only */
 
 
 static CS_DATETIME
-to_datetime(str)
+to_datetime(str, locale)
     char *str;
+    CS_LOCALE *locale;
 {
     CS_DATETIME dt;
     CS_DATAFMT srcfmt, destfmt;
@@ -575,8 +580,9 @@ to_datetime(str)
 }
 
 static char *
-from_datetime(dt)
+from_datetime(dt, locale)
     CS_DATETIME *dt;
+    CS_LOCALE   *locale;
 {
     CS_DATAFMT srcfmt, destfmt;
     static char buff[256];
@@ -630,8 +636,9 @@ static SV
 }
 
 static CS_MONEY
-to_money(str)
+to_money(str, locale)
     char *str;
+    CS_LOCALE *locale;
 {
     CS_MONEY mn;
     CS_DATAFMT srcfmt, destfmt;
@@ -666,8 +673,9 @@ to_money(str)
 }
 
 static char *
-from_money(mn)
+from_money(mn, locale)
     CS_MONEY *mn;
+    CS_LOCALE *locale;
 {
     CS_DATAFMT srcfmt, destfmt;
     static char buff[256];
@@ -692,8 +700,9 @@ from_money(mn)
 }
 
 static CS_FLOAT
-money2float(mn)
+money2float(mn, locale)
     CS_MONEY *mn;
+    CS_LOCALE *locale;
 {
     CS_DATAFMT srcfmt, destfmt;
     CS_FLOAT ret;
@@ -739,8 +748,9 @@ static SV
 }
     
 static CS_NUMERIC
-to_numeric(str)
+to_numeric(str, locale)
     char *str;
+    CS_LOCALE *locale;
 {
     CS_NUMERIC mn;
     CS_DATAFMT srcfmt, destfmt;
@@ -783,8 +793,9 @@ to_numeric(str)
 }
 
 static char *
-from_numeric(mn)
+from_numeric(mn, locale)
     CS_NUMERIC *mn;
+    CS_LOCALE  *locale;
 {
     CS_DATAFMT srcfmt, destfmt;
     static char buff[256];
@@ -809,8 +820,9 @@ from_numeric(mn)
 }
 
 static CS_FLOAT
-numeric2float(mn)
+numeric2float(mn, locale)
     CS_NUMERIC *mn;
+    CS_LOCALE *locale;
 {
     CS_DATAFMT srcfmt, destfmt;
     static CS_FLOAT ret;
@@ -1081,6 +1093,7 @@ describe(info, dbp, restype, textBind)
     }
     else
 	info->connection->attr.ComputeId = 0;
+
     use_datetime = info->connection->attr.UseDateTime;
     use_money    = info->connection->attr.UseMoney;
     use_numeric  = info->connection->attr.UseNumeric;
@@ -1123,7 +1136,7 @@ describe(info, dbp, restype, textBind)
 	info->coldata[i].realtype = info->datafmt[i].datatype;
 	info->coldata[i].sybmaxlength = info->datafmt[i].maxlength;
 
-	info->datafmt[i].locale = locale;
+	info->datafmt[i].locale = info->locale;	/* XXX */
 
 	switch(info->datafmt[i].datatype)
 	{
@@ -1509,15 +1522,10 @@ CS_SERVERMSG	*srvmsg;
 		return CS_FAIL;
 	    }
 
+	    refCon = info->connection;
+
 	    Newz(902, info, 1, ConInfo);
-	    if((hv = perl_get_hv("Sybase::CTlib::_refCon", FALSE)))
-	    {
-		if((svp = hv_fetch(hv, (char*)connection, sizeof(connection), 0)))
-		{
-		    refCon = (RefCon*)SvIV(*svp);
-		    info->connection = refCon;
-		}
-	    }
+	    info->connection = refCon;
 	    info->cmd = cmd;
 	    info->numCols = 0;
 	    info->coldata = NULL;
@@ -1539,7 +1547,7 @@ CS_SERVERMSG	*srvmsg;
 	    SV *rv = newRV((SV*)info->magic);
 	
 	    XPUSHs(sv_2mortal(rv));
-	} else {
+	}  else {
 	    XPUSHs(&PL_sv_undef);
 	}
 	
@@ -1643,6 +1651,7 @@ initialize()
     SV 		*sv;
     CS_RETCODE	retcode;
     CS_INT	netio_type = CS_SYNC_IO;
+    dTHR;
 
     if((retcode = cs_ctx_alloc(CTLIB_VERSION, &context)) != CS_SUCCEED)
 	croak("Sybase::CTlib initialize: cs_ctx_alloc() failed");
@@ -1675,10 +1684,11 @@ initialize()
     }
 
 
+
     if((sv = perl_get_sv("Sybase::CTlib::Version", TRUE|GV_ADDMULTI)))
     {
 	char buff[256];
-	sprintf(buff, "This is sybperl, version %s\n\nSybase::CTlib version 1.36 11/06/98\n\nCopyright (c) 1995-1998 Michael Peppler\nPortions Copyright (c) 1995 Sybase, Inc.\n\n",
+	sprintf(buff, "This is sybperl, version %s\n\nSybase::CTlib version 1.37 03/26/99\n\nCopyright (c) 1995-1998 Michael Peppler\nPortions Copyright (c) 1995 Sybase, Inc.\n\n",
 		SYBPLVER);
 	sv_setnv(sv, atof(SYBPLVER));
 	sv_setpv(sv, buff);
@@ -5335,6 +5345,9 @@ ct_connect(package="Sybase::CTlib", user=NULL, pwd=NULL, server=NULL, appname=NU
     RefCon *refCon;
     CS_CONNECTION *connection = NULL;
     CS_COMMAND *cmd;
+#if 0
+    CS_LOCALE  *locale;
+#endif
     CS_RETCODE retcode;
     CS_INT len;
     SV *sv;
@@ -5363,7 +5376,12 @@ ct_connect(package="Sybase::CTlib", user=NULL, pwd=NULL, server=NULL, appname=NU
 				   appname, CS_NULLTERM, NULL)) != CS_SUCCEED)
 	    warn("ct_con_props(appname) failed");
     }
-
+#if 0
+    if(cs_loc_alloc(context, &locale) != CS_SUCCEED) {
+	warn("cs_loc_alloc() failed");
+	locale = NULL;
+    }
+#endif
 
     if(attr && attr != &PL_sv_undef && SvROK(attr)) {
 	SV **svp = hv_fetch((HV*)SvRV(attr), "CON_PROPS", 9, 0);
@@ -5383,13 +5401,24 @@ ct_connect(package="Sybase::CTlib", user=NULL, pwd=NULL, server=NULL, appname=NU
 		{ "CS_SEC_CHALLENGE", CS_SEC_CHALLENGE, CS_INT_TYPE},
 		{ "CS_SEC_ENCRYPTION", CS_SEC_ENCRYPTION, CS_INT_TYPE},
 		{ "CS_SEC_NEGOTIATE", CS_SEC_NEGOTIATE, CS_INT_TYPE},
+		{ "CS_SYB_LANG", CS_SYB_LANG, -1 },
+		{ "CS_SYB_CHARSET", CS_SYB_CHARSET, -1 },
 		{ "", 0, 0}
 	    };
 	    hv = (HV*)SvRV(*svp);
 	    for(i = 0; props[i].name[0] != 0; ++i) {
 		svp = hv_fetch(hv, props[i].name, strlen(props[i].name), 0);
 		if(svp && *svp != &PL_sv_undef) {
+		    if(props[i].type == -1) {
+			/* CS_LOCALE type attribute */
+			cs_locale(context, CS_SET, locale, props[i].attr,
+				  SvPV(*svp, PL_na), CS_NULLTERM, NULL);
+			continue;
+		    }
 		    if(props[i].type == CS_CHAR_TYPE) {
+		    /* CS_CHARSETCNV is not settable - I was simply mistaken */
+			if(props[i].attr == CS_CHARSETCNV)
+			    continue;
 			ret = ct_con_props(connection, CS_SET, props[i].attr,
 					   SvPV(*svp, PL_na), CS_NULLTERM, NULL);
 		    } else {
@@ -5442,17 +5471,10 @@ ct_connect(package="Sybase::CTlib", user=NULL, pwd=NULL, server=NULL, appname=NU
 	    info->type = CON_CONNECTION;
 	    info->connection = refCon; /*connection; */
 	    info->cmd = cmd;
+	    info->locale = locale;
 	    info->numCols = 0;
 	    info->coldata = NULL;
 	    info->datafmt = NULL;
-
-
-	    hv = perl_get_hv("Sybase::CTlib::_refCon", TRUE);
-	    sv = newSViv((IV)refCon);
-	    hv_store(hv, (char *)connection, sizeof(connection), sv, 0);
-	    hv = perl_get_hv("Sybase::CTlib::_conInfo", TRUE);
-	    sv = newSViv((IV)info);
-	    hv_store(hv, (char *)cmd, sizeof(cmd), sv, 0);
 
 	    if((retcode = ct_con_props(connection, CS_SET, CS_USERDATA,
 				       &info, CS_SIZEOF(info), NULL)) != CS_SUCCEED)
@@ -5503,6 +5525,7 @@ ct_cmd_alloc(dbp)
 	New(902, info, 1, ConInfo);
 	info->connection = o_info->connection;
 	info->cmd = cmd;
+	info->locale = o_info->locale;
 	info->numCols = 0;
 	info->coldata = NULL;
 	info->datafmt = NULL;
@@ -5511,10 +5534,6 @@ ct_cmd_alloc(dbp)
 	info->next = o_info;
 	info->connection->head = info;
 	
-	hv = perl_get_hv("Sybase::CTlib::_conInfo", TRUE);
-	sv = newSViv((IV)info);
-	hv_store(hv, (char *)cmd, sizeof(cmd), sv, 0);
-
 	sv = newdbh(info, package, &PL_sv_undef);
 
 	if(debug_level & TRACE_CREATE)
@@ -5591,10 +5610,7 @@ CODE:
 	    }
 	}
     }
-    
-    if((hv = perl_get_hv("Sybase::CTlib::_conInfo", FALSE)))
-	hv_delete(hv, (char *)info->cmd, sizeof(info->cmd), 0);
-    
+        
     ct_cmd_drop(info->cmd);
     --refCon->refcount;
 
@@ -5603,9 +5619,9 @@ CODE:
 	close_option = CS_FORCE_CLOSE;
 	ct_close(refCon->connection, close_option);
 	ct_con_drop(refCon->connection);
-
-	if((hv = perl_get_hv("Sybase::CTlib::_refCon", FALSE)))
-	    hv_delete(hv, (char *)refCon->connection, sizeof(refCon->connection), 0);
+	if((cs_loc_drop(context, info->locale)) != CS_SUCCEED) {
+	    warn("cs_loc_drop(context, locale) failed");
+	}
 
 	/* only destroy the extra attributes hash if this is the
 	   last handle for this connection */
@@ -5661,8 +5677,6 @@ ct_cmd_realloc(dbp)
     
     if((RETVAL = ct_cmd_alloc(info->connection->connection, &cmd)) == CS_SUCCEED)
     {
-	if((hv = perl_get_hv("Sybase::CTlib::_conInfo", FALSE)))
-	    hv_delete(hv, (char *)info->cmd, sizeof(info->cmd), 0);
 	if((RETVAL = ct_cmd_drop(info->cmd)) == CS_SUCCEED)
 	{
 	    info->cmd = cmd;
@@ -5848,7 +5862,8 @@ CODE:
 	    SV **svp;
 
 	    svp = hv_fetch((HV*)SvRV(attr), "total_txtlen", 12, 0);
-	    if(svp && SvIOK(*svp))
+	    /* XXX hack! */
+	    if(svp && SvIOK(*svp) || SvTAINTED(*svp))
 		info->iodesc.total_txtlen = SvIV(*svp);
 
 	    svp = hv_fetch((HV*)SvRV(attr), "log_on_update", 13, 0);
@@ -6463,7 +6478,7 @@ ct_param(dbp, sv_params)
 		    v_num = *(CS_NUMERIC *) tmp;
 		}
 		else
-		    v_num = to_numeric(SvPV(*svp, PL_na));
+		    v_num = to_numeric(SvPV(*svp, PL_na), info->locale);
 		value = &v_num;
 	    }
 	}
@@ -6482,7 +6497,7 @@ ct_param(dbp, sv_params)
 		    v_mn = *(CS_MONEY *) tmp;
 		}
 		else
-		    v_mn = to_money(SvPV(*svp, PL_na));
+		    v_mn = to_money(SvPV(*svp, PL_na), info->locale);
 		value = &v_mn;
 	    }
 	}
@@ -6501,7 +6516,7 @@ ct_param(dbp, sv_params)
 		    v_dt = *(CS_DATETIME *) tmp;
 		}
 		else
-		    v_dt = to_datetime(SvPV(*svp, PL_na));
+		    v_dt = to_datetime(SvPV(*svp, PL_na), info->locale);
 		value = &v_dt;
 	    }
 	}
@@ -6556,7 +6571,7 @@ newdate(dbp=&PL_sv_undef,dt=NULL)
   CODE:
 {
     CS_DATETIME d;
-    d = to_datetime(dt);
+    d = to_datetime(dt, locale); /* XXX */
     ST(0) = sv_2mortal(newdate(&d));
 }
 
@@ -6567,7 +6582,7 @@ newmoney(dbp=&PL_sv_undef, mn=NULL)
   CODE:
 {
     CS_MONEY m;
-    m = to_money(mn);
+    m = to_money(mn, locale);	/* XXX */
     ST(0) = sv_2mortal(newmoney(&m));
 }
 
@@ -6578,7 +6593,7 @@ newnumeric(dbp=&PL_sv_undef, num=NULL)
   CODE:
 {
     CS_NUMERIC n;
-    n = to_numeric(num);
+    n = to_numeric(num, locale); /* XXX */
     ST(0) = sv_2mortal(newnumeric(&n));
 }
 
@@ -6618,7 +6633,7 @@ str(valp)
     else
 	croak("valp is not of type %s", DateTimePkg);
     
-    RETVAL = from_datetime(ptr);
+    RETVAL = from_datetime(ptr, locale); /* XXX */
 
     if(debug_level & TRACE_OVERLOAD)
 	warn("%s->str == %s", neatsvpv(valp,0), RETVAL);
@@ -6674,7 +6689,7 @@ cmp(valp, valp2, ord = &PL_sv_undef)
     
     if(!SvROK(valp2))
     {
-	dt = to_datetime(SvPV(valp2, PL_na));
+	dt = to_datetime(SvPV(valp2, PL_na), locale); /* XXX */
 	d2 = &dt;
     }
     else
@@ -6742,7 +6757,7 @@ diff(valp, valp2, ord = &PL_sv_undef)
     
     if(!SvROK(valp2))
     {
-	dt = to_datetime(SvPV(valp2, PL_na));
+	dt = to_datetime(SvPV(valp2, PL_na), locale); /* XXX */
 	d2 = &dt;
     }
     else
@@ -6842,7 +6857,7 @@ str(valp)
     else
 	croak("valp is not of type %s", MoneyPkg);
 
-    RETVAL = from_money(ptr);
+    RETVAL = from_money(ptr, locale); /* XXX */
     if(debug_level & TRACE_OVERLOAD)
 	warn("%s->str == %s", neatsvpv(valp,0), RETVAL);
 }
@@ -6862,7 +6877,7 @@ num(valp)
     else
 	croak("valp is not of type %s", MoneyPkg);
 
-    RETVAL = money2float(ptr);
+    RETVAL = money2float(ptr, locale); /* XXX */
     if(debug_level & TRACE_OVERLOAD)
 	warn("%s->num == %f", neatsvpv(valp,0), RETVAL);
 }
@@ -6883,7 +6898,7 @@ set(valp, str)
     else
 	croak("valp is not of type %s", MoneyPkg);
 
-    *ptr = to_money(str);
+    *ptr = to_money(str, locale); /* XXX */
 }
 
 int
@@ -6908,7 +6923,7 @@ cmp(valp, valp2, ord = &PL_sv_undef)
 	char buff[64];
 
 	sprintf(buff, "%f", SvNV(valp2));
-	mn = to_money(buff);
+	mn = to_money(buff, locale); /* XXX */
 	m2 = &mn;
     }
     else
@@ -6970,7 +6985,7 @@ calc(valp1, valp2, op, ord = &PL_sv_undef)
 	char buff[64];
 
 	sprintf(buff, "%f", SvNV(valp2));
-	mn = to_money(buff);
+	mn = to_money(buff, locale); /* XXX */
 	m2 = &mn;
     }
     else
@@ -6993,7 +7008,7 @@ calc(valp1, valp2, op, ord = &PL_sv_undef)
     if(debug_level & TRACE_OVERLOAD)
 	warn("%s->calc(%s, %c, %s) == %s", neatsvpv(valp1, 0),
 	     neatsvpv(valp2, 0), op, SvTRUE(ord) ? "TRUE" : "FALSE",
-	     from_money(&result));
+	     from_money(&result, locale)); /* XXX */
 
     ST(0) = sv_2mortal(newmoney(&result));
 }    
@@ -7033,7 +7048,7 @@ str(valp)
     else
 	croak("valp is not of type %s", NumericPkg);
 
-    RETVAL = from_numeric(ptr);
+    RETVAL = from_numeric(ptr, locale);	/* XXX */
     if(debug_level & TRACE_OVERLOAD)
 	warn("%s->str == %s", neatsvpv(valp,0), RETVAL);
 }
@@ -7053,7 +7068,7 @@ num(valp)
     else
 	croak("valp is not of type %s", NumericPkg);
 
-    RETVAL = numeric2float(ptr);
+    RETVAL = numeric2float(ptr, locale); /* XXX */
     if(debug_level & TRACE_OVERLOAD)
 	warn("%s->num == %f", neatsvpv(valp,0), RETVAL);
 }
@@ -7074,7 +7089,7 @@ set(valp, str)
     else
 	croak("valp is not of type %s", NumericPkg);
 
-    *ptr = to_numeric(str);
+    *ptr = to_numeric(str, locale); /* XXX */
 }
 
 int
@@ -7099,7 +7114,7 @@ cmp(valp, valp2, ord = &PL_sv_undef)
 	char buff[64];
 
 	sprintf(buff, "%f", SvNV(valp2));
-	mn = to_numeric(buff);
+	mn = to_numeric(buff, locale); /* XXX */
 	m2 = &mn;
     }
     else
@@ -7161,7 +7176,7 @@ calc(valp1, valp2, op, ord = &PL_sv_undef)
 	char buff[64];
 
 	sprintf(buff, "%f", SvNV(valp2));
-	mn = to_numeric(buff);
+	mn = to_numeric(buff, locale); /* XXX */
 	m2 = &mn;
     }
     else
@@ -7183,7 +7198,7 @@ calc(valp1, valp2, op, ord = &PL_sv_undef)
     if(debug_level & TRACE_OVERLOAD)
 	warn("%s->calc(%s, %c, %s) == %s", neatsvpv(valp1, 0),
 	     neatsvpv(valp2, 0), op, SvTRUE(ord) ? "TRUE" : "FALSE",
-	     from_numeric(&result));
+	     from_numeric(&result, locale)); /* XXX */
     
     ST(0) = sv_2mortal(newnumeric(&result));
 }    

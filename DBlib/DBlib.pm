@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# @(#)DBlib.pm	1.34	11/06/98
+# @(#)DBlib.pm	1.35	03/26/99
 
 # Copyright (c) 1991-1997
 #   Michael Peppler
@@ -9,6 +9,8 @@
 #   your Perl kit.
 
 require 5.002;
+
+use strict;
 
 package Sybase::DBlib::_attribs;
 
@@ -208,7 +210,9 @@ use Carp;
 
 use subs qw(sql SUCCEED FAIL NO_MORE_RESULTS SYBESMSG INT_CANCEL);
 
-use vars qw(%Att);
+use vars qw(%Att @ISA @EXPORT @EXPORT_OK $AUTOLOAD);
+use vars qw($DB_ERROR $nsql_strip_whitespace $nsql_deadlock_retrycount
+	   $nsql_deadlock_retrysleep $nsql_deadlock_verbose);
 
 @ISA = qw(Exporter DynaLoader);
 
@@ -233,7 +237,7 @@ use vars qw(%Att);
 	     SYBFLT8 SYBIMAGE SYBINT1 SYBINT2 SYBINT4 SYBMONEY
 	     SYBMONEY4 SYBREAL SYBTEXT SYBVARBINARY SYBVARCHAR
 	     DBRPCRETURN DBRPCNORETURN DBRPCRECOMPILE
-	      DBRESULT DBNOTIFICATION DBINTERRUPT
+	      DBRESULT DBNOTIFICATION DBINTERRUPT DBTIMEOUT
 	      $DB_ERROR
 	     );
 
@@ -269,7 +273,7 @@ use vars qw(%Att);
 	SYBEXTDN SYBEXTN SYBEXTSN SYBEZTXT
 );
 
-tie %Att, Sybase::DBlib::Att;
+tie %Att, 'Sybase::DBlib::Att';
 
 sub AUTOLOAD {
     my $constname;
@@ -389,8 +393,12 @@ sub DB_ERROR { return $DB_ERROR; }
  
 
 sub nsql {
-    my ($db,$sql,$type) = @_;
+
+    my ($db,$sql,$type,$callback) = @_;
     my (@res,@data,%data);
+    my $retrycount = $nsql_deadlock_retrycount;
+    my $retrysleep = $nsql_deadlock_retrysleep || 60;
+    my $retryverbose = $nsql_deadlock_verbose;
 
     if ( ref $type ) {
 	$type = ref $type;
@@ -401,35 +409,103 @@ sub nsql {
 
     undef $DB_ERROR;
  
-    return unless $db->dbcmd($sql);
-  
-    return unless $db->dbsqlexec;
-
-    while ( $db->dbresults != $db->NO_MORE_RESULTS ) {
-      if ( ref $type eq "HASH" || $type eq "HASH" ) {
-          while ( %data = $db->dbnextrow(1) ) {
-              grep($data{$_} =~ s/\s+$//g,keys %data) if $nsql_strip_whitespace;
-              push(@res,{%data});
-          }
-      }
-      elsif ( ref $type eq "ARRAY" || $type eq "ARRAY" ) {
-          while ( @data = $db->dbnextrow ) {
-              grep(s/\s+$//g,@data) if $nsql_strip_whitespace;
-              push(@res,( $#data == 0 ? @data : [@data] ));
-          }
-      }
-      else {
-          # If you ask for nothing, you get nothing.  But suck out
-          # the data just in case.
-          while ( @data = $db->dbnextrow ) { 1; }
-          $res[0]++;          # Return non-null (true)
-      }
+  DEADLOCK:
+    {	
+	
+	return unless $db->dbcmd($sql);
+	
+	unless ( $db->dbsqlexec ) {
+	    
+	    if ( $nsql_deadlock_retrycount && $DB_ERROR =~ /Message: 1205\b/m ) {
+		if ( $retrycount < 0 || $retrycount-- ) {
+		    carp "SQL deadlock encountered.  Retrying...\n" if $retryverbose;
+		    undef $DB_ERROR;
+		    sleep($retrysleep);
+		    next DEADLOCK;
+		}
+		else {
+		    carp "SQL deadlock retry failed $nsql_deadlock_retrycount times.  Aborting.\n"
+		      if $retryverbose;
+		    last DEADLOCK;
+		}
+	    }
+	    
+	    last DEADLOCK;
+	    
+	}
+	
+	while ( $db->dbresults != $db->NO_MORE_RESULTS ) {
+	    
+	    if ( $nsql_deadlock_retrycount && $DB_ERROR =~ /Message: 1205\b/m ) {
+		if ( $retrycount < 0 || $retrycount-- ) {
+		    carp "SQL deadlock encountered.  Retrying...\n" if $retryverbose;
+		    undef $DB_ERROR;
+		    @res = ();
+		    sleep($retrysleep);
+		    next DEADLOCK;
+		}
+		else {
+		    carp "SQL deadlock retry failed $nsql_deadlock_retrycount times.  Aborting.\n"
+		      if $retryverbose;
+		    last DEADLOCK;
+		}
+	    }
+	    
+	    if ( $type eq "HASH" ) {
+		while ( %data = $db->dbnextrow(1) ) {
+		    grep($data{$_} =~ s/\s+$//g,keys %data) if $nsql_strip_whitespace;
+		    if ( ref $callback eq "CODE" ) {
+			unless ( $callback->(%data) ) {
+			    $db->dbcancel();
+			    $DB_ERROR = "User-defined callback subroutine failed\n";
+			    return;
+			} 
+		    }
+		    else {
+			push(@res,{%data});
+		    }
+		}
+	    }
+	    elsif ( $type eq "ARRAY" ) {
+		while ( @data = $db->dbnextrow ) {
+		    grep(s/\s+$//g,@data) if $nsql_strip_whitespace;
+		    if ( ref $callback eq "CODE" ) {
+			unless ( $callback->(%data) ) {
+			    $db->dbcancel();
+			    $DB_ERROR = "User-defined callback subroutine failed\n";
+			    return;
+			} 
+		    }
+		    else {
+			push(@res,( $#data == 0 ? @data : [@data] ));
+		    }
+		}
+	    }
+	    else {
+		# If you ask for nothing, you get nothing.  But suck out
+		# the data just in case.
+		while ( @data = $db->dbnextrow ) { 1; }
+		$res[0]++;	# Return non-null (true)
+	    }
+	    
+	}
+	
+	last DEADLOCK;
+	
     }
 
     #
     # If we picked any sort of error, then don't feed the data back.
     #
-    return ( $DB_ERROR ? () : @res );
+    if ( $DB_ERROR ) {
+	return;
+    }
+    elsif ( ref $callback eq "CODE" ) {
+	return 1;
+    }
+    else {
+	return @res;
+    }
 
 }
 

@@ -1,5 +1,5 @@
 # -*-Perl-*-
-#	@(#)Makefile.PL	1.12	06/02/97
+#	@(#)Makefile.PL	1.13	03/26/99
 
 require 5.002;
 use ExtUtils::MakeMaker;
@@ -28,6 +28,11 @@ else
 {
     WriteMakefile('NAME' => "Sybase::Sybperl",
 		  'VERSION' => "$$sattr{VERSION}",
+		  ($] >= 5.005 ?
+		   (ABSTRACT   => 'Sybperl 1.xx compatibility module',
+		    AUTHOR     => 'Michael Peppler (mpeppler@mbay.net)') : ()),
+		  ($] >= 5.005 && $^O eq 'MSWin32' && 
+		   $Config{archname} =~ /-object\b/i ? (CAPI => 'TRUE') :()),
 		  'NEEDS_LINKING' => 1,
 		  );
 }

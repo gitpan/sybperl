@@ -1,4 +1,4 @@
-<--@(#)sybperl.pod	1.32	11/06/98-->
+<--@(#)sybperl.pod	1.33	03/26/99-->
 
 =head1 NAME
 
@@ -363,6 +363,25 @@ dbnextrow() can also return a hash keyed on the column name:
 Retrieve the value of the parameters marked as 'OUTPUT' in a stored
 procedure. If $doAssoc is non-0, then retrieve the data as an
 associative array with parameter name/value pairs.
+
+=item $bylist = $dbh->dbbylist($computeID)
+
+Returns the I<by list> for a I<compute by> clause. $bylist is a reference 
+to an array of I<colids>. You can use $dbh->dbcolname() to get the column 
+names.
+
+    $dbh->dbcmd("select * from sysusers order by uid compute count(uid) by uid");
+    $dbh->dbsqlexec;
+    $dbh->dbresults;
+    my @dat;
+    while(@dat = $dbh->dbnextrow) {
+        if($dbh->{ComputeID} != 0) {
+            my $bylist = $dbh->dbbylist($dbh->{ComputeID});
+            print "bylist = @$bylist\n";
+        }
+        print "@dat\n";
+    }
+
 
 =item %hash = $dbh->dbcomputeinfo($computeID, $column)
 
@@ -813,11 +832,21 @@ field:
 
 This value is B<not> set by default.
 
-=item @ret = $dbh->nsql($sql [, "ARRAY" | "HASH" ]);
+=item @ret = $dbh->nsql($sql [, "ARRAY" | "HASH" ] [, \&subroutine ] );
 
 An enhanced version of the B<sql> routine, B<nsql>, is also available.
-The arguments are an SQL command to be executed, and the B<$type> of
-the data to be returned.  The array returned by nsql is one of the
+nsql() provides better error checking (using its companion error and
+message handlers), optional deadlock retry logic, and several options
+for the format of the return values.  In addition, the data can either
+be returned to the caller in bulk, or processes line by line via a
+callback subroutine passed as an argument (this functionality is
+similar to the r_sql() method).
+
+The arguments are an SQL command to be executed, the B<$type> of the
+data to be returned, and the callback subroutine.
+
+if a callback subroutine is not given, then the data from the query is
+returned as an array.  The array returned by nsql is one of the
 following:
 
     Array of Hash References (if type eq HASH)
@@ -876,21 +905,89 @@ The following code is the proper method for handling errors with use
 of nsql.
 
     @ret = $dbh->nsql("select stuff from table where stuff = 'nothing'","ARRAY");
-    if ( $dbh->DB_ERROR() ) {
+    if ( $DB_ERROR ) {
       # error handling code goes here, perhaps:
-      die "Unable to get stuff from table:" . $dbh->DB_ERROR() . "\n";
+      die "Unable to get stuff from table: $DB_ERROR\n";
     }
   
-For compatibility with older release, the error variable $DB_ERROR is
-still exported, however, direct use of this variable makes it
-difficult to pass the Sybase::DBlib object around and use the nsql()
-method for queries, since the subroutine using the object will not
-necessarily have $DB_ERROR in its namespace.  The method will always
-be available.
-  
-NOTE: This routine was contributed by W. Phillip Moore <wpm@ms.com>.
-  
+The behavior of nsql() can be customized in several ways.  If the
+variable:
 
+    $Sybase::DBlib::nsql_strip_whitespace
+
+is true, then nsql() will strip the trailing white spaces from all of
+the scalar values in the results.
+
+When using a callback subroutine, the subroutine is passed to nsql()
+as a CODE reference.  For example:
+
+    sub parse_hash {
+      my %data = @_;
+      # Do something with %data 
+    }
+
+    $dbh->nsql("select * from really_huge_table","HASH",\&parse_hash);
+    if ( $DB_ERROR ) {
+      # error handling code goes here, perhaps:
+      die "Unable to get stuff from really_huge_table: $DB_ERROR\n";
+    }
+
+In this case, the data is passed to the callback (&parse_hash) as a
+HASH, since that was the format specified as the second argument.  If
+the second argument specifies an ARRAY, then the data is passed as an
+array.  For example:
+
+    sub parse_array {
+      my @data = @_;
+      # Do something with @data 
+    }
+
+    $dbh->nsql("select * from really_huge_table","HASH",\&parse_array);
+    if ( $DB_ERROR ) {
+      # error handling code goes here, perhaps:
+      die "Unable to get stuff from really_huge_table: $DB_ERROR\n";
+    }
+
+The primary advantage of using the callback is that the rows are
+processed one at a time, rather than the data returned in a huge
+array.  For very large tables, this can result in very significant
+memory consumption, and on resource constrained machines, some large
+queries may simply fail.  Processing rows individually will be much
+more efficient with respect to memory consumption.
+
+IMPORTANT NOTE: The callback subroutine must return a true value if it
+has successfully handled the data.  If a false value is returned, then
+the query is canceled via dbcancel(), and nsql() will abort further
+processing.
+
+WARNING: Using the following deadlock retry logic together with a
+callback routine is dangerous.  If a deadlock is encountered after
+some rows have already been processed by the callback, then the data
+will be processed a second time (or more, if the deadlock is retried
+multiple times).
+
+The nsql() method also supports automated retries of deadlock errors
+(1205).  This is disabled by default, and enabled only if the
+variable:
+
+    $Sybase::DBlib::nsql_deadlock_retrycount
+
+is non-zero.  This variable is the number of times to resubmit a given
+SQL query, and the variable
+
+    $Sybase::DBlib::nsql_deadlock_retrysleep
+
+is the delay, in seconds, between retries (default is 60).  Normally,
+the retries happen silently, but if you want nsql() to carp() about
+it, then set:
+
+    $Sybase::DBlib::nsql_deadlock_verbose
+
+to a true value, and nsql() will whine about the failure.  If all of
+the retries fail, then nsql() will return an error, like it normally
+does.  If you want the code to try forever, then set the retry count
+to -1.
+  
 =back
 
 B<Constants:>
@@ -1127,8 +1224,6 @@ The following connection properties are currently recognized:
 
 =item CS_ANSI_BINDS
 
-=item CS_CHARSETCNV
-
 =item CS_PACKETSIZE
 
 =item CS_SEC_APPDEFINED
@@ -1143,6 +1238,11 @@ The following connection properties are currently recognized:
 
 See the Sybase documentation on how and when to use these connection
 properties.
+
+In addition, you can set the B<CS_SYB_LANG> and B<CS_SYB_CHARSET> properties
+in the same manner. However - you should be aware that these settings affect
+all open connections, not just the one that you are openeing with this call
+to ct_connect(). This behaviour will likely change in the future.
 
 
 =item $status = $dbh->ct_execute($sql)
@@ -2000,8 +2100,12 @@ Dave Bowen & Amy Lin for help with Sybase::CTlib.
 
 Jeffrey Wong for the Sybase::DBlib DBMONEY routines.
 
+W. Phillip Moore E<lt>F<wpm@ms.com>E<gt> for the nsql() method.
+
 Numerous folks have contributed ideas and bug fixes for which they
 have my undying thanks :-) 
 
 The sybperl mailing list E<lt>F<sybperl-l@listproc.net>E<gt> is the
 best place to ask questions.
+
+=cut

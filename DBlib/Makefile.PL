@@ -1,5 +1,5 @@
 # -*-Perl-*-
-#	@(#)Makefile.PL	1.18	12/30/97
+#	@(#)Makefile.PL	1.19	03/26/99
 
 require 5.002;
 
@@ -53,6 +53,11 @@ else
 		'VERSION' => "$VERSION",
 		'DEFINE' => $def_string,
 		'XSPROTOARG' => '-prototypes',
+		($] >= 5.005 ?
+		 (ABSTRACT   => 'Sybase DB-Library API module',
+		  AUTHOR     => 'Michael Peppler (mpeppler@mbay.net)') : ()),
+		($] >= 5.005 && $^O eq 'MSWin32' && 
+		 $Config{archname} =~ /-object\b/i ? (CAPI => 'TRUE') :()),
 		'LINKTYPE' => $linktype,);
     if($^O ne 'VMS' && $^O ne 'MSWin32') {
 	$opts{'LDDLFLAGS'} = "-L$SYBASE/lib $Config{lddlflags}";

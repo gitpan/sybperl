@@ -1,5 +1,5 @@
 /* -*-C-*-
- *	@(#)DBlib.xs	1.46	11/06/98
+ *	@(#)DBlib.xs	1.47	03/26/99
  */	
 
 
@@ -23,14 +23,13 @@
 #define dTHR	extern int errno
 #endif
 
-#if !defined(PL_na)
+#include "patchlevel.h"		/* This is the perl patchlevel.h */
+#if PATCHLEVEL < 5 && SUBVERSION < 5
+
 #define PL_na na
-#endif
-#if !defined(PL_sv_undef)
 #define PL_sv_undef sv_undef
-#endif
-#if !defined(PL_dirty)
 #define PL_dirty dirty
+
 #endif
 
 
@@ -757,7 +756,7 @@ static int CS_PUBLIC err_handler(db, severity, dberr, oserr, dberrstr, oserrstr)
 	SAVETMPS;
 	PUSHMARK(sp);
 	
-	if(db && !DBDEAD(db) && (hv = (HV*)dbgetuserdata(db)))
+	if(db && (hv = (HV*)dbgetuserdata(db)))
 	{
 	    rv = newRV((SV*)hv);
 		
@@ -823,7 +822,7 @@ static int CS_PUBLIC msg_handler(db, msgno, msgstate, severity, msgtext, srvname
 	SAVETMPS;
 	PUSHMARK(sp);
 
-	if(db && !DBDEAD(db) && (hv = (HV*)dbgetuserdata(db)))	/* FIXME */
+	if(db && (hv = (HV*)dbgetuserdata(db)))	/* FIXME */
 	{
 	    rv = newRV((SV*)hv);
 	
@@ -885,6 +884,7 @@ setAppName(ptr)
     LOGINREC *ptr;
 {
     SV *sv;
+    dTHR;
 
     if((sv = perl_get_sv("0", FALSE)))
     {
@@ -930,7 +930,7 @@ initialize()
 	if((sv = perl_get_sv("Sybase::DBlib::Version", TRUE|GV_ADDMULTI)))
 	{
 	    char buff[256];
-	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib version 1.46 11/06/98\n\nCopyright (c) 1991-1998 Michael Peppler\n\n",
+	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib version 1.47 03/26/99\n\nCopyright (c) 1991-1998 Michael Peppler\n\n",
 		    SYBPLVER);
 	    sv_setnv(sv, atof(SYBPLVER));
 	    sv_setpv(sv, buff);
@@ -3593,6 +3593,31 @@ CODE:
 RETVAL
 
 int
+DBIORDESC(dbp)
+	SV *	dbp
+CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = DBIORDESC(dbproc);
+}
+ OUTPUT:
+RETVAL
+
+int
+DBIOWDESC(dbp)
+	SV *	dbp
+CODE:
+{
+    DBPROCESS *dbproc = getDBPROC(dbp);
+
+    RETVAL = DBIOWDESC(dbproc);
+}
+ OUTPUT:
+RETVAL
+
+
+int
 dbhasretstat(dbp)
 	SV *	dbp
 CODE:
@@ -5382,6 +5407,31 @@ dbcomputeinfo(dbp, computeID, column)
     XPUSHs(sv_2mortal(newSVpv("utype", 0)));
     XPUSHs(sv_2mortal(newSViv(retval)));
 }
+
+void
+dbbylist(dbp, compute_id)
+	SV *	dbp
+	int	compute_id
+CODE:
+{
+    int i;
+    SV *rv;
+    AV *av = newAV();
+    DBPROCESS *dbproc = getDBPROC(dbp);
+    int size;
+
+    BYTE *bylist = dbbylist(dbproc, compute_id, &size);
+    if(bylist == NULL) {
+	ST(0) = &PL_sv_undef;
+    } else {
+	for(i = 0; i < size; ++i) {
+	    av_push(av, newSViv((int)bylist[i]));
+	}
+	rv = newRV(sv_2mortal((SV*)av));
+	ST(0) = rv;
+    }
+}
+
 
 int
 DBDEAD(dbp)

@@ -1,6 +1,6 @@
 #!./perl
 
-#	@(#)dblib.t	1.19	11/06/98
+#	@(#)dblib.t	1.20	11/23/98
 
 print "1..22\n";
 
@@ -120,7 +120,17 @@ $ref = $X->sql("select getdate()");
 
 $X->dbcmd("select * from master..sysprocesses");
 $X->dbsqlsend;
-my ($x, $reason) = Sybase::DBlib->dbpoll(-1);
+my $count = 0;
+my ($x, $reason);
+
+do {
+    ($x, $reason) = Sybase::DBlib->dbpoll(-1);
+    ++$count;
+    print "dbpoll: reason = $reason\n";
+} while($count < 20 && $reason != DBRESULT);
+
+exit if $reason != DBRESULT;
+
 (ref($x) eq 'Sybase::DBlib') 
     and print "ok 20\n"
     or print "not ok 20\n";
