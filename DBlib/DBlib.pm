@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# @(#)DBlib.pm	1.27	06/27/97
+# @(#)DBlib.pm	1.31	12/30/97
 
 # Copyright (c) 1991-1997
 #   Michael Peppler
@@ -15,11 +15,6 @@ package Sybase::DBlib::_attribs;
 use Carp;
 
 
-sub FETCH {
-    return $_[0]->{$_[1]} if (exists $_[0]->{$_[1]});
-    carp("'$_[1]' is not a valid Sybase::DBlib attribute") if(!defined($_[0]->{$_[1]}));
-    return undef;
-}
  
 sub FIRSTKEY {
     each %{$_[0]};
@@ -31,14 +26,6 @@ sub NEXTKEY {
 
 sub EXISTS{ 
     exists($_[0]->{$_[1]});
-}
-
-sub STORE {
-    if(!exists($_[0]->{$_[1]})) {
-	carp("'$_[1]' is not a valid Sybase::DBlib attribute");
-	return undef;
-    }
-    $_[0]->{$_[1]} = $_[2];
 }
 
 sub readonly {
@@ -246,6 +233,7 @@ use vars qw(%Att);
 	     SYBFLT8 SYBIMAGE SYBINT1 SYBINT2 SYBINT4 SYBMONEY
 	     SYBMONEY4 SYBREAL SYBTEXT SYBVARBINARY SYBVARCHAR
 	     DBRPCRETURN DBRPCNORETURN DBRPCRECOMPILE
+	      $DB_ERROR
 	     );
 
 @EXPORT_OK = qw(ERREXIT EXCEPTION EXCLIPBOARD EXCOMM EXCONSISTENCY EXCONVERSION
@@ -283,18 +271,16 @@ use vars qw(%Att);
 tie %Att, Sybase::DBlib::Att;
 
 sub AUTOLOAD {
-    local($constname);
+    my $constname;
     ($constname = $AUTOLOAD) =~ s/.*:://;
-    $val = constant($constname, @_ ? $_[0] : 0);
+    my $val = constant($constname, @_ ? $_[0] : 0);
     if ($! != 0) {
 	if ($! =~ /Invalid/) {
 	    $AutoLoader::AUTOLOAD = $AUTOLOAD;
 	    goto &AutoLoader::AUTOLOAD;
 	}
 	else {
-	    ($pack,$file,$line) = caller;
-	    die "Your vendor has not defined Sybase::DBlib macro $constname, used at $file line $line ($pack).
-";
+	    croak "Your vendor has not defined Sybase::DBlib macro $constname";
 	}
     }
     eval "sub $AUTOLOAD { $val }";
@@ -310,8 +296,6 @@ bootstrap Sybase::DBlib;
 *new = \&dblogin;
 
 
-1;
-__END__
 
 sub dbsucceed
 {
@@ -339,7 +323,7 @@ sub sql				# Submitted by Gisle Aas
 {
     my($db, $cmd, $sub, $flag) = @_;
     my @res;
-    my @data;
+    my $data;
 
     if($db->{'MaxRows'}) {
 	$db->dbsetopt(&DBROWCOUNT, "$db->{'MaxRows'}");
@@ -351,14 +335,18 @@ sub sql				# Submitted by Gisle Aas
     $flag = 0 unless $flag;
     
     while($db->dbresults != &NO_MORE_RESULTS) {
-        while (@data = $db->dbnextrow($flag)) {
+        while ($data = $db->dbnextrow($flag, 1)) {
             if (defined $sub) {
-                &$sub(@data);
+		if($flag) {
+		    &$sub(%$data);
+		} else {
+		    &$sub(@$data);
+		}
             } else {
 		if($flag) {
-		    push(@res, {@data});
+		    push(@res, {%$data});
 		} else {
-		    push(@res, [@data]);
+		    push(@res, [@$data]);
 		}
             }
         }
@@ -391,3 +379,87 @@ sub r_sql {
     @res;  # return the result array
 }
 
+
+#
+# Enhanced sql routine.
+# 
+sub nsql {
+    my ($db,$sql,$type) = @_;
+    my (@res,@data,%data);
+
+    undef $DB_ERROR;
+ 
+    unless ( $db->dbcmd($sql) ) {
+      $DB_ERROR = "Unable to submit SQL to Sybase server.";
+      return undef;
+    }
+
+    unless ( $db->dbsqlexec ) {
+      $DB_ERROR = "Error executing SQL.";
+      return undef;
+    }
+
+    while ( $db->dbresults != $db->NO_MORE_RESULTS ) {
+      if ( ref $type eq "HASH" || $type eq "HASH" ) {
+          while ( %data = $db->dbnextrow(1) ) {
+              grep($data{$_} =~ s/\s+$//g,keys %data) if $nsql_strip_whitespace;
+              push(@res,{%data});
+          }
+      }
+      elsif ( ref $type eq "ARRAY" || $type eq "ARRAY" ) {
+          while ( @data = $db->dbnextrow ) {
+              grep(s/\s+$//g,@data) if $nsql_strip_whitespace;
+              push(@res,( $#data == 0 ? @data : [@data] ));
+          }
+      }
+      else {
+          # If you ask for nothing, you get nothing.  But suck out
+          # the data just in case.
+          while ( @data = $db->dbnextrow ) { 1; }
+          $res[0]++;          # Return non-null (true)
+      }
+    }
+
+    #
+    # If we picked any sort of error, then don't feed the data back.
+    #
+    return ( $DB_ERROR ? undef : @res );
+
+}
+
+sub nsql_error_handler {
+    my ($db, $severity, $error, $os_error, $error_msg, $os_error_msg) = @_;
+    # Check the error code to see if we should report this.
+
+    if ( $error != $db->SYBESMSG ) {
+      $DB_ERROR = "Sybase error: $error_msg\n";
+      $DB_ERROR .= "OS Error: $os_error_msg\n" if defined $os_error_msg;
+    }
+
+    $db->INT_CANCEL;
+}
+
+sub nsql_message_handler {
+    my ($db, $message, $state, $severity, $text, $server, $procedure, $line) = @_;
+
+    if ( $severity > 0 ) {
+      $DB_ERROR = "Message: $message\n";
+      $DB_ERROR .= "Severity: $severity\n";
+      $DB_ERROR .= "State: $state\n";
+      $DB_ERROR .= "Server: $server\n" if defined $server;
+      $DB_ERROR .= "Procedure: $procedure\n" if defined $procedure;
+      $DB_ERROR .= "Line: $line\n" if defined $line;
+      $DB_ERROR .= "Text: $text\n";
+
+      local ($lineno) = 1;
+      foreach $row ( split(/\n/,$db->dbstrcpy) ) {
+          $DB_ERROR .= sprintf ("%5d", $lineno ++) . "> $row\n";
+      }
+    }
+    
+    0;
+}
+
+
+1;
+__END__

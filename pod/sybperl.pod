@@ -1,4 +1,4 @@
-<--@(#)sybperl.pod	1.23	10/07/97-->
+<--@(#)sybperl.pod	1.28	12/30/97-->
 
 =head1 NAME
 
@@ -263,14 +263,24 @@ What is the length (in bytes) of column $colid in the current result set.
 
 What is the name of column $colid in the current result set.
 
-=item @dat = $dbh->dbnextrow([$doAssoc])
+=item @dat = $dbh->dbnextrow([$doAssoc [, $wantRef]])
 
 Retrieve one row. dbnextrow() returns an array of scalars, one for each
 column value. If $doAssoc is non-0, then dbnextrow() returns a hash (aka
 associative array) with column name/value pairs. This relieves the
-programmer from having to call dbbind() or dbdata(). The return value
-of the C version of dbnextrow() can be accessed via the Perl DBPROCESS
-attribute field, as in:
+programmer from having to call dbbind() or dbdata(). 
+
+If $wantRef is non-0, then dbnextrow() returns a B<reference> to
+a hash or an array. This reference I<points> to a static array (or hash)
+so if you wish to store the returned rows in an array, you must
+B<copy> the array/hash:
+
+  while($d = $dbh->dbnextrow(0, 1)) {
+     push(@rows, [@$d]);
+  }
+
+The return value of the C version of dbnextrow() can be accessed via the 
+Perl DBPROCESS attribute field, as in:
 
    @arr = $dbh->dbnextrow;		# read results
    if($dbh->{DBstatus} != REG_ROW) {
@@ -722,6 +732,65 @@ field:
 
 This value is B<not> set by default.
 
+=item @ret = $dbh->nsql($sql [, "ARRAY" | "HASH" ]);
+
+An enhanced version of the B<sql> routine, B<nsql>, is also available.
+The arguments are an SQL command to be executed, and the B<$type> of
+the data to be returned.  The array returned by nsql is one of the
+following:
+
+    Array of Hash References (if type eq HASH)
+    Array of Array References (if type eq ARRAY)
+    Simple Array (if type eq ARRAY, and a single column is queried
+    Boolean True/False value (if type ne ARRAY or HASH)
+
+For example, the following code will return an array of hash
+references:
+
+    @ret = $dbh->nsql("select col1,col2 from table","HASH");
+    foreach $ret ( @ret ) {
+      print "col1 = ", $ret->{'col1'}, ", col2 = ", $ret->{'col2'}, "\n";
+    }
+
+The following code will return an array of array references:
+
+    @ret = $dbh->nsql("select col1,col2 from table","ARRAY");
+    foreach $ret ( @ret ) {
+      print "col1 = ", $ret->[0], ", col2 = ", $ret->[1], "\n";
+    }
+
+The following code will return a simple array, since the select
+statement queries for only one column in the table:
+
+    @ret = $dbh->nsql("select col1 from table","ARRAY");
+    foreach $ret ( @ret ) {
+      print "col1 = $ret\n";
+    }
+
+The nsql() routine will return success or failure in the exported
+variable DB_ERROR, and a pair of Sybase message/error handler routines
+are also provided which will use DB_ERROR for the Sybase messages and
+errors as well.  However, these must be installed by the client
+application:
+
+    dbmsghandle("Sybase::DBlib::nsql_message_handler");
+    dberrhandle("Sybase::DBlib::nsql_error_handler");
+
+Success of failure of an nsql() call cannot necessarily be judged
+based on the value of the return code, as an emtpy array may be a
+perfectly valid result for certain sql code.
+
+The following code is the proper method for handling errors with use
+of nsql.
+
+    @ret = $dbh->nsql("select stuff from table where stuff = 'nothing'","ARRAY");
+    if ( $DB_ERROR ) {
+      # error handling code goes here
+    }
+
+NOTE: This routine was contributed by W. Phillip Moore.
+  
+
 =back
 
 B<Constants:>
@@ -941,7 +1010,45 @@ Establishes a connection to the database engine. Initializes and
 allocates resources for the connection, and registers the user name,
 password, target server and application name.
 
-Additional B<attributes> can be set by passing a hash reference.
+The B<attributes> hash reference can be used to add private attributes
+to the connection handle that you can later use, and can also be used to 
+set certain connection properties.
+
+To set the connection properties you pass a special hash in the
+B<attributes> parameter:
+
+	$dbh = new Sybase::CTlib 'user', 'pwd', 'SYBASE', undef, 
+	           { CON_PROPS => { CS_HOSTNAME => 'kiruna',
+                                    CS_PACKETSIZE => 1024,
+				    CS_SEC_CHALLENGE => CS_TRUE }
+                   };
+
+The following connection properties are currently recognized:
+
+=over 4
+
+=item CS_HOSTNAME
+
+=item CS_ANSI_BINDS
+
+=item CS_CHARSETCNV
+
+=item CS_PACKETSIZE
+
+=item CS_SEC_APPDEFINED
+
+=item CS_SEC_CHALLENGE
+
+=item CS_SEC_ENCRYPTION
+
+=item CS_SEC_NEGOTIATE
+
+=back
+
+See the Sybase documentation on how and when to use these connection
+properties.
+
+
 
 =item $status = $dbh->ct_execute($sql)
 
@@ -1024,10 +1131,18 @@ values: CS_CANBENULL, CS_HIDDEN, CS_IDENTITY, CS_KEY, CS_VERSION_KEY,
 CS_TIMESTAMP and CS_UPDATEABLE. See table 3-46 of the Open Client
 Client Library Reference Manual for a description of each of these values.
 
-=item @data = $dbh->ct_fetch([$doAssoc])
+=item @data = $dbh->ct_fetch([$doAssoc [, $wantRef]])
 
 Retrieve one row of data. If $doAssoc is non-0, a hash is returned
 with column name/value pairs.
+
+If $wantRef is non-0, then a B<reference> to an array (or hash)
+is returned. This reference I<points> to a static array (or hash), so
+to store the returned rows in an array you must copy the array (or hash):
+
+   while($d = $dbh->ct_fetch(1, 1)) {
+      push(@rows, {%$d});
+   }
 
 An empty array is returned if there is no data to fetch.
 
@@ -1143,6 +1258,28 @@ Example:
 	print "$ret - $out\n";  #prints 1 - /home/mpeppler/foo
 
 
+=item $ret = cs_dt_info($action, $type, $item, $buf)
+
+cs_dt_info() allows you to set the default conversion modes for
+I<DATETIME> values, and lets you query the locale database for
+names for dateparts.
+
+To set the default conversion you call cs_dt_info() with
+a $type parameter of CS_DT_CONVFMT, and pass the conversion style
+you want as a string:
+
+	cs_dt_info(CS_SET, CS_DT_CONVFMT, CS_UNUSED, "CS_DATES_LONG");
+
+See Table 2-26 in the Open Client and Open Server Common Libraries 
+Reference Manual for details of other formats that are available.
+
+You can query a datepart name by doing something like:
+
+	cs_dt_info(CS_GET, CS_MONTH, 3, $buf);
+	print "$buf\n";    # Prints 'April' in the default locale
+
+Again see the entry for cs_dt_info() in Chapter 2 of the Open Client and
+Open Server Common Libraries Reference Manual for details.
 
 =item $ret|@ret = $dbh->ct_sql($cmd [, \&rowcallback [, $doAssoc]])
 
@@ -1542,7 +1679,7 @@ Tim Bunce & Andreas Koenig - for all the work on MakeMaker
 
 =head1 AUTHORS
 
-Michael Peppler E<lt>F<mpeppler@itf.ch>E<gt>
+Michael Peppler E<lt>F<mpeppler@mbay.net>E<gt>
 
 Dave Bowen & Amy Lin for help with Sybase::CTlib.
 

@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# @(#)Makefile.PL	1.14	06/02/97
+# @(#)Makefile.PL	1.17	11/28/97
 
 
 require 5.002;
@@ -22,9 +22,22 @@ $VERSION = $$sattr{VERSION};
 $linktype = defined($$sattr{LINKTYPE}) ? $$sattr{LINKTYPE} : 'dynamic';
 
 # Extra flags to pass to CPP
-$inc_string = "-I$SYBASE/include";
-$def_string = "-DCTLIBVS=$CTLIBVS -DSYBPLVER='\"\${VERSION}\"' $$sattr{EXTRA_DEFS}";
-$lib_string = "-L$SYBASE/lib -lct -lcs -ltcl -lcomn -lintl $$sattr{EXTRA_LIBS} -lm";
+if($^O eq 'MSWin32') {
+    $inc_string = "-I$SYBASE\\include";
+    $def_string = "-DCTLIBVS=$CTLIBVS -DSYBPLVER=\\\"$VERSION\\\" $$sattr{EXTRA_DEFS}";
+    if($$sattr{BORLAND_LIBS}) {
+	$lib_string = "-L$SYBASE\\blib -llibcs -llibct -llibcomn";
+    } else {
+	$lib_string = "-L$SYBASE\\lib -llibcs -llibct -llibcomn";
+    }
+} else {
+    $inc_string = "-I$SYBASE/include";
+    $def_string = "-DCTLIBVS=$CTLIBVS -DSYBPLVER='\"\${VERSION}\"' $$sattr{EXTRA_DEFS}";
+    $lib_string = "-L$SYBASE/lib -lct -lcs -ltcl -lcomn -lintl";
+    $lib_string =~ s/-ltcl/-lsybtcl/ if $^O =~ /linux/i;
+    $lib_string =~ s/-l/-lsyb_/g if $^O eq 'VMS';
+    $lib_string .= " $$sattr{EXTRA_LIBS} -lm";
+}
 
 #####
 ### Configure End
@@ -42,14 +55,16 @@ if($CTLIBVS == 0)
 }
 else
 {
-    WriteMakefile('NAME'	=> 'Sybase::CTlib',
+    my %opts = ('NAME'	=> 'Sybase::CTlib',
 		  'VERSION'	=> $VERSION,
 		  'LIBS'	=> [$lib_string],
 		  'DEFINE'	=> $def_string,
 		  'INC'	=> $inc_string,
 		  'LINKTYPE' => $linktype,
-		  'XSPROTOARG' => '-prototypes',
-		  'LDDLFLAGS' => "-L$SYBASE/lib $Config{lddlflags}",
-		  'LDFLAGS' => "-L$SYBASE/lib $Config{ldflags}"
-		  );
+		  'XSPROTOARG' => '-prototypes');
+    if($^O ne VMS && $^O ne 'MSWin32') {
+	$opts{'LDDLFLAGS'} = "-L$SYBASE/lib $Config{lddlflags}";
+	$opts{'LDFLAGS'}   = "-L$SYBASE/lib $Config{lddlflags}";
+    }
+    WriteMakefile(%opts);
 }

@@ -1,6 +1,6 @@
 #!/usr/local/bin/perl -w
 #
-#	@(#)dbschema.pl	1.17	06/13/97
+#	@(#)dbschema.pl	1.18	10/17/97
 #
 # dbschema.pl	A script to extract a database structure from
 #		a Sybase database
@@ -212,8 +212,8 @@ $dbproc->dbresults;
 
 while((@dat = $dbproc->dbnextrow))
 {
-    $tables{@dat[1] . "." . @dat[0]} = [ @dat ];
-    @tabnames = ( @tabnames, @dat[1] . "." . @dat[0] );
+    $tables{$dat[1] . "." . $dat[0]} = [ @dat ];
+    @tabnames = ( @tabnames, $dat[1] . "." . $dat[0] );
 }
 
 

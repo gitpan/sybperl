@@ -1,4 +1,50 @@
-	%W%	%G%
+	@(#)CHANGES	1.14	12/30/97
+
+2.09	Performance Enhancements / Win32 portability release:
+
+	Added nsql() routine to Sybase::DBlib (contributed by 
+	W. Phillip Moore).
+
+	Added dbcc.pl (run dbcc's and filter the error messages) and 
+	SecureSql.pm (contributed by Olivier Mary) to the eg/
+	directory.
+
+	Bug fixes:
+
+	216 Sybase::BCP fails under Win32 systems
+	219 Silence some 'variable used only once' warnings.
+
+2.08_52
+
+	Added dbsetdefcharset() and dbsetdeflang() to Sybase::DBlib
+	Added cs_dt_info() to Sybase::CTlib.
+	Added ability to set certain connection properties in
+	Sybase::CTlib.
+
+	Bug Fixes:
+
+	209: CTlib appends trailing \0 byte to string values.
+
+2.08_51
+	Added dbproc and ConInfo attributes back into the handle
+	attributes.
+	Fixed some small-ish bugs introduced by the changes in
+	2.08_50.
+	Merged in porting notes to Win32 from Krzysztof Koczyjan
+	<krzysztofK@worldnet.att.net> (see README.win32 for details).
+
+	Bug Fixes:
+
+	194: CTlib has hard coded warn() calls in ct_connect()
+
+2.08_50
+	Avoids hash for storage of internal attributes data.
+	Can return reference to a pre-allocated array.
+
+	Bug Fixes
+
+	Merged in porting notes for VMS from Charles Bailey 
+	(baily@newman.upenn.edu)
 
 2.08	New Features:
 

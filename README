@@ -1,4 +1,4 @@
-		     @(#)README	1.25	10/07/97
+		     @(#)README	1.27	11/28/97
 
 			   sybperl 2.0
 	
@@ -22,7 +22,7 @@
 
 ---------------------------------------------------------------------
 
-** NOTE: This version requires Perl 5.002 **
+** NOTE: This version requires Perl 5.002 or later **
 
 
 Please read the UPGRADE file if your previous version of sybperl was
@@ -30,6 +30,9 @@ Please read the UPGRADE file if your previous version of sybperl was
 
 Please read the CHANGES file if you are upgrading from a previous
 version of sybperl 2.x.
+
+Please see the README.win32 file if you are trying to build sybperl
+on a Windows 95/NT system.
 
 There are four modules in this distribution: Sybase::DBlib,
 Sybase::BCP, Sybase::Sybperl and Sybase::CTlib.
@@ -52,6 +55,7 @@ Installation:
 Before you start, you have to consider the following issues:
 
 a) Is Perl 5.002 (or later) already installed at your site?
+   (For Win32 you *must* have perl 5.004 or later)
 
    If Perl 5.002 (or later) is the default production version of Perl
    at your site, then I recommend that you unpack the sybperl
@@ -79,15 +83,18 @@ b) Do you want the Sybase modules to be dynamically loadable?
    small performance penalty on startup.
 
    Static loading might be more advantageous to those specific modules
-   which you know you will be using very often (however, I use dynamic
-   loading here at ITF, although nearly all our Perl scripts use the
-   Sybase modules).
+   which you know you will be using very often (however, I've always
+   used dynamic loading myself - with more than adequate results).
 
    Note that if you are using HP-UX, you can only use dynamic loading
    if you have the add-on (extra cost) C compiler (or GNU gcc) and if
    you have the System 10 shared libraries (libsybdb.sl vs libsybdb.a)
    as HP-UX can't load an object dynamically which has not been
-   compiled with the PIC (position independant code) flag.
+   compiled with the PIC (position independant code) flag. 
+
+   It is also not possible to build a dynamically loadable version
+   of Sybase::CTlib on Linux as the Sybase libraries aren't compiled
+   as position independant code.
 
 c) The DO_TIE compile option
 
@@ -136,8 +143,11 @@ e) The LD_LIBRARY_PATH variable and libintl.so
    to remove /usr/lib from LD_LIBRARY_PATH (there should be no reason
    to include it as the system directories [/usr/lib and /lib] are
    automatically searched for shared libraries when a program starts.)
+
+f) If you are using Win32 (Win NT) please read the README.win32
+   file before proceeding.
    
-Once you have answered these four questions, you can proceed:
+Once you have answered these six questions, you can proceed:
 
    1) Unpack the package.
       See comments under a) above.
@@ -214,6 +224,13 @@ Once you have answered these four questions, you can proceed:
       a libtcl.* in /usr/local/lib, or you have LD_LIBRARY_PATH that
       includes /usr/lib on Solaris 2.x (which has its own libintl.so
       just to confuse the issue!).  See points d) and e) above.
+
+      If you are using perl 5.003 or earlier you will get an error
+      in the dbmoney.t script. This is due to a change in the
+      behaviour of the AutoLoader between perl 5.003 and perl 5.004.
+      The solution is to upgrade to 5.004 (or later), or edit
+      Sybperl/Sybperl.pm and move the __END__ tag to the very end
+      of the file.
       
    7) If everything went OK, type: make install
       Note that the man page does not get installed automatically. To
@@ -245,7 +262,7 @@ In case of problems:
 
 First, read the FAQ file in the sybperl distribution.
 
-Second, fire off an e-mail to me (mpeppler@bix.com) or to the Sybperl
+Second, fire off an e-mail to me (mpeppler@mbay.net) or to the Sybperl
 mailing list (sybperl-l@trln.lib.unc.edu) with a *full* description of
 what doesn't work, including version numbers of Perl and sybperl, the
 hardware and OS version, and the Sybase Open Client version you are
@@ -276,12 +293,11 @@ When submitting bugs, or any sort of problem report, please make sure
 you include full version information for Sybperl, Perl, Sybase and
 also what hardware/OS configuration you are on. The exact Sybperl
 versions can be extracted by running the 'Version' script in this
-directory. Perl's configuration can be summarized with the 'myconfig'
-script in the Perl source directory.
+directory. Perl's configuration can be summarized by running 'perl -V'.
 
 
 Comments, criticism, et.al. VERY welcome!
 
-Michael Peppler - mpeppler@bix.com
+Michael Peppler - mpeppler@mbay.net
 
 

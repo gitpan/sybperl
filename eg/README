@@ -1,4 +1,4 @@
-	@(#)README	1.4	11/14/96
+	@(#)README	1.6	12/30/97
 
 Sybperl 2 examples
 
@@ -18,6 +18,8 @@ prove to be a valid complement to the documentation:
   - ctlib.pl  A simple CTlibrary example.	     
   - ct_cursor.pl How to use the ct_cursor() call (CTlibrary)
   - ct_param.pl  How to use the ct_param() call (CTlibrary)
+  - dbcc.pl   Run dbcc checkdb, checkalloc, checktable on a database and
+              get only the errors in the mail...(uses CTlibrary)
   - rpc-example.pl How to use the dbprc*() calls (DBlibrary)
   - who.pl    An extended sp_who, in Perl.
 
@@ -40,3 +42,7 @@ prove to be a valid complement to the documentation:
 	      This is a module for handling/encapsulating table level
 	      operations. It includes its own documentation.
 	      
+  - SecureSql.pm
+	      Submitted by Olivier Mary.
+	      This is a module for batching operations in transactions.
+	      Please contact Olivier for details.

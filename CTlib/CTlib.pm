@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# @(#)CTlib.pm	1.21	10/07/97
+# @(#)CTlib.pm	1.26	12/30/97
 
 # Copyright (c) 1995-1997
 #   Michael Peppler
@@ -19,12 +19,6 @@ package Sybase::CTlib::_attribs;
 
 use Carp;
 
-
-sub FETCH { 
-    return $_[0]->{$_[1]} if (exists $_[0]->{$_[1]});
-    carp("'$_[1]' is not a valid Sybase::CTlib attribute") if(!defined($_[0]->{$_[1]}));
-    return undef;
-}
  
 sub FIRSTKEY {
     each %{$_[0]};
@@ -38,13 +32,6 @@ sub EXISTS{
      exists($_[0]->{$_[1]});
 }
 
-sub STORE {
-    if(!exists($_[0]->{$_[1]})) {
-	carp("'$_[1]' is not a valid Sybase::CTlib attribute");
-	return undef;
-    }
-    $_[0]->{$_[1]} = $_[2];
-}
 
 sub readonly {
     carp "Can't delete or clear attributes from a Sybase::CTlib handle.\n";
@@ -284,7 +271,7 @@ use vars qw(%Att);
 @ISA = qw(Exporter DynaLoader);
 # Items to export into callers namespace by default
 # (move infrequently used names to @EXPORT_OK below)
-@EXPORT = qw( ct_callback ct_config
+@EXPORT = qw( ct_callback ct_config cs_dt_info
 	CS_12HOUR
 	CS_ABSOLUTE
 	CS_ACK
@@ -837,11 +824,11 @@ use vars qw(%Att);
 tie %Att, Sybase::CTlib::Att;
 
 sub AUTOLOAD {
-    local($constname);
+    my $constname;
     ($constname = $AUTOLOAD) =~ s/.*:://;
     
     # The second argument to constant() is never used...
-    $val = constant($constname, 0);
+    my $val = constant($constname, 0);
     if ($! != 0) {
 	if ($! =~ /Invalid/) {
 	    $AutoLoader::AUTOLOAD = $AUTOLOAD;
@@ -880,14 +867,12 @@ sub ct_fetchable
 
 
 
-1;
-__END__
 
 
 sub ct_sql
 {
     my($db, $cmd, $sub, $flag) = @_;
-    my(@res, @data, $rc);
+    my(@res, $data, $rc);
     local($res_type);  # it's local so that it can be examined by &$sub
     my $fail = 0;
 
@@ -906,18 +891,21 @@ sub ct_sql
 	$fail = 1 if ($res_type == &CS_CMD_FAIL);
 	next unless $fetchable{$res_type};
 
-        while (@data = $db->ct_fetch($flag)) {
+        while ($data = $db->ct_fetch($flag, 1)) {
             if (defined $sub) {
-                &$sub(@data);
+		if($flag) {
+		    &$sub(%$data);
+		} else {
+		    &$sub(@$data);
+		}
             } else {
 		if($flag) {
-		    push(@res, {@data});
+		    push(@res, {%$data});
 		} else {
-		    push(@res, [@data]);
+		    push(@res, [@$data]);
 		}
             }
         }
-	$db->ct_cancel(&CS_CANCEL_CURRENT) if($max && $count > $max);
     }
     if($db->{'MaxRows'}) {
 	$db->ct_options(&CS_SET, &CS_OPT_ROWCOUNT, 0, &CS_INT_TYPE);
@@ -926,3 +914,5 @@ sub ct_sql
     wantarray ? @res : \@res;  # return the result array
 }
 
+1;
+__END__

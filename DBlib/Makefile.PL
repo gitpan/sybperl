@@ -1,5 +1,5 @@
 # -*-Perl-*-
-#	@(#)Makefile.PL	1.14	06/02/97
+#	@(#)Makefile.PL	1.18	12/30/97
 
 require 5.002;
 
@@ -13,11 +13,23 @@ $sattr = &config;
 # DB-Library version
 $DBLIBVS = $$sattr{DBLIBVS};
 $SYBASE = $$sattr{SYBASE};
+$VERSION = $$sattr{VERSION};
 # Extra flags to pass to CPP
-$inc_string = "-I$SYBASE/include";
-$def_string = "-DDBLIBVS=$DBLIBVS -DSYBPLVER='\"\${VERSION}\"' $$sattr{EXTRA_DEFS}";
-$lib_string = "-L$SYBASE/lib -lsybdb $$sattr{EXTRA_LIBS} -lm";
-
+if($^O eq 'MSWin32') {
+    $inc_string = "-I$SYBASE\\include";
+    $def_string = "-DDBLIBVS=$DBLIBVS -DSYBPLVER=\\\"$VERSION\\\" $$sattr{EXTRA_DEFS}";
+    if($$sattr{BORLAND_LIBS}) {
+	$lib_string = "-L$SYBASE\\blib -llibcomn -llibsybdb";
+    } else {
+	$lib_string = "-L$SYBASE\\lib -llibcomn -llibsybdb";
+    }
+} else {
+    $inc_string = "-I$SYBASE/include";
+    $def_string = "-DDBLIBVS=$DBLIBVS -DSYBPLVER='\"\${VERSION}\"' $$sattr{EXTRA_DEFS}";
+    $lib_string = "-L$SYBASE/lib -lsybdb $$sattr{EXTRA_LIBS} -lm";
+    $lib_string =~ s/sybdb/syb_db/ if $^O eq 'VMS';
+    $lib_string =~ s/-lsdna// if $^O eq 'dec_osf';
+}
 $linktype = defined($$sattr{LINKTYPE}) ? $$sattr{LINKTYPE} : 'dynamic';
 
 #####
@@ -35,15 +47,17 @@ if($DBLIBVS == 0)
 }
 else
 {
-    WriteMakefile('LIBS' => [$lib_string],
-		  'NAME' => "Sybase::DBlib",
-		  'INC' => $inc_string,
-		  'VERSION' => "$$sattr{VERSION}",
-		  'DEFINE' => $def_string,
-		  'XSPROTOARG' => '-prototypes',
-		  'LINKTYPE' => $linktype,
-		  'LDDLFLAGS' => "-L$SYBASE/lib $Config{lddlflags}",
-		  'LDFLAGS' => "-L$SYBASE/lib $Config{ldflags}",
-		  );
+    my %opts = ('LIBS' => [$lib_string],
+		'NAME' => "Sybase::DBlib",
+		'INC' => $inc_string,
+		'VERSION' => "$VERSION",
+		'DEFINE' => $def_string,
+		'XSPROTOARG' => '-prototypes',
+		'LINKTYPE' => $linktype,);
+    if($^O ne 'VMS' && $^O ne 'MSWin32') {
+	$opts{'LDDLFLAGS'} = "-L$SYBASE/lib $Config{lddlflags}";
+	$opts{'LDFLAGS'}   = "-L$SYBASE/lib $Config{lddlflags}";
+    }
+    WriteMakefile( %opts );
 }
 

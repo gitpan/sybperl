@@ -1,5 +1,4 @@
 #!/bin/perl5
-#	@(#)GenRepDefs.pl	1.1	2/28/96
 # GenRepDefs.pl, a script to generate RepDefs and Subscriptions for a 
 # database. Ashu Joglekar, Oct 6th 1995. Hacked from 
 # dbschema.pl	A script to extract a database structure from
@@ -8,13 +7,17 @@
 # Written by:	Michael Peppler (mpeppler@itf.ch)
 # Last Mods:    22 Feb 1994
 #
-# Usage:	GenRepDefs.pl -d database -o script.name -t pattern -s server -v -u user
+# Usage:	GenRepDefs.pl -d database -o script.name -t pattern -s server -v 
+-u user
 #		    where   database is self-explanatory (default: master)
 #                           script.name is the output file (default: script.isql)
 #                           pattern is the pattern of object names (in sysobjects)
-#                           that we will look at (default: %), user is the sybase login
-#                           id to use (defaults to uid running the program) and server is
-#			    the server to connect to (default, the value of $ENV{DSQUERY}).
+#                           that we will look at (default: %), user is the sybase 
+login
+#                           id to use (defaults to uid running the program) and 
+server is
+#			    the server to connect to (default, the value of 
+$ENV{DSQUERY}).
 #
 #		    -v turns on a verbose switch.
 #
@@ -59,7 +62,8 @@ chop($date = &ctime(time));
 print "\nGenRepDefs.pl on Database $opt_d\n";
 
 print LOG "Error log from GenRepDefs.pl on Database $opt_d on $date\n\n";
-print LOG "The following objects cannot be reliably created from the script in $opt_o.
+print LOG "The following objects cannot be reliably created from the script in 
+$opt_o.
 Please correct the script to remove any inconsistencies.\n\n";
 
 print REPDEFS
@@ -67,7 +71,8 @@ print REPDEFS
 
 &dbcmd($dbproc, "select o.name,u.name, o.id\n");
 &dbcmd($dbproc, "from $opt_d.dbo.sysobjects o, $opt_d.dbo.sysusers u\n");
-&dbcmd($dbproc, "where o.type = 'U' and o.name like '$opt_t' and u.uid = o.uid\n");
+&dbcmd($dbproc, "where o.type = 'U' and o.name like '$opt_t' and u.uid = 
+o.uid\n");
 &dbcmd($dbproc, "order by o.name\n");
 
 &dbsqlexec($dbproc);
@@ -107,14 +112,15 @@ foreach (@tables)		# For each line in the list
     undef(%rule);
     undef(%dflt);
 
-    # I am prepending a UK_ ( needed for my environment )
-    print REPDEFS "\n\nCREATE REPLICATION DEFINITION UK_$tab[0]_repdef\n"; 
+    # I am prepending a US_ ( needed for my environment )
+    print REPDEFS "\n\nCREATE REPLICATION DEFINITION US_$tab[0]_repdef\n"; 
     print REPDEFS "with primary at $opt_s.$opt_d\n";
     print REPDEFS "with all tables named '$tab[0]'\n(";
     $first = 1;
     while((@field = &dbnextrow($dbproc)))
     {
-        print REPDEFS ",\n" if !$first; # add a , and a \n if not first field in table
+        print REPDEFS ",\n" if !$first; # add a , and a \n if not first field in 
+table
         
 	# Check if its an identity column
 	if ( $field[8] != 1 )
@@ -125,7 +131,8 @@ foreach (@tables)		# For each line in the list
         	$first = 0 if $first;
 	} 
 	else {
-        	print REPDEFS "\t$field[0] \t$field[1]($field[3], $field[4])\tidentity";
+        	print REPDEFS "\t$field[0] \t$field[1]($field[3], 
+$field[4])\tidentity";
         	$first = 0 if $first;
 	}
     }
@@ -168,7 +175,8 @@ foreach (@tables)		# For each line in the list
 	print "Error! Table $tab[1].$tab[0] has no primary key !!\n" if $opt_v;
     }
 
-    # I like to replicate minimal columns. If you do this you cannot use non-atomic
+    # I like to replicate minimal columns. If you do this you cannot use 
+non-atomic
     # or bulk materialisation
     print REPDEFS "replicate minimal columns\ngo\n";
 
@@ -177,8 +185,8 @@ foreach (@tables)		# For each line in the list
     # command line options :-)
 
     print SUBSCRIPTIONS "CREATE SUBSCRIPTION $tab[0]_sub\n";
-    print SUBSCRIPTIONS "for UK_$tab[0]_repdef\n";
-    print SUBSCRIPTIONS "with replicate at UK_LTCM_STANDBY_FDDI.$opt_d\n";
+    print SUBSCRIPTIONS "for US_$tab[0]_repdef\n";
+    print SUBSCRIPTIONS "with replicate at UK_LTCM_FDDI.$opt_d\n";
     print SUBSCRIPTIONS "incrementally\ngo\n";
 }
 
@@ -191,4 +199,3 @@ close(LOG);
 
 &dbexit;
 exit;
-

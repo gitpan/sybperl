@@ -1,5 +1,5 @@
 /* -*-C-*-
- *	@(#)DBlib.xs	1.35	10/07/97
+ *	@(#)DBlib.xs	1.40	12/30/97
  */	
 
 
@@ -14,9 +14,22 @@
 #include "perl.h"
 #include "XSUB.h"
 
+/* Defines needed for perl 5.005 / threading */
+
+#if defined(op)
+#undef op
+#endif
+#if !defined(dTHR)
+#define dTHR	extern int errno
+#endif
+
 #include <sybfront.h>
 #include <sybdb.h>
 #include <syberror.h>
+
+#if !defined(_CPROTO_) && ! defined(CS_PUBLIC)
+#define CS_PUBLIC
+#endif
 
 #if !defined(DBLIBVS)
 #define DBLIBVS		400
@@ -41,6 +54,8 @@
 
 #if DBLIBVS < 1000
 #define dbsetversion(s)		not_here("dbsetversion")
+#define dbsetdefcharset(s)	not_here("dbsetdefcharset")
+#define dbsetdeflang(s)		not_here("dbsetdeflang")
 #if DBLIBVS < 461
 #define new_mnytochar(a, b, c)  not_here("new_mnytochar")
 #define new_mny4tochar(a,b,c)   not_here("new_mny4tochar")
@@ -76,6 +91,7 @@
 #if DBLIBVS < 420
 #define dbrecftos(s)		not_here("dbrecftos")
 #define dbsafestr(a,b,c,d,e,f)	not_here("dbsafestr")
+#define dbversion()		"4.00"
 #ifndef DBDOUBLE
 #define DBDOUBLE	1
 #endif
@@ -84,6 +100,19 @@
 #endif
 #ifndef DBBOTH
 #define DBBOTH	2
+typedef struct daterec
+{
+	DBINT		dateyear;	/* 1900 to the future */
+	DBINT		datemonth;	/* 0 - 11 */
+	DBINT		datedmonth;	/* 1 - 31 */
+	DBINT		datedyear;	/* 1 - 366 */
+	DBINT		datedweek;	/* 0 - 6 (Mon. - Sun.) */
+	DBINT		datehour;	/* 0 - 23 */
+	DBINT		dateminute;	/* 0 - 59 */
+	DBINT		datesecond;	/* 0 - 59 */
+	DBINT		datemsecond;	/* 0 - 997 */
+	DBINT		datetzone;	/* 0 - 127 */
+} DBDATEREC;
 #endif
 #endif /* DBLIBVS < 420 */
 #endif /* DBLIBVS < 461 */
@@ -91,64 +120,34 @@
 
 typedef enum hash_key_id
 {
-    HV_dbproc,
     HV_compute_id,
     HV_dbstatus,
     HV_nullundef,
     HV_keepnum,
     HV_bin0x,
-    HV_rpcinfo,
     HV_use_datetime,
     HV_use_money,
     HV_max_rows,
     HV_pid,
-    HV_conInfo
+    HV_dbproc
 } hash_key_id;
 
-static char *hash_keys[] = {
-    "dbproc", "ComputeID", "DBstatus",
-    "dbNullIsUndef", "dbKeepNumeric", "dbBin0x",
-    "rpcInfo", "UseDateTime", "UseMoney", "MaxRows",
-    "__PID__", "__conInfo__"
+static struct _hash_keys {
+    char *key;
+    int  id;
+} hash_keys[] = {
+    { "ComputeID",       HV_compute_id },
+    { "DBstatus",        HV_dbstatus },
+    { "dbNullIsUndef",   HV_nullundef },
+    { "dbKeepNumeric",   HV_keepnum },
+    { "dbBin0x",         HV_bin0x },
+    { "UseDateTime",     HV_use_datetime },
+    { "UseMoney",        HV_use_money },
+    { "MaxRows",         HV_max_rows },
+    { "__PID__",         HV_pid },
+    { "dbproc",          HV_dbproc },
+    { "",                -1 }
 };
-
-typedef struct bcp_data {
-    int numcols;
-    BYTE **colPtr;
-} BCP_DATA;
-
-#if 0
-typedef struct {
-    DBPROCESS *dbproc;
-    int ComputeID;
-    int DBstatus;
-    int dbNullIsUndef;
-    int dbKeepNumeric;
-    int dbBin0x;
-    struct RpcInfo *rpcInfo;
-    int UseDateTime;
-    int UseMoney;
-    int MaxRows;
-    int pid;
-    HV *rest;
-} ConInfo;
-
-static ConInfo Att_values =
-{
-    NULL,			/* dbproc */
-    0,				/* computeid */
-    0,				/* dbstatus */
-    1,				/* null is undef */
-    1,				/* keep numeric */
-    0,				/* bin0x */
-    NULL,			/* rpcinfo */
-    0,				/* use datetime */
-    0,				/* use money */
-    0,				/* max rows */
-    0,				/* pid */
-    NULL			/* rest */
-};
-#endif
 
 struct RpcInfo
 {
@@ -162,6 +161,39 @@ struct RpcInfo
     void *value;
     struct RpcInfo *next;
 };
+
+typedef struct bcp_data {
+    int numcols;
+    BYTE **colPtr;
+} BCP_DATA;
+
+struct attribs {
+    int ComputeID;
+    int DBstatus;
+    int dbNullIsUndef;
+    int dbKeepNumeric;
+    int dbBin0x;
+    int UseDateTime;
+    int UseMoney;
+    int MaxRows;
+    int pid;
+    HV *other;
+};
+
+typedef struct {
+    DBPROCESS *dbproc;
+    struct RpcInfo *rpcInfo;
+    BCP_DATA *bcp_data;
+
+    int numCols;
+    
+    AV *av;
+    HV *hv;
+
+    struct attribs attr;
+} ConInfo;
+
+
 
 
 typedef struct {
@@ -201,9 +233,11 @@ static char MoneyPkg[]="Sybase::DBlib::Money";
 
 static LOGINREC *login;
 
-static SV **my_hv_fetch _((HV*, hash_key_id, int));
-static SV **my_hv_store _((HV*, hash_key_id, SV*, int));
-static SV *newdbh _((DBPROCESS *, char *, SV*));
+static int attr_store _((ConInfo*, char*, int, SV*, int));
+static SV* attr_fetch _((ConInfo*, char*, int));
+static SV *newdbh _((ConInfo *, char *, SV*));
+static ConInfo *get_ConInfoFromMagic _((HV*));
+static ConInfo *get_ConInfo _((SV*));
 static DBPROCESS *getDBPROC _((SV*));
 static char *neatsvpv _((SV*, STRLEN));
 static DateTime to_datetime _((char*));
@@ -213,8 +247,8 @@ static Money to_money _((char*));
 static char *from_money _((Money*));
 static double money2float _((Money*));
 static SV *newmoney _((DBPROCESS*, DBMONEY*));
-static int err_handler _((DBPROCESS*, int, int, int, char*, char*));
-static int msg_handler _((DBPROCESS*, DBINT, int, int, char*, char*, char*, int));
+static int CS_PUBLIC err_handler _((DBPROCESS*, int, int, int, char*, char*));
+static int CS_PUBLIC msg_handler _((DBPROCESS*, DBINT, int, int, char*, char*, char*, int));
 static void initialize _((void));
 #if DBLIBVS >= 461
 static void new_mny4tochar _((DBPROCESS*, DBMONEY4*, DBCHAR*));
@@ -224,45 +258,145 @@ static int not_here _((char*));
 static double constant _((char*, int));
 
 
-/* A couple of simplifyed calls for our own use... */
+/* A couple of simplified calls for our own use... */
 
-static SV **my_hv_fetch(hv, id, flag)
-    HV *hv;
-    hash_key_id id;
-    int flag;
+static SV*
+attr_fetch(info, key, keylen)
+    ConInfo *info;
+    char *key;
+    int keylen;
 {
-    return hv_fetch(hv, hash_keys[id], strlen(hash_keys[id]), flag);
+    int i;
+    SV *sv = Nullsv;
+    
+    for(i = 0; hash_keys[i].id >= 0; ++i)
+	if(strlen(hash_keys[i].key) == keylen && strEQ(key, hash_keys[i].key))
+	    break;
+
+    if(hash_keys[i].id < 0) {
+	SV **svp;
+#if defined(DO_TIE)
+	if(!hv_exists(info->attr.other, key, keylen)) {
+	    warn("'%s' is not a valid Sybase::DBlib attribute", key);
+	    return Nullsv;
+	}
+#endif
+	svp = hv_fetch(info->attr.other, key, keylen, 0);
+	return svp ? *svp : Nullsv;
+    }
+
+    switch(hash_keys[i].id) {
+      case HV_compute_id:
+	  sv = newSViv(info->attr.ComputeID);
+	  break;
+      case HV_dbstatus:
+	  sv = newSViv(info->attr.DBstatus);
+	  break;
+      case HV_nullundef:
+	  sv = newSViv(info->attr.dbNullIsUndef);
+	  break;
+      case HV_keepnum:
+	  sv = newSViv(info->attr.dbKeepNumeric);
+          break;
+      case HV_bin0x:
+	  sv = newSViv(info->attr.dbBin0x);
+	  break;
+      case HV_use_datetime:
+	  sv = newSViv(info->attr.UseDateTime);
+	  break;
+      case HV_use_money:
+	  sv = newSViv(info->attr.UseMoney);
+	  break;
+      case HV_max_rows:
+	  sv = newSViv(info->attr.MaxRows);
+	  break;
+      case HV_pid:
+	  sv = newSViv(info->attr.pid);
+	  break;
+      default:
+	  return Nullsv;
+    }
+
+    return sv;
 }
 
-static SV **my_hv_store(hv, id, sv, flag)
-    HV *hv;
-    hash_key_id id;
+static int
+attr_store(info, key, keylen, sv, flag)
+    ConInfo *info;
+    char *key;
+    int keylen;
     SV *sv;
     int flag;
 {
-    SV **p;
-    p = hv_store(hv, hash_keys[id], strlen(hash_keys[id]), sv, flag);
-    /* hv_store() may have turned on the magicallness of 'sv'. If so,
-       we enable it here. (SvSETMAGIC() will cause the STORE method to
-       be called... */
-    SvSETMAGIC(sv);
-    return p;
+    int i;
+    
+    for(i = 0; hash_keys[i].id >= 0; ++i)
+	if(strlen(hash_keys[i].key) == keylen && strEQ(key, hash_keys[i].key))
+	    break;
+
+    if(hash_keys[i].id < 0) {
+#if defined(DO_TIE)
+	if(!flag) {
+	    if(!hv_exists(info->attr.other, key, keylen)) {
+		warn("'%s' is not a valid Sybase::DBlib attribute", key);
+		return 0;
+	    }
+	}
+#endif
+	hv_store(info->attr.other, key, keylen, newSVsv(sv), 0);
+	return 1;
+    }
+
+    switch(hash_keys[i].id) {
+      case HV_compute_id:
+	  info->attr.ComputeID      = SvIV(sv);
+	  break;
+      case HV_dbstatus:
+	  info->attr.DBstatus      = SvIV(sv);
+	  break;
+      case HV_nullundef:
+	  info->attr.dbNullIsUndef = SvTRUE(sv);
+	  break;
+      case HV_keepnum:
+	  info->attr.dbKeepNumeric = SvTRUE(sv);
+          break;
+      case HV_bin0x:
+	  info->attr.dbBin0x       = SvTRUE(sv);
+	  break;
+      case HV_use_datetime:
+	  info->attr.UseDateTime   = SvTRUE(sv);
+	  break;
+      case HV_use_money:
+	  info->attr.UseMoney      = SvTRUE(sv);
+	  break;
+      case HV_max_rows:
+	  info->attr.MaxRows       = SvIV(sv);
+	  break;
+      case HV_pid:
+	  info->attr.pid           = SvIV(sv);
+	  break;
+      default:
+	  return 0;
+    }
+
+    return 1;
 }
 
 static SV *
-newdbh(dbproc, package, attr_ref)
-    DBPROCESS *dbproc;
+newdbh(info, package, attr_ref)
+    ConInfo *info;
     char *package;
     SV *attr_ref;
 {
-#if 0
     HV *hv, *thv, *stash, *Att;
     SV *rv, *sv, **svp;
-    ConInfo *conInfo;
     
-    Newz(902, conInfo, 1, conInfo);
-
+    info->attr.other = newHV();
+    info->av = newAV();
+    info->hv = newHV();
+    
     thv = (HV*)sv_2mortal((SV*)newHV());
+
     if((attr_ref != &sv_undef)) {
 	if(!SvROK(attr_ref))
 	    warn("Attributes parameter is not a reference");
@@ -273,98 +407,80 @@ newdbh(dbproc, package, attr_ref)
 	    hv = (HV*)SvRV(attr_ref);
 	    hv_iterinit(hv);
 	    while((sv = hv_iternextsv(hv, &key, &klen)))
-		hv_store(conInfo->rest, key, klen, newSVsv(sv), 0);
-	}
-    }
-    
-    conInfo->UseDateTime   = Att.UseDateTime;
-    conInfo->UseMoney      = Att.UseMoney;
-    conInfo->MaxRows       = Att.MaxRows;
-    conInfo->dbKeepNumeric = Att.dbKeepNumeric;
-    conInfo->dbNullIsUndef = Att.dbNullIsUndef;
-    conInfo->dbBin0x       = Att.dbBin0x
-    conInfo->dbproc        = dbproc;
-    conInfo->pid           = getpid();
-
-    my_hv_store(thv, HV_conInfo, newSViv(conInfo), 0);
-#else
-    HV *hv, *thv, *stash, *Att;
-    SV *rv, *sv, **svp;
-    
-    thv = (HV*)sv_2mortal((SV*)newHV());
-    if((attr_ref != &sv_undef)) {
-	if(!SvROK(attr_ref))
-	    warn("Attributes parameter is not a reference");
-	else
-	{
-	    char *key;
-	    I32 klen;
-	    hv = (HV*)SvRV(attr_ref);
-	    hv_iterinit(hv);
-	    while((sv = hv_iternextsv(hv, &key, &klen)))
-		hv_store(thv, key, klen, newSVsv(sv), 0);
+		attr_store(info, key, klen, sv, 1);
 	}
     }
 	    
     if((Att = perl_get_hv("Sybase::DBlib::Att", FALSE)))
     {
-	if((svp = my_hv_fetch(Att, HV_use_datetime, 0)))
-	    my_hv_store(thv, HV_use_datetime, newSVsv(*svp), 0);
+	if((svp = hv_fetch(Att, hash_keys[HV_use_datetime].key,
+			   strlen(hash_keys[HV_use_datetime].key), 0)))
+	    info->attr.UseDateTime = SvTRUE(*svp);
 	else
-	    my_hv_store(thv, HV_use_datetime, newSViv(0), 0);
-	if((svp = my_hv_fetch(Att, HV_use_money, 0)))
-	    my_hv_store(thv, HV_use_money, newSVsv(*svp), 0);
+	    info->attr.UseDateTime = 0;
+	if((svp = hv_fetch(Att, hash_keys[HV_use_money].key,
+			   strlen(hash_keys[HV_use_money].key), 0)))
+	    info->attr.UseMoney = SvTRUE(*svp);
 	else
-	    my_hv_store(thv, HV_use_datetime, newSViv(0), 0);
-	if((svp = my_hv_fetch(Att, HV_max_rows, 0)))
-	    my_hv_store(thv, HV_max_rows, newSVsv(*svp), 0);
+	    info->attr.UseMoney = 0;
+	if((svp = hv_fetch(Att, hash_keys[HV_max_rows].key,
+			   strlen(hash_keys[HV_max_rows].key), 0)))
+	    info->attr.MaxRows = SvIV(*svp);
 	else
-	    my_hv_store(thv, HV_max_rows, newSViv(0), 0);
-	if((svp = my_hv_fetch(Att, HV_keepnum, 0)))
-	    my_hv_store(thv, HV_keepnum, newSVsv(*svp), 0);
+	    info->attr.MaxRows = 0;
+	if((svp = hv_fetch(Att, hash_keys[HV_keepnum].key,
+			   strlen(hash_keys[HV_keepnum].key), 0)))
+	    info->attr.dbKeepNumeric = SvTRUE(*svp);
 	else
-	    my_hv_store(thv, HV_keepnum, newSViv(0), 0);
-	if((svp = my_hv_fetch(Att, HV_nullundef, 0)))
-	    my_hv_store(thv, HV_nullundef, newSVsv(*svp), 0);
+	    info->attr.dbKeepNumeric = 0;
+	if((svp = hv_fetch(Att, hash_keys[HV_nullundef].key,
+			   strlen(hash_keys[HV_nullundef].key), 0)))
+	    info->attr.dbNullIsUndef = SvTRUE(*svp);
 	else
-	    my_hv_store(thv, HV_nullundef, newSViv(0), 0);
-	if((svp = my_hv_fetch(Att, HV_bin0x, 0)))
-	    my_hv_store(thv, HV_bin0x, newSVsv(*svp), 0);
+	    info->attr.dbNullIsUndef = 0;
+	if((svp = hv_fetch(Att, hash_keys[HV_bin0x].key,
+			   strlen(hash_keys[HV_bin0x].key), 0)))
+	    info->attr.dbBin0x = SvTRUE(*svp);
 	else
-	    my_hv_store(thv, HV_bin0x, newSViv(0), 0);
+	    info->attr.dbBin0x = 0;
     }
     else
     {
 	warn("Couldn't find %Att hash");
-	my_hv_store(thv, HV_use_datetime, newSViv(0), 0);
-	my_hv_store(thv, HV_use_money, newSViv(0), 0);
-	my_hv_store(thv, HV_max_rows, newSViv(0), 0);
-	my_hv_store(thv, HV_keepnum, newSViv(0), 0);
-	my_hv_store(thv, HV_nullundef, newSViv(0), 0);
-	my_hv_store(thv, HV_bin0x, newSViv(0), 0);
+	info->attr.UseDateTime = 0;
+	info->attr.UseMoney = 0;
+	info->attr.MaxRows = 0;
+	info->attr.dbKeepNumeric = 0;
+	info->attr.dbNullIsUndef = 0;
+	info->attr.dbBin0x = 0;
     }
-    my_hv_store(thv, HV_dbproc, newSViv((IV)dbproc), 0);
-    my_hv_store(thv, HV_dbstatus, newSViv(0), 0);
-    my_hv_store(thv, HV_compute_id, newSViv(0), 0);
-    my_hv_store(thv, HV_rpcinfo, newSViv(0), 0);
-    my_hv_store(thv, HV_pid, newSViv(getpid()), 0);
-#endif
+    info->attr.DBstatus = 0;
+    info->attr.ComputeID = 0;
+    info->rpcInfo = NULL;
+    info->attr.pid = getpid();
+    info->numCols = -1;
 
-#if defined(DO_TIE)
+
     /* FIXME
        This creates a small memory leak, because the tied _attribs hash
        does not get automatically destroyed when the dbhandle goes out of
        scope. */
+    sv = newSViv((IV)info);
+    sv_magic((SV*)thv, sv, '~', "DBlib", 5);
+    SvRMAGICAL_on((SV*)thv);
+
     rv = newRV((SV*)thv);
     stash = gv_stashpv("Sybase::DBlib::_attribs", TRUE);
     (void)sv_bless(rv, stash);
     hv = (HV*)sv_2mortal((SV*)newHV());
 
+    sv_magic((SV*)hv, sv, '~', "DBlib", 5);
     /* Turn on the 'tie' magic */
     sv_magic((SV*)hv, rv, 'P', Nullch, 0);
-#else
-    hv = thv;
-#endif
+
+    SvRMAGICAL_on((SV*)hv);
+
+    dbsetuserdata(info->dbproc, (BYTE*)hv);
 
     rv = newRV((SV*)hv);
     stash = gv_stashpv(package, TRUE);
@@ -372,65 +488,66 @@ newdbh(dbproc, package, attr_ref)
     return sv;
 }
 
-#if 0
-static ConInfo *getConInfo(dbp)
+static ConInfo *
+get_ConInfoFromMagic(hv)
+    HV *hv;
+{
+    ConInfo *info = NULL;
+    IV i;
+    MAGIC *m;
+
+    m = mg_find((SV*)hv, '~');
+    if(!m)
+	croak("no connection key in hash");
+
+    /* When doing global destruction, the tied _attribs hash gets freed
+       before we get here. The statement below causes the program to exit
+       under the debugger. */
+    if((i = SvIV(m->mg_obj)) != 0)
+	info = (void *)i;
+    return info;
+}
+
+static ConInfo *
+get_ConInfo(dbp)
     SV *dbp;
 {
-    HV *hv;
-    SV **svp;
-    ConInfo *conInfo;
+    ConInfo *info;
+    dTHR;
 
+#if 0
 #if defined(DO_TIE)
     if(dirty)
 	return NULL;
+#endif
 #endif
     
     if(!SvROK(dbp))
-	croak("dbproc parameter is not a reference");
-    hv = (HV *)SvRV(dbp);
-    if(!(svp = my_hv_fetch(hv, HV_conInfo, FALSE)))
-	croak("no conInfo key in hash");
-    conInfo = (void *)SvIV(*svp);
+	croak("connection parameter is not a reference");
+    info = get_ConInfoFromMagic((HV *)SvRV(dbp));
 
-    return conInfo;
+    return info;
 }
-#endif
 
-static DBPROCESS *getDBPROC(dbp)
+static DBPROCESS *
+getDBPROC(dbp)
     SV *dbp;
 {
-#if 0
     ConInfo *conInfo;
+    dTHR;
 
+#if 0
 #if defined(DO_TIE)
     if(dirty)
 	return NULL;
 #endif
+#endif
 
-    conInfo = getConInfo(dbp);
+    conInfo = get_ConInfo(dbp);
     if(conInfo)
 	return conInfo->dbproc;
 
     return NULL;
-#else
-    HV *hv;
-    SV **svp;
-    DBPROCESS *dbproc;
-
-#if defined(DO_TIE)
-    if(dirty)
-	return NULL;
-#endif
-    
-    if(!SvROK(dbp))
-	croak("dbproc parameter is not a reference");
-    hv = (HV *)SvRV(dbp);
-    if(!(svp = my_hv_fetch(hv, HV_dbproc, FALSE)))
-	croak("no dbproc key in hash");
-    dbproc = (void *)SvIV(*svp);
-
-    return dbproc;
-#endif
 }
 
 /* Borrowed/adapted from DBI.xs */
@@ -497,7 +614,7 @@ to_datetime(str)
     if(!str)
 	return dt;
     
-    if (dbconvert(NULL, SYBCHAR, str, -1, SYBDATETIME,
+    if (dbconvert(NULL, SYBCHAR, (BYTE*)str, -1, SYBDATETIME,
 		  (BYTE*)&dt.date, -1) != sizeof(DBDATETIME))
 	warn("dbconvert failed (to_datetime(%s))", str);
     
@@ -511,7 +628,7 @@ from_datetime(dt)
     static char buff[256];
     
     if (dbconvert(dt->dbproc, SYBDATETIME, (BYTE*)&dt->date, sizeof(DBDATETIME),
-		  SYBCHAR, buff, -1) > 0)
+		  SYBCHAR, (BYTE *)buff, -1) > 0)
 	return buff;
     
     return NULL;
@@ -559,7 +676,7 @@ to_money(str)
     if(!str)
 	return m;
     
-    if (dbconvert(NULL, SYBCHAR, str, -1, SYBMONEY,
+    if (dbconvert(NULL, SYBCHAR, (BYTE*)str, -1, SYBMONEY,
 		  (BYTE*)&m.mn, -1) != sizeof(DBMONEY))
 	warn("dbconvert failed (to_money(%s))", str);
     
@@ -573,7 +690,7 @@ from_money(m)
     static char buff[256];
     
     if (dbconvert(m->dbproc, SYBMONEY, (BYTE*)&m->mn, sizeof(DBMONEY),
-		  SYBCHAR, buff, -1) > 0)
+		  SYBCHAR, (BYTE*)buff, -1) > 0)
 	return buff;
     
     return NULL;
@@ -618,7 +735,7 @@ newmoney(dbproc, mn)
     return sv;
 }
 
-static int err_handler(db, severity, dberr, oserr, dberrstr, oserrstr)
+static int CS_PUBLIC err_handler(db, severity, dberr, oserr, dberrstr, oserrstr)
     DBPROCESS *db;
     int severity;
     int dberr;
@@ -626,6 +743,8 @@ static int err_handler(db, severity, dberr, oserr, dberrstr, oserrstr)
     char *dberrstr;
     char *oserrstr;
 {
+    dTHR;
+
     if(err_callback.sub)	/* a perl error handler has been installed */
     {
 	dSP;
@@ -638,13 +757,10 @@ static int err_handler(db, severity, dberr, oserr, dberrstr, oserrstr)
 	SAVETMPS;
 	PUSHMARK(sp);
 	
-	if(db && !DBDEAD(db))	/* FIXME */
+	if(db && !DBDEAD(db) && (hv = (HV*)dbgetuserdata(db)))
 	{
-	    hv = (HV*)sv_2mortal((SV*)newHV());
-	    sv = newSViv((IV)db);
-	    my_hv_store(hv, HV_dbproc, sv, 0);
 	    rv = newRV((SV*)hv);
-	
+		
 	    XPUSHs(sv_2mortal(rv));
 	}
 	else
@@ -683,7 +799,7 @@ static int err_handler(db, severity, dberr, oserr, dberrstr, oserrstr)
     return(INT_CANCEL);
 }
 
-static int msg_handler(db, msgno, msgstate, severity, msgtext, srvname, procname, line)
+static int CS_PUBLIC msg_handler(db, msgno, msgstate, severity, msgtext, srvname, procname, line)
     DBPROCESS *db;
     DBINT msgno;
     int msgstate;
@@ -693,6 +809,7 @@ static int msg_handler(db, msgno, msgstate, severity, msgtext, srvname, procname
     char *procname;
     int line;
 {
+    dTHR;
 
     if(msg_callback.sub)	/* a perl error handler has been installed */
     {
@@ -706,11 +823,8 @@ static int msg_handler(db, msgno, msgstate, severity, msgtext, srvname, procname
 	SAVETMPS;
 	PUSHMARK(sp);
 
-	if(db && !DBDEAD(db))	/* FIXME */
+	if(db && !DBDEAD(db) && (hv = (HV*)dbgetuserdata(db)))	/* FIXME */
 	{
-	    hv = (HV*)sv_2mortal((SV*)newHV());
-	    sv = newSViv((IV)db);
-	    my_hv_store(hv, HV_dbproc, sv, 0);
 	    rv = newRV((SV*)hv);
 	
 	    XPUSHs(sv_2mortal(rv));
@@ -800,13 +914,13 @@ initialize()
 	    DBSETLAPP(login, p);
 	}
 	/* This is deprecated: use Sybase::DBlib::Version instead */
-	if((sv = perl_get_sv("main::SybperlVer", TRUE)))
+	if((sv = perl_get_sv("main::SybperlVer", TRUE|GV_ADDMULTI)))
 	    sv_setpv(sv, SYBPLVER);
 
-	if((sv = perl_get_sv("Sybase::DBlib::Version", TRUE)))
+	if((sv = perl_get_sv("Sybase::DBlib::Version", TRUE|GV_ADDMULTI)))
 	{
 	    char buff[256];
-	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib version 1.35 10/07/97\n\nCopyright (c) 1991-1997 Michael Peppler\n\n",
+	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib version 1.40 12/30/97\n\nCopyright (c) 1991-1997 Michael Peppler\n\n",
 		    SYBPLVER);
 	    sv_setnv(sv, atof(SYBPLVER));
 	    sv_setpv(sv, buff);
@@ -1418,10 +1532,10 @@ int arg;
 	break;
     case 'I':
 	if (strEQ(name, "IN"))
-#ifdef IN
-	    return IN;
+#ifdef DB_IN
+	    return DB_IN;
 #else
-	    goto not_there;
+	    return 1;		/* XXX hack! */
 #endif
 	if (strEQ(name, "INT_CANCEL"))
 #ifdef INT_CANCEL
@@ -3038,7 +3152,11 @@ dblogin(package="Sybase::DBlib",user=NULL,pwd=NULL,server=NULL,appname=NULL,attr
     }
     else
     {
-	sv = newdbh(dbproc, package, attr);
+	ConInfo *info;
+
+	Newz(902, info, 1, ConInfo);
+	info->dbproc = dbproc;
+	sv = newdbh(info, package, attr);
 	if(debug_level & TRACE_CREATE)
 	    warn("Created %s", neatsvpv(sv, 0));
 	ST(0) = sv_2mortal(sv);
@@ -3067,7 +3185,11 @@ dbopen(package="Sybase::DBlib",server=NULL,appname=NULL,attr=&sv_undef)
     }
     else
     {
-	sv = newdbh(dbproc, package, attr);
+	ConInfo *info;
+	
+	Newz(902, info, 1, ConInfo);
+	info->dbproc = dbproc;
+	sv = newdbh(info, package, attr);
 	if(debug_level & TRACE_CREATE)
 	    warn("Created %s", neatsvpv(sv, 0));
 	ST(0) = sv_2mortal(sv);
@@ -3079,21 +3201,15 @@ DESTROY(dbp)
 	SV *	dbp
 CODE:
 {
-    DBPROCESS *dbproc = getDBPROC(dbp);
-    BCP_DATA *bcp_data;
-    HV *hv;
-    SV **svp;
-    
-    hv = (HV *)SvRV(dbp);
-    if(!(svp = my_hv_fetch(hv, HV_pid, FALSE)))
-	croak("no pid key in hash");
-    if(SvIV(*svp) != getpid()) {
+    ConInfo *info = get_ConInfo(dbp);
+
+    if(info->attr.pid != getpid()) {
 	if(debug_level & TRACE_DESTROY)
-	    warn("Skipping Destroying %s (pid %d != getpid %d)", neatsvpv(dbp, 0), SvIV(*svp), getpid());
+	    warn("Skipping Destroying %s (pid %d != getpid %d)", neatsvpv(dbp, 0), info->attr.pid, getpid());
 	XSRETURN_EMPTY;
     }
  
-    if(dirty && !dbproc)
+    if(dirty && !info)
     {
 	if(debug_level & TRACE_DESTROY)
 	    warn("Skipping Destroying %s (dirty)", neatsvpv(dbp, 0));
@@ -3103,20 +3219,26 @@ CODE:
     if(debug_level & TRACE_DESTROY)
 	warn("Destroying %s", neatsvpv(dbp, 0));
     
-    if(!dbproc)			/* it's already been closed! */
+    if(!info)			/* it's already been closed! */
     {
 	if(debug_level & TRACE_DESTROY)
-	    warn("Dbproc already closed %s", neatsvpv(dbp, 0));
-	return;
+	    warn("ConInfo pointer is NULL for %s", neatsvpv(dbp, 0));
+	XSRETURN_EMPTY;
     }
-    bcp_data = (BCP_DATA*)dbgetuserdata(dbproc);
-    if(bcp_data)
+    if(info->bcp_data)
     {
-	Safefree(bcp_data->colPtr);
-	Safefree(bcp_data);
+	Safefree(info->bcp_data->colPtr);
+	Safefree(info->bcp_data);
     }
-    
-    dbclose(dbproc);
+
+    if(!dirty) {
+	if(info->dbproc)
+	    dbclose(info->dbproc);
+    }
+    hv_undef(info->hv);
+    hv_undef(info->attr.other);
+    av_undef(info->av);
+    Safefree(info);
 }
 
 void
@@ -3132,13 +3254,10 @@ force_dbclose(dbp)
 	SV *	dbp
 CODE:
 {
-  DBPROCESS *dbproc = getDBPROC(dbp);
-  HV *hv;
+  ConInfo *info = get_ConInfo(dbp);
 
-  dbclose(dbproc);
-
-  hv = (HV *)SvRV(dbp);
-  my_hv_store(hv, HV_dbproc, newSViv((IV)0), 0);
+  dbclose(info->dbproc);
+  info->dbproc = NULL;
 }
 
 
@@ -3453,9 +3572,10 @@ CODE:
 RETVAL
 
 void
-dbnextrow(dbp,doAssoc=0)
+dbnextrow(dbp,doAssoc=0,wantref=0)
 	SV *	dbp
 	int	doAssoc
+	int	wantref
 PPCODE:
 {
     int retval, ComputeId = 0;
@@ -3477,25 +3597,19 @@ PPCODE:
     int dbNullIsUndef = 0;
     int useDateTime = 0;
     int useMoney = 0;
-    DBPROCESS *dbproc = getDBPROC(dbp);
-    HV *hv = NULL;
-    SV **svp, *sv;
+    ConInfo *info = get_ConInfo(dbp);
+    DBPROCESS *dbproc = info->dbproc;
+    SV *sv;
 #if defined(UNDEF_BUG)
     int n_null = doAssoc;
 #endif
 
     
-    hv = (HV *)SvRV(dbp);
-    if((svp = my_hv_fetch(hv, HV_nullundef, FALSE)))
-	dbNullIsUndef = SvIV(*svp);
-    if((svp = my_hv_fetch(hv, HV_keepnum, FALSE)))
-	dbKeepNumeric = SvIV(*svp);
-    if((svp = my_hv_fetch(hv, HV_bin0x, FALSE)))
-	dbBin0x = SvIV(*svp);
-    if((svp = my_hv_fetch(hv, HV_use_datetime, FALSE)))
-	useDateTime = SvIV(*svp);
-    if((svp = my_hv_fetch(hv, HV_use_money, FALSE)))
-	useMoney = SvIV(*svp);
+    dbNullIsUndef = info->attr.dbNullIsUndef;
+    dbKeepNumeric = info->attr.dbKeepNumeric;
+    dbBin0x       = info->attr.dbBin0x;
+    useDateTime   = info->attr.UseDateTime;
+    useMoney      = info->attr.UseMoney;
     
     retval = dbnextrow(dbproc);
     if(debug_level & TRACE_FETCH)
@@ -3511,25 +3625,28 @@ PPCODE:
  	ComputeId = retval;
 	numcols = dbnumalts(dbproc, retval);
     }
-    if(hv)			/* just to be on the safe side */
-    {
-#if defined(DO_TIE)      
-	my_hv_store(hv, HV_compute_id, sv_2mortal(newSViv(ComputeId)), 0);
-	my_hv_store(hv, HV_dbstatus, sv_2mortal(newSViv(retval)), 0);
-#else
-	my_hv_store(hv, HV_compute_id, newSViv(ComputeId), 0);
-	my_hv_store(hv, HV_dbstatus, newSViv(retval), 0);
-#endif
+    if(numcols && numcols != info->numCols) {
+	int i = numcols;
+	info->numCols = i;
+	av_clear(info->av);
+	hv_clear(info->hv);
+	while(i--)
+	    av_store(info->av, i, newSV(0));
     }
+	
+    info->attr.ComputeID = ComputeId;
+    info->attr.DBstatus  = retval;
+
     for(col = 1, buff[0] = 0; col <= numcols; ++col)
     {
+	sv = AvARRAY(info->av)[col-1];
 	is_null = 0;
 	colname = NULL;
 	if(!ComputeId)
 	{
 	    type = dbcoltype(dbproc, col);
 	    len = dbdatlen(dbproc,col);
-	    data = (BYTE *)dbdata(dbproc,col);
+	    data = (BYTE *)dbdata(dbproc, col);
 	    colname = dbcolname(dbproc, col);
 	    if(!colname || !colname[0])
 	    {
@@ -3551,27 +3668,29 @@ PPCODE:
 		colname = cname;
 	    }
 	}
-	if(doAssoc)
+	if(doAssoc && !wantref)
 	{
-	    sv = newSVpv(colname, 0);
+	    SV *namesv = newSVpv(colname, 0);
 	    if(debug_level & TRACE_FETCH)
 		warn("%s->dbnextrow pushes %s on the stack (doAssoc == TRUE)",
-		     neatsvpv(dbp, 0), neatsvpv(sv, 0));
-	    XPUSHs(sv_2mortal(sv));
+		     neatsvpv(dbp, 0), neatsvpv(namesv, 0));
+	    XPUSHs(sv_2mortal(namesv));
 	}
 	if(!data && !len)
 	{
 	    ++is_null;
 	    if(dbNullIsUndef)
-		sv = &sv_undef;
+		(void)SvOK_off(sv);
 	    else
-		sv = newSVpv("NULL", 0);
+		sv_setpvn(sv, "NULL", 4);
 	    if(debug_level & TRACE_FETCH)
 		warn("%s->dbnextrow pushes %s on the stack",
 		     neatsvpv(dbp, 0), neatsvpv(sv, 0));
-	    XPUSHs(sv);
-	    /* the rest of this iteration is irrelevant */
-	    continue;
+	    if(!wantref) {
+		XPUSHs(sv);
+		/* the rest of this iteration is irrelevant */
+		continue;
+	    }
 	}
 	else
 	{
@@ -3580,43 +3699,43 @@ PPCODE:
 	      case SYBCHAR:
 	      case SYBTEXT:
 	      case SYBIMAGE:
-		sv = newSVpv((char*)data, len);
+		sv_setpvn(sv,( char*)data, len);
 		break;
 	      case SYBINT1:
 	      case SYBBIT: /* a bit is at least a byte long... */
 		if(dbKeepNumeric)
-		    sv = newSViv((IV)*(DBTINYINT*)data);
+		    sv_setiv(sv, (IV)*(DBTINYINT*)data);
 		else
 		{
 		    sprintf(buff,"%u",*(DBTINYINT *)data);
-		    sv = newSVpv(buff, 0);
+		    sv_setpv(sv, buff);
 		}
 		break;
 	      case SYBINT2:
 		if(dbKeepNumeric)
-		    sv = newSViv((IV)*(DBSMALLINT*)data);
+		    sv_setiv(sv, (IV)*(DBSMALLINT*)data);
 		else
 		{
 		    sprintf(buff,"%d",*(DBSMALLINT *)data);
-		    sv = newSVpv(buff, 0);
+		    sv_setpv(sv, buff);
 		}
 		break;
 	      case SYBINT4:
 		if(dbKeepNumeric)
-		    sv = newSViv((IV)*(DBINT*)data);
+		    sv_setiv(sv, (IV)*(DBINT*)data);
 		else
 		{
 		    sprintf(buff,"%d",*(DBINT *)data);
-		    sv = newSVpv(buff, 0);
+		    sv_setpv(sv, buff);
 		}
 		break;
 	      case SYBFLT8:
 		if(dbKeepNumeric)
-		    sv = newSVnv(*(DBFLT8*)data);
+		    sv_setnv(sv, *(DBFLT8*)data);
 		else
 		{
 		    sprintf(buff,"%.6f",*(DBFLT8 *)data);
-		    sv = newSVpv(buff, 0);
+		    sv_setpv(sv, buff);
 		}
 		break;
 #if   DBLIBVS >= 461
@@ -3624,11 +3743,11 @@ PPCODE:
 		dbconvert(dbproc, SYBMONEY, (BYTE *)data, len,
 			  SYBMONEY, (BYTE*)&tv_money, -1);
 		if(useMoney)
-		    sv = newmoney(dbproc, &tv_money);
+		    sv_setsv(sv, newmoney(dbproc, &tv_money));
 		else
 		{
 		    new_mnytochar(dbproc, &tv_money, buff);
-		    sv = newSVpv(buff, 0);
+		    sv_setpv(sv, buff);
 		}
 		break;
 #else
@@ -3636,11 +3755,11 @@ PPCODE:
 		dbconvert(dbproc, SYBMONEY, data, len,
 			  SYBFLT8, (BYTE*)&tmp, -1);
 		if(dbKeepNumeric)
-		    sv = newSVnv(tmp);
+		    sv_setnv(sv, tmp);
 		else
 		{
 		    sprintf(buff,"%.6f",tmp);
-		    sv = newSVpv(buff, 0);
+		    sv_setpv(sv, buff);
 		}
 		break;
 #endif
@@ -3648,13 +3767,13 @@ PPCODE:
 		if(useDateTime)
 		{
 		    dt = *(DBDATETIME*)data;
-		    sv = newdate(dbproc, &dt);
+		    sv_setsv(sv, newdate(dbproc, &dt));
 		}
 		else
 		{
 		    dbconvert(dbproc, SYBDATETIME, (BYTE *)data, len,
 			      SYBCHAR, (BYTE *)buff, -1);
-		    sv = newSVpv(buff, 0);
+		    sv_setpv(sv, buff);
 		}
 		break;
 	      case SYBBINARY:
@@ -3667,16 +3786,16 @@ PPCODE:
 		else
 		    dbconvert(dbproc, type, (BYTE *)data, len,
 			      SYBCHAR, (BYTE *)buff, -1);
-		sv = newSVpv(buff, 0);
+		sv_setpv(sv, buff);
 		break;
 #if DBLIBVS >= 420
 	      case SYBREAL:
 		if(dbKeepNumeric)
-		    sv = newSVnv(*(DBREAL*)data);
+		    sv_setnv(sv, *(DBREAL*)data);
 		else
 		{
 		    sprintf(buff, "%.6f", (double)*(DBREAL *)data);
-		    sv = newSVpv(buff, 0);
+		    sv_setpv(sv, buff);
 		}
 		break;
 	      case SYBDATETIME4:
@@ -3684,13 +3803,13 @@ PPCODE:
 		{
 		    dbconvert(dbproc, SYBDATETIME4, (BYTE *)data, len,
 			      SYBDATETIME, (BYTE *)&dt, -1);
-		    sv = newdate(dbproc, &dt);
+		    sv_setsv(sv, newdate(dbproc, &dt));
 		}
 		else
 		{
 		    dbconvert(dbproc, SYBDATETIME4, (BYTE *)data, len,
 			      SYBCHAR, (BYTE *)buff, -1);
-		    sv = newSVpv(buff, 0);
+		    sv_setpv(sv, buff);
 		}
 		break;
 #if DBLIBVS >= 461
@@ -3698,11 +3817,11 @@ PPCODE:
 		dbconvert(dbproc, SYBMONEY4, (BYTE *)data, len,
 			  SYBMONEY, (BYTE*)&tv_money, -1);
 		if(useMoney)
-		    sv = newmoney(dbproc, &tv_money);
+		    sv_setsv(sv, newmoney(dbproc, &tv_money));
 		else
 		{
 		    new_mnytochar(dbproc, &tv_money, buff);
-		    sv = newSVpv(buff, 0);
+		    sv_setpv(sv, buff);
 		}
 		break;
 #endif
@@ -3718,7 +3837,7 @@ PPCODE:
 		 */
 		dbconvert(dbproc, type, (BYTE *)data, len,
 			  SYBCHAR, (BYTE *)buff, -1); /* FIXME */
-		sv = newSVpv(buff, 0);
+		sv_setpv(sv, buff);
 		break;
 	    }
 	}
@@ -3728,7 +3847,19 @@ PPCODE:
 	if(debug_level & TRACE_FETCH)
 	    warn("%s->dbnextrow pushes %s on the stack",
 		 neatsvpv(dbp, 0), neatsvpv(sv, 0));
-	XPUSHs(sv_2mortal(sv));
+	if(!wantref)
+	    XPUSHs(sv_mortalcopy(sv));
+	else if(doAssoc)
+	    hv_store(info->hv, colname, strlen(colname),
+		     newSVsv(sv), 0);
+	
+    }
+    if(wantref && numcols > 0) {
+	if(doAssoc) {
+	    XPUSHs(sv_2mortal((SV*)newRV((SV*)info->hv)));
+	} else {
+	    XPUSHs(sv_2mortal((SV*)newRV((SV*)info->av)));
+	}
     }
 #if defined(UNDEF_BUG)
     if(!n_null && numcols > 0)
@@ -3760,25 +3891,19 @@ PPCODE:
     int dbNullIsUndef = 0;
     int useDateTime = 0;
     int useMoney = 0;
-    DBPROCESS *dbproc = getDBPROC(dbp);
-    HV *hv = NULL;
-    SV **svp, *sv;
+    ConInfo *info = get_ConInfo(dbp);
+    DBPROCESS *dbproc = info->dbproc;
+    SV *sv;
 #if defined(UNDEF_BUG)
     int n_null = doAssoc;
 #endif
 
     
-    hv = (HV *)SvRV(dbp);
-    if((svp = my_hv_fetch(hv, HV_nullundef, FALSE)))
-	dbNullIsUndef = SvIV(*svp);
-    if((svp = my_hv_fetch(hv, HV_keepnum, FALSE)))
-	dbKeepNumeric = SvIV(*svp);
-    if((svp = my_hv_fetch(hv, HV_bin0x, FALSE)))
-	dbBin0x = SvIV(*svp);
-    if((svp = my_hv_fetch(hv, HV_use_datetime, FALSE)))
-	useDateTime = SvIV(*svp);
-    if((svp = my_hv_fetch(hv, HV_use_money, FALSE)))
-	useMoney = SvIV(*svp);
+    dbNullIsUndef = info->attr.dbNullIsUndef;
+    dbKeepNumeric = info->attr.dbKeepNumeric;
+    dbBin0x       = info->attr.dbBin0x;
+    useDateTime   = info->attr.UseDateTime;
+    useMoney      = info->attr.UseMoney;
     
     numcols = dbnumrets(dbproc);
     if(debug_level & TRACE_FETCH)
@@ -4227,6 +4352,15 @@ dbrecftos(fname)
 char *
 dbversion()
 
+int
+dbsetdefcharset(char_set)
+	char *	char_set
+
+int
+dbsetdeflang(language)
+	char *	language
+
+
 void
 DBSETLCHARSET(char_set)
 	char *	char_set
@@ -4319,21 +4453,20 @@ bcp_meminit(dbp,numcols)
 	int	numcols
   CODE:
 {
-    DBPROCESS *dbproc = getDBPROC(dbp);
+    ConInfo *info = get_ConInfo(dbp);
+    DBPROCESS *dbproc = info->dbproc;
     int j;
-    BCP_DATA *bcp_data;
     BYTE dummy;
     
     /* make sure we free the pointer in the case where bcp_meminit()
        is called several times... */
-    if((bcp_data = (BCP_DATA*)dbgetuserdata(dbproc))) {
-	Safefree(bcp_data->colPtr);
+    if(info->bcp_data) {
+	Safefree(info->bcp_data->colPtr);
     } else {
-	New (902, bcp_data, 1, BCP_DATA);
+	New (902, info->bcp_data, 1, BCP_DATA);
     }
-    New (902, bcp_data->colPtr, numcols, BYTE*);
-    bcp_data->numcols = numcols;
-    dbsetuserdata(dbproc, (BYTE*)bcp_data);
+    New (902, info->bcp_data->colPtr, numcols, BYTE*);
+    info->bcp_data->numcols = numcols;
     
     for(j = 1; j <= numcols; ++j)
 	bcp_bind(dbproc, &dummy, 0, 1, (BYTE *)NULL, 0, SYBCHAR, j);
@@ -4348,13 +4481,14 @@ bcp_sendrow(dbp, ...)
 	SV *	dbp
   CODE:
 {
+    ConInfo *info = get_ConInfo(dbp);
     SV *sv;
-    DBPROCESS *dbproc = getDBPROC(dbp);
-    BCP_DATA *bcp_data;
+    DBPROCESS *dbproc = info->dbproc;
+    BCP_DATA *bcp_data = info->bcp_data;
     int j;
     STRLEN slen;
 
-    if(!(bcp_data = (BCP_DATA*)dbgetuserdata(dbproc)))
+    if(!bcp_data)
 	croak("You must call bcp_meminit before calling bcp_sendrow (Sybase::DBlib).");
     
     if(items - 2  > bcp_data->numcols)
@@ -4372,7 +4506,7 @@ bcp_sendrow(dbp, ...)
 
 	    if(len > bcp_data->numcols)
 		croak("More columns passed to bcp_sendrow than were allocated with bcp_meminit");
-	    for(i = 0; i <= len; ++i)
+	    for(i = len; i >= 0; --i)
 	    {
 		svp = av_fetch(av, i, 0);
 		bcp_data->colPtr[i] = (BYTE*)SvPV(*svp, slen);
@@ -4413,14 +4547,15 @@ bcp_done(dbp)
 	SV *	dbp
 CODE:
 {
-    DBPROCESS *dbproc = getDBPROC(dbp);
-    BYTE **colPtr = (BYTE**)dbgetuserdata(dbproc);
+    ConInfo *info = get_ConInfo(dbp);
+    DBPROCESS *dbproc = info->dbproc;
     
     RETVAL = bcp_done(dbproc);
-    if(colPtr) /* avoid a potential memory leak */
+    if(info->bcp_data) /* avoid a potential memory leak */
     {
-	Safefree(colPtr);
-	dbsetuserdata(dbproc, (BYTE*)NULL);
+	Safefree(info->bcp_data->colPtr);
+	Safefree(info->bcp_data);
+	info->bcp_data = NULL;
     }
 }
 OUTPUT:
@@ -5164,8 +5299,11 @@ open_commit(package="Sybase::DBlib",user=NULL,pwd=NULL,server=NULL,appname=NULL,
     }
     else
     {
-	sv = newdbh(dbproc, package, attr);
-	
+	ConInfo *info;
+
+	Newz(902, info, 1, ConInfo);
+	info->dbproc = dbproc;
+	sv = newdbh(info, package, attr);
 	if(debug_level & TRACE_CREATE)
 	    warn("Created %s", neatsvpv(sv, 0));
     
@@ -5311,10 +5449,11 @@ dbrpcparam(dbp, parname, status, type, maxlen, datalen, value)
 #if !defined(max)
 #define max(a, b)	((a) > (b) ? (a) : (b))
 #endif
-    DBPROCESS *dbproc = getDBPROC(dbp);
+    ConInfo *info = get_ConInfo(dbp);
+    DBPROCESS *dbproc = info->dbproc;
     HV *hv;
     SV **svp, *sv;
-    struct RpcInfo *head = NULL, *ptr = NULL;
+    struct RpcInfo *head = info->rpcInfo, *ptr = NULL;
     char buff[256];
 
     /* FIXME
@@ -5322,10 +5461,6 @@ dbrpcparam(dbp, parname, status, type, maxlen, datalen, value)
        or Money values directly, without converting them
        to char* first. */
     
-    hv = (HV *)SvRV(dbp);
-    if((svp = my_hv_fetch(hv, HV_rpcinfo, FALSE)))
-	head = (void *)SvIV(*svp);
-
     New(902, ptr, 1, struct RpcInfo);
     switch(type)
     {
@@ -5372,8 +5507,7 @@ dbrpcparam(dbp, parname, status, type, maxlen, datalen, value)
     }
     ptr->next = head;
     head = ptr;
-    sv = newSViv((IV)head);
-    my_hv_store(hv, HV_rpcinfo, sv, 0);
+    info->rpcInfo = head;
     
     RETVAL = dbrpcparam(dbproc, parname, status, ptr->type, maxlen, datalen, ptr->value);
 }
@@ -5385,14 +5519,12 @@ dbrpcsend(dbp)
 	SV *	dbp
   CODE:
 {
-    DBPROCESS *dbproc = getDBPROC(dbp);
+    ConInfo *info = get_ConInfo(dbp);
+    DBPROCESS *dbproc = info->dbproc;
     HV *hv;
     SV **svp, *sv;
-    struct RpcInfo *ptr = NULL, *next = NULL;
+    struct RpcInfo *ptr = info->rpcInfo, *next = NULL;
     
-    hv = (HV *)SvRV(dbp);
-    if((svp = my_hv_fetch(hv, HV_rpcinfo, FALSE)))
-	ptr = (void *)SvIV(*svp);
 
     RETVAL = dbrpcsend(dbproc);
 
@@ -5410,8 +5542,7 @@ dbrpcsend(dbp)
 		Safefree(ptr->u.c);
 	    Safefree(ptr);
 	}
-	sv = newSViv((IV)0);
-	my_hv_store(hv, HV_rpcinfo, sv, 0);
+	info->rpcInfo = NULL;
     }
 }
   OUTPUT:
@@ -5839,3 +5970,27 @@ calc(valp1, valp2, op, ord = &sv_undef)
 
 
     
+MODULE = Sybase::DBlib		PACKAGE = Sybase::DBlib::_attribs
+
+void
+FETCH(sv, keysv)
+	SV *	sv
+	SV *	keysv
+CODE:
+{
+    ConInfo *info = get_ConInfoFromMagic((HV*)SvRV(sv));
+    SV *valuesv = attr_fetch(info, SvPV(keysv, na), sv_len(keysv));
+    ST(0) = valuesv;
+}
+
+void
+STORE(sv, keysv, valuesv)
+	SV *	sv
+	SV *	keysv
+	SV *	valuesv
+CODE:
+{
+    ConInfo *info = get_ConInfoFromMagic((HV*)SvRV(sv));
+
+    attr_store(info, SvPV(keysv, na), sv_len(keysv), valuesv, 0);
+}

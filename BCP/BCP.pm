@@ -1,4 +1,4 @@
-#	@(#)BCP.pm	1.12	10/07/97
+#	@(#)BCP.pm	1.14	12/30/97
 
 # Copyright (c) 1996-1997
 #   Michael Peppler
@@ -266,7 +266,7 @@ plain bcp.
 
 =head1 AUTHOR
 
-Michael Peppler F<E<lt>mpeppler@bix.comE<gt>>. Contact the sybperl mailing
+Michael Peppler F<E<lt>mpeppler@mbay.netE<gt>>. Contact the sybperl mailing
 list C<mailto:sybperl-l@trln.lib.unc.edu> if you have any questions.
 
 =cut
@@ -286,7 +286,7 @@ use vars qw(@ISA @EXPORT $VERSION $Version);
 use strict;
 
 $VERSION = '0.06';
-$Version = '1.12 10/07/97';
+$Version = '1.14 12/30/97';
 
 my @g_keys = qw(INPUT OUTPUT ERRORS SEPARATOR FIELDS BATCH_SIZE
 	     NULL DATE REORDER CALLBACK TAB_INFO DIRECTION CONDITION
@@ -444,6 +444,7 @@ sub do_in {
 
     if(!ref($infile)) {
         open(IN, $infile) || croak "Can't open file $infile: $!";
+	binmode(IN);
         $in_sub = \&_readln;
     } elsif(ref($infile) eq 'CODE') {
         $in_sub = $infile;

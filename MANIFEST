@@ -23,6 +23,7 @@ MANIFEST
 Makefile.PL
 PWD
 README
+README.win32
 SPR
 Sybperl/Makefile.PL
 Sybperl/README
@@ -37,6 +38,7 @@ eg/Login.pm
 eg/README
 eg/README.dbschema
 eg/TABLEop.pm
+eg/SecureSql.pm
 eg/bcp.dat
 eg/bcp.pl
 eg/buffer.pl
@@ -44,6 +46,7 @@ eg/ct_cursor.pl
 eg/ct_param.pl
 eg/ct_sql.pl
 eg/ctlib.pl
+eg/dbcc.pl
 eg/dbschema.old
 eg/dbschema.pl
 eg/dbschema.disk.pl
