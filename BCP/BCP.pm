@@ -1,4 +1,4 @@
-# $Id: BCP.pm,v 1.1 1999/05/14 17:21:03 mpeppler Exp $
+# $Id: BCP.pm,v 1.2 1999/09/21 21:07:10 mpeppler Exp $
 # from	@(#)BCP.pm	1.15	03/05/98
 #
 # Copyright (c) 1996-1999
@@ -282,7 +282,7 @@ require Exporter;
 use vars qw(@ISA @EXPORT $VERSION $Version);
 
 @ISA = qw(Exporter Sybase::DBlib);
-@EXPORT = qw(dbmsghandle dberrhandle TRUE FALSE INT_CANCEL SYBESMSG);
+@EXPORT = qw(dbmsghandle dberrhandle TRUE FALSE INT_CANCEL SYBESMSG $DB_ERROR);
 
 use strict;
 

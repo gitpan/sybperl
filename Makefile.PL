@@ -1,5 +1,5 @@
 # -*-Perl-*-
-#	$Id: Makefile.PL,v 1.2 1999/05/14 18:21:27 mpeppler Exp $
+#	$Id: Makefile.PL,v 1.3 1999/09/21 21:14:14 mpeppler Exp $
 require 5.002;
 use ExtUtils::MakeMaker;
 use Config;
@@ -9,6 +9,12 @@ require './config.pl';
 $sattr = &config;
 
 $linktype = defined($$sattr{LINKTYPE}) ? $$sattr{LINKTYPE} : 'dynamic';
+
+if($Config{lns}) {
+    system("cd CTlib; $Config{lns} ../pod/sybperl.pod CTlib.pod") if(!-e 'CTlib/CTlib.pod');
+    system("cd DBlib; $Config{lns} ../pod/sybperl.pod DBlib.pod") if(!-e 'DBlib/DBlib.pod');
+}
+    
 
 sub MY::libscan
 {
@@ -47,7 +53,7 @@ WriteMakefile('DISTNAME' => "sybperl",
 	      'XSPROTOARG' => '-prototypes',
 	      ($] >= 5.005 ?
 	       (ABSTRACT   => 'Sybase API modules',
-		AUTHOR     => 'Michael Peppler (mpeppler@mbay.net)') : ()),
+		AUTHOR     => 'Michael Peppler (mpeppler@peppler.org)') : ()),
 	      ($] >= 5.005 && $^O eq 'MSWin32' && 
 	       $Config{archname} =~ /-object\b/i ? (CAPI => 'TRUE') :()),
               'MAN3PODS' => 'pod/sybperl.pod'

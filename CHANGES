@@ -1,4 +1,15 @@
-	$Id: CHANGES,v 1.1 1999/05/14 17:13:20 mpeppler Exp mpeppler $
+	$Id: CHANGES,v 1.2 1999/09/21 21:15:20 mpeppler Exp $
+
+2.11	Various bug fixes.
+
+	nsql() patch from W. Philipp Moore.
+	Added EMBED_SYBASE configuration variable.
+	dbreadtext() could cause a core dump if the internal call failed.
+	Figured out what was needed to get Sybase::DBlib to talk to an 
+	MS-SQL 7 dataserver. Sybase::CTlib still does not work with the
+	normal, non-patched MS-SQL 7 server.
+	Fixed bug 261: Money/Numeric potentially lose precision in
+		       Sybase::CTlib.
 
 2.10_02
 	Fix incorrect dropping of locale structure in CTlib::DESTROY.

@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# $Id: DBlib.pm,v 1.36 1999/05/14 17:28:30 mpeppler Exp $
+# $Id: DBlib.pm,v 1.37 1999/05/18 06:02:52 mpeppler Exp $
 #
 # From:
 # 	@(#)DBlib.pm	1.35	03/26/99
@@ -211,6 +211,8 @@ use AutoLoader;
 require DynaLoader;
 use Carp;
 
+__SYBASE__
+
 use subs qw(sql SUCCEED FAIL NO_MORE_RESULTS SYBESMSG INT_CANCEL);
 
 use vars qw(%Att @ISA @EXPORT @EXPORT_OK $AUTOLOAD);
@@ -342,7 +344,11 @@ sub sql				# Submitted by Gisle Aas
 
     $flag = 0 unless $flag;
     
-    while($db->dbresults != &NO_MORE_RESULTS) {
+    while(my $ret = $db->dbresults != &NO_MORE_RESULTS) {
+	if($ret == FAIL) {
+	    $db->dbcancel();
+	    return undef;
+	}
         while ($data = $db->dbnextrow($flag, 1)) {
             if (defined $sub) {
 		if($flag) {
@@ -424,7 +430,7 @@ sub nsql {
 		    carp "SQL deadlock encountered.  Retrying...\n" if $retryverbose;
 		    undef $DB_ERROR;
 		    sleep($retrysleep);
-		    next DEADLOCK;
+		    redo DEADLOCK;
 		}
 		else {
 		    carp "SQL deadlock retry failed $nsql_deadlock_retrycount times.  Aborting.\n"
@@ -445,7 +451,7 @@ sub nsql {
 		    undef $DB_ERROR;
 		    @res = ();
 		    sleep($retrysleep);
-		    next DEADLOCK;
+		    redo DEADLOCK;
 		}
 		else {
 		    carp "SQL deadlock retry failed $nsql_deadlock_retrycount times.  Aborting.\n"
@@ -473,7 +479,7 @@ sub nsql {
 		while ( @data = $db->dbnextrow ) {
 		    grep(s/\s+$//g,@data) if $nsql_strip_whitespace;
 		    if ( ref $callback eq "CODE" ) {
-			unless ( $callback->(%data) ) {
+			unless ( $callback->(@data) ) {
 			    $db->dbcancel();
 			    $DB_ERROR = "User-defined callback subroutine failed\n";
 			    return;

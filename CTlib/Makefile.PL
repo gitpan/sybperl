@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# $Id: Makefile.PL,v 1.19 1999/04/16 16:54:30 mpeppler Exp $
+# $Id: Makefile.PL,v 1.20 1999/09/21 21:06:27 mpeppler Exp $
 # @(#)Makefile.PL	1.19	03/26/99
 
 
@@ -19,6 +19,19 @@ $sattr = &config;
 $CTLIBVS = $$sattr{CTLIBVS};
 $SYBASE = $$sattr{SYBASE};
 $VERSION = $$sattr{VERSION};
+
+open(IN, "CTlib.pm.in") || die "Can't open CTlib.pm.in: $!";
+{
+    local $/ = undef;
+    my $data = <IN>;
+    close(IN);
+    open(OUT, ">CTlib.pm") || die "Can't open CTlib.pm: $!";
+    print OUT "# This file is auto generated from CTlib.pm.in.\n# Please edit CTlib.pm.in to make any changes\n";
+    $data = putEnv($sattr, $data);
+    print OUT $data;
+    close(OUT);
+}
+
 
 $linktype = defined($$sattr{LINKTYPE}) ? $$sattr{LINKTYPE} : 'dynamic';
 
@@ -43,7 +56,7 @@ if($^O eq 'MSWin32') {
     # Logic to replace normal libs with _r (re-entrant) libs if
     # usethreads is defined provided by W. Phillip Moore (wpm@ms.com)
     # I have no idea if this works on Win32 systems (probably not!)
-    if ( $Config{usethreads} eq 'define' ) {
+    if ( $Config{usethreads} eq 'define' && $Config{osname} =~ /solaris/ ) {
 	opendir(SYBLIB,"$SYBASE/lib")
 	    or die "Unable to opendir $SYBASE/lib: $!\n";
 	

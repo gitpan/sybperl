@@ -6,15 +6,13 @@ BCP/t/bcp.dat
 BCP/t/bcp.t
 CHANGES
 CONFIG
-CTlib/CTlib.pm
-CTlib/CTlib.pod
+CTlib/CTlib.pm.in
 CTlib/CTlib.xs
 CTlib/Makefile.PL
 CTlib/README
 CTlib/t/ctlib.t
 CTlib/t/cursor.t
-DBlib/DBlib.pm
-DBlib/DBlib.pod
+DBlib/DBlib.pm.in
 DBlib/DBlib.xs
 DBlib/Makefile.PL
 DBlib/README
@@ -25,6 +23,7 @@ MANIFEST
 Makefile.PL
 PWD
 README
+README.linux
 README.thread
 README.win32
 SPR

@@ -1,5 +1,5 @@
 # -*-Perl-*-
-#	$Id: config.pl,v 1.1 1999/05/14 17:16:50 mpeppler Exp $
+#	$Id: config.pl,v 1.2 1999/09/21 21:12:53 mpeppler Exp $
 #
 # Extract relevant info from the CONFIG and patchlevel.h files.
 
@@ -66,11 +66,23 @@ sub config
 
     # Set Sybase directory to the SYBASE env variable if the one from
     # CONFIG appears invalid
-    $sattr{SYBASE} = $ENV{SYBASE} if(!exists($sattr{SYBASE})
-				     || !-d $sattr{SYBASE} 
-				     || !-d "$sattr{SYBASE}/lib"
-				     || !-d "$sattr{SYBASE}/include"
-				    );
+    my $sybase_dir = $ENV{SYBASE};
+
+    if(!$sybase_dir) {
+	$sybase_dir = (getpwnam('sybase'))[7];
+    }
+
+    $sattr{SYBASE} = $sybase_dir if(!exists($sattr{SYBASE})
+				    || !-d $sattr{SYBASE} 
+				    || !-d "$sattr{SYBASE}/lib"
+				    || !-d "$sattr{SYBASE}/include"
+				   );
+
+    die "Can't find any Sybase libraries under $sattr{SYBASE}/lib.\nPlease set the SYBASE environment correctly, or edit CONFIG and set SYBASE\ncorrectly there." unless checkLib($sattr{SYBASE});
+
+    if($^O ne MSWin32 && $^O ne 'VMS') {
+	$sattr{EXTRA_LIBS} = getExtraLibs($sattr{SYBASE}, $sattr{EXTRA_LIBS});
+    }
 
     \%sattr;
 }
@@ -99,5 +111,62 @@ sub MY::const_config {
 
 EOF_EVAL
 }
+
+sub getExtraLibs {
+    my $dir = shift;
+    my $cfg = shift;
+
+    my $lib = "$dir/lib";
+
+    opendir(DIR, "$dir/lib") || die "Can't access $dir/lib: $!";
+    my %files = map { $_ =~ s/lib([^\.]+)\..*/$1/; $_ => 1 } grep(/lib/, readdir(DIR));
+    closedir(DIR);
+
+    my %x = map {$_ => 1} split(' ', $cfg);
+    foreach my $f (keys(%x)) {
+	my $file = $f;
+	$file =~ s/-l//;
+	next if($file =~ /^-/);
+	delete($x{$f}) unless exists($files{$file});
+    }
+    
+
+    foreach my $f (qw(insck tli sdna dnet_stub)) {
+	$x{"-l$f"} = 1 if exists $files{$f};
+    }
+
+    join(' ', keys(%x));
+}
+    
+	
+sub checkLib {
+    my $dir = shift;
+
+    opendir(DIR, "$dir/lib") || die "Can't access $dir/lib: $!";
+    my @files = grep(/libct/i, readdir(DIR));
+    closedir(DIR);
+
+    scalar(@files);
+}
+
+sub putEnv {
+    my $sattr = shift;
+    my $data  = shift;
+
+    my $replace = '';
+
+    if($$sattr{EMBED_SYBASE}) {
+	$replace = "BEGIN {
+\$ENV{SYBASE} = \"$$sattr{SYBASE}\"; 
+}
+";
+    }
+
+    $data =~ s/__SYBASE__/$replace/;
+
+    $data;
+}
+    
+
 
 1;

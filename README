@@ -1,4 +1,4 @@
-	$Id: README,v 1.1 1999/05/14 17:15:01 mpeppler Exp $
+	$Id: README,v 1.2 1999/09/21 21:15:06 mpeppler Exp $
 
 			   sybperl 2.0
 	
@@ -168,10 +168,6 @@ b) Do you want the Sybase modules to be dynamically loadable?
    you have the System 10 shared libraries (libsybdb.sl vs libsybdb.a)
    as HP-UX can't load an object dynamically which has not been
    compiled with the PIC (position independant code) flag. 
-
-   It is also not possible to build a dynamically loadable version
-   of Sybase::CTlib on Linux as the Sybase libraries aren't compiled
-   as position independant code.
 
 c) The DO_TIE compile option
 
@@ -349,6 +345,8 @@ Once you have answered these eight questions, you can proceed:
       of the file.
       
    8) If everything went OK, type: make install
+      This operation probably requires "root" priviledges as this
+      installs the sybperl modules into the perl library tree.
       Note that the man page does not get installed automatically. To
       install the documentation, cd to the pod directory, and read the
       README file there.
@@ -400,10 +398,11 @@ in the body to subscribe to the list.
 Reporting Bugs:
 ===============
 
-I have set up a bug tracking database to which bugs can be
-submitted via e-mail. If you have a comment, bug report or feature
-request you would like to make please use the template in the SPR file
-in this directory.
+I have set up a (sinple) bug tracking database, which can be accessed
+on line at http://gw.peppler.org/cgi-bin/bug.cgi. You can submit bugs 
+directly, or send me email using the SPR file in this directory. Keep
+in mind that gw.peppler.org is on the end of a K56 line, so it may be 
+slow.
 
 When submitting bugs, or any sort of problem report, please make sure
 you include full version information for Sybperl, Perl, Sybase and
@@ -414,6 +413,6 @@ directory. Perl's configuration can be summarized by running 'perl -V'.
 
 Comments, criticism, et.al. VERY welcome!
 
-Michael Peppler - mpeppler@mbay.net
+Michael Peppler - mpeppler@peppler.org
 
 

@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# $Id: CTlib.pm,v 1.28 1999/04/16 16:54:01 mpeppler Exp $
+# $Id: CTlib.pm.in,v 1.29 1999/09/21 21:03:01 mpeppler Exp $
 # @(#)CTlib.pm	1.27	03/26/99
 
 # Copyright (c) 1995-1997
@@ -263,6 +263,8 @@ use AutoLoader;
 require DynaLoader;
 
 use Carp;
+
+__SYBASE__
 
 use subs qw(CS_SUCCEED CS_FAIL CS_CMD_DONE CS_ROW_COUNT
   CS_ROW_RESULT CS_PARAM_RESULT CS_STATUS_RESULT CS_CURSOR_RESULT

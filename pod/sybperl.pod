@@ -1,4 +1,4 @@
-<--$Id: sybperl.pod,v 1.34 1999/05/14 18:13:53 mpeppler Exp $-->
+<--$Id: sybperl.pod,v 1.35 1999/09/21 21:10:34 mpeppler Exp $-->
 
 =head1 NAME
 
@@ -140,7 +140,7 @@ B<Standard Routines:>
 
 =over 8
 
-=item $dbh = new Sybase::DBlib [$user [, $server [, $appname [, {additional attributes}]]]]
+=item $dbh = new Sybase::DBlib [$user [, $pwd [, $server [, $appname [, {additional attributes}]]]]]
 
 =item $dbh = Sybase::DBlib->dblogin([$user [, $pwd [, $server [, $appname, [{additional attributes}] ]]]])
 
@@ -506,7 +506,7 @@ Example:
 
 =back
 
-=head2 BCP Routines:
+=head2 BCP Routines
 
 See also the B<Sybase::BCP> module.
 
@@ -590,7 +590,7 @@ Please see the DB-library documentation for these calls.
 
 =back
 
-B<DBMONEY Routines:>
+=head2 DBMONEY Routines
 
 B<NOTE:> In this version it is possible to avoid calling the routines
 below and still get B<DBMONEY> calculations done with the correct
@@ -653,7 +653,7 @@ The routines which in the C version take pointers to arguments
 
 =back
 
-B<RPC Routines:>
+=head2 RPC Routines
 
 B<NOTE:> Check out eg/rpc-example.pl for an example on how to use
 these calls.
@@ -673,12 +673,16 @@ the DB-library manual page for details & values for the parameters.
 B<NOTE:> All floating point types (MONEY, FLOAT, REAL, DECIMAL, etc.)
 are converted to FLOAT before being sent to the RPC.
 
-=item $dbh->dbrpcsend
+=item $dbh->dbrpcsend([$no_ok])
 
 Execute an RPC initiated with dbrpcinit().
 
-B<NOTE:> This call executes both dbrpcsend() and dbsqlok(). You can
-call $dbh->dbresults direcly after calling $dbh->dbrpcsend.
+By default this routine calls the C library dbrpcsend() and dbsqlok(), so 
+that you can directly call $dbh->dbresults directly after a call to 
+$dbh->dbrpcsend. If you need more control you can pass a non-0 value for 
+the $no_ok parameter, and it will then be your responsibility to call
+$dbh->dbsqlok(). Please read the Sybase OpenClient DB-Library manual
+pages on dbrpcsend() and dbsqlok() for further details.
 
 =item dbrpwset($srvname, $pwd)
 
@@ -690,7 +694,7 @@ Clear all remote server passwords.
 
 =back
 
-B<Registered procedure execution:>
+=head2 Registered procedure execution
 
 =over 8
 
@@ -708,7 +712,7 @@ routnines do, and how to call them.
 
 =back
 
-B<Two Phase Commit Routines:>
+=head2 Two Phase Commit Routines
 
 =over 8
 
@@ -736,7 +740,7 @@ B<NOTE:> These routines have not been thouroughly tested!
 
 =back
 
-B<Exported Routines:>
+=head2 Exported Routines
 
 =over 8
 
@@ -787,7 +791,7 @@ program.
 
 =back
 
-B<Utility Routines:>
+=head2 High Level Wrapper Functions (sql() and nsql())
 
 These routines are not part of the DB-library API, but have been added
 because they can make our life as programers easier, and exploit
@@ -987,10 +991,10 @@ to a true value, and nsql() will whine about the failure.  If all of
 the retries fail, then nsql() will return an error, like it normally
 does.  If you want the code to try forever, then set the retry count
 to -1.
-  
+
 =back
 
-B<Constants:>
+=head2 Constants
 
 Most of the #defines from sybdb.h can be accessed as
 B<Sybase::DBlib::NAME> (eg B<Sybase::DBlib::STDEXIT>) Additional constants are:
@@ -1007,7 +1011,7 @@ The version of I<DBlibrary> that sybperl was built against.
 
 =back
 
-=head2 Attributes:
+=head2 Attributes
 
 The behaviour of certain aspects of the Sybase::CTlib module can be
 controled via global or connection specific attributes. The global
@@ -1456,7 +1460,7 @@ $action can be B<CS_SET> or B<CS_GET>.
 $property is one of the properties that is settable via ct_config()
 (see your OpenClient man page on ct_config() for a complete list).
 
-$value is the input value if $action is B<CS_GET>, and the output
+$value is the input value if $action is B<CS_SET>, and the output
 value if $action is B<CS_GET>.
 
 $type is the data type of the property that is being set or
@@ -1711,6 +1715,15 @@ point. Default: FALSE.
 If TRUE, keep B<NUMERIC> or B<DECIMAL> data retrieved via ct_fetch()
 in native format, instead of converting to double precision floating
 point. Default: FALSE.
+
+=item UseChar
+
+If TRUE, convert B<NUMERIC>, B<DECIMAL> and B<MONEY> data retrieved
+via ct_fetch() to character strings. This ensures that there is no 
+precision loss associated with converting fixed decimal values to 
+floating point representation, and is faster than using the B<UseNumeric>
+and/or B<UseMoney> attributes. B<UseChar> I<overrides> the setting for
+B<UseNumeric> and/or B<UseMoney>.
 
 =item MaxRows
 
@@ -2085,6 +2098,11 @@ new connection is created, or, in the case of CTlib, when extended
 error information is processed in the server callback.
 I have not been able to locate the real cause of the leak so far. Patches
 that appear to solve the problem are welcome!
+
+I have a simple bug tracking system at http://gw.peppler.org/cgi-bin/bug.cgi.
+It's on the end of a K56 line, so it may be slow (depending on what I happen
+to be doing!) You can use it to check for known bugs, or to submit
+new ones.
 
 =head1 ACKNOWLEDGEMENTS
 

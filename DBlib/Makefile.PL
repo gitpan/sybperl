@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# $Id: Makefile.PL,v 1.20 1999/05/14 17:32:23 mpeppler Exp $
+# $Id: Makefile.PL,v 1.21 1999/09/21 21:09:18 mpeppler Exp $
 #	@(#)Makefile.PL	1.19	03/26/99
 
 require 5.002;
@@ -15,6 +15,19 @@ $sattr = &config;
 $DBLIBVS = $$sattr{DBLIBVS};
 $SYBASE = $$sattr{SYBASE};
 $VERSION = $$sattr{VERSION};
+
+open(IN, "DBlib.pm.in") || die "Can't open DBlib.pm.in: $!";
+{
+    local $/ = undef;
+    my $data = <IN>;
+    close(IN);
+    open(OUT, ">DBlib.pm") || die "Can't open DBlib.pm: $!";
+    print OUT "# This file is auto generated from DBlib.pm.in.\n# Please edit DBlib.pm.in to make any changes\n";
+    $data = putEnv($sattr, $data);
+    print OUT $data;
+    close(OUT);
+}
+
 # Extra flags to pass to CPP
 if($^O eq 'MSWin32') {
     $inc_string = "-I$SYBASE\\include";

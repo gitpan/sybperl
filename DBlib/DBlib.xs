@@ -1,5 +1,5 @@
 /* -*-C-*-
- * $Id: DBlib.xs,v 1.48 1999/05/14 17:31:42 mpeppler Exp $
+ * $Id: DBlib.xs,v 1.49 1999/09/21 21:08:01 mpeppler Exp $
  *
  * From
  *	@(#)DBlib.xs	1.47	03/26/99
@@ -333,7 +333,7 @@ attr_fetch(info, key, keylen)
 	  return Nullsv;
     }
 
-    return sv;
+    return sv_2mortal(sv);
 }
 
 static int
@@ -917,7 +917,7 @@ initialize()
 	
 	if(dbinit() == FAIL)
 	    croak("Can't initialize dblibrary...");
-#if DBLIBVS >= 1000
+#if DBLIBVS >= 1000 && !defined(MSSQL)
 	dbsetversion(DBVERSION_100);
 #endif
 	dberrhandle(err_handler);
@@ -933,7 +933,7 @@ initialize()
 	if((sv = perl_get_sv("Sybase::DBlib::Version", TRUE|GV_ADDMULTI)))
 	{
 	    char buff[256];
-	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib $Revision: 1.48 $ $Date: 1999/05/14 17:31:42 $ \n\nCopyright (c) 1991-1999 Michael Peppler\n\n",
+	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib $Revision: 1.49 $ $Date: 1999/09/21 21:08:01 $ \n\nCopyright (c) 1991-1999 Michael Peppler\n\n",
 		    SYBPLVER);
 	    sv_setnv(sv, atof(SYBPLVER));
 	    sv_setpv(sv, buff);
@@ -4365,7 +4365,7 @@ CODE:
 }
 OUTPUT:
 RETVAL
-buf sv_setpvn(ST(1), buf, RETVAL);
+buf if(RETVAL > 0) sv_setpvn(ST(1), buf, RETVAL);
 CLEANUP:
 Safefree(buf);
 
@@ -5703,8 +5703,9 @@ dbrpcparam(dbp, parname, status, type, maxlen, datalen, value)
 RETVAL
 
 int
-dbrpcsend(dbp)
+dbrpcsend(dbp, no_ok=0)
 	SV *	dbp
+	int	no_ok
   CODE:
 {
     ConInfo *info = get_ConInfo(dbp);
@@ -5713,11 +5714,10 @@ dbrpcsend(dbp)
     SV **svp, *sv;
     struct RpcInfo *ptr = info->rpcInfo, *next = NULL;
     
-
     RETVAL = dbrpcsend(dbproc);
 
-    /* temporay solution: call dbsqlok() directly after dbrpcsend() */
-    if(RETVAL != FAIL)
+    /* Call dbsqlok() if caller doesn't say not to */
+    if(!no_ok && RETVAL != FAIL)
 	RETVAL = dbsqlok(dbproc);
     /* clean-up the rpcParam list
        according to the DBlib docs, it should be safe to this here. */

@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# $Id: Sybperl.pm,v 1.28 1999/05/14 18:10:09 mpeppler Exp $
+# $Id: Sybperl.pm,v 1.29 1999/06/07 15:40:43 mpeppler Exp $
 #
 # From
 # 	@(#)Sybperl.pm	1.27	03/26/98
@@ -17,7 +17,7 @@ package Sybase::Sybperl;
 
 Sybase::Sybperl - sybperl 1.0xx emulation module
 
-=head1 SYNOPSYS
+=head1 SYNOPSIS
 
     require 'sybperl.pl';
 

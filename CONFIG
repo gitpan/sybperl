@@ -16,6 +16,15 @@ CTLIBVS=100
 # libraries are expected to be found at SYBASE/include & SYBASE/lib
 SYBASE=/opt/sybase
 
+# If EMBED_SYBASE is TRUE (1), then we add BEGIN { $ENV{SYBASE} = $SYBASE}
+# at the top of both Sybase::DBlib and Sybase::CTlib. This ensures that
+# the correct value for the SYBASE environment variable is always set.
+# The downside is that if you install a new version of Sybase (OpenClient
+# in particular) in a different location (say /opt/sybase/11.9.2 instead of
+# /opt/sybase/11.5.1) then you need to rebuild sybperl with the new value - 
+# setting the SYBASE environment variable will have no effect.
+EMBED_SYBASE = 1
+
 # Additional libraries.
 # Some systems require -lnsl or -lBSD.
 # Solaris 2.x needs -ltli
@@ -40,6 +49,8 @@ EXTRA_LIBS=-linsck
 # use -DDO_TIE to get the benefit of stricter checking on the
 # Sybase::DBlib and Sybase::CTlib attributes.
 # Use -DNCR_BUG if you are on NCR 3.0 and OpenClient 10.0.x
+# Add -DMSSQL if you want to use the Sybase::DBlib portion of sybperl
+# to connect to an MS-SQL 7 server.
 EXTRA_DEFS=-DDO_TIE
 
 

@@ -1,6 +1,6 @@
 /* -*-C-*-
  *
- * $Id: CTlib.xs,v 1.39 1999/05/14 17:48:32 mpeppler Exp $
+ * $Id: CTlib.xs,v 1.40 1999/09/21 21:05:01 mpeppler Exp $
  *	@(#)CTlib.xs	1.37	03/26/99
  */
 
@@ -87,6 +87,7 @@ struct attribs {
     int UseDateTime;
     int UseMoney;
     int UseNumeric;
+    int UseChar;
     int MaxRows;
     int ComputeId;
     int ExtendedError;
@@ -147,6 +148,7 @@ typedef enum hash_key_id
     HV_use_datetime,
     HV_use_money,
     HV_use_numeric,
+    HV_use_char,
     HV_max_rows,
     HV_compute_id,
     HV_extended_error,
@@ -163,6 +165,7 @@ static struct _hash_keys {
     { "UseDateTime", HV_use_datetime },
     { "UseMoney",    HV_use_money },
     { "UseNumeric",  HV_use_numeric },
+    { "UseChar",     HV_use_char },
     { "MaxRows",     HV_max_rows },
     { "ComputeId",   HV_compute_id },
     { "ExtendedError", HV_extended_error },
@@ -354,7 +357,7 @@ attr_fetch(info, key, keylen)
 	  return Nullsv;
     }
 
-    return sv;
+    return sv_2mortal(sv);
 }
 
 
@@ -1058,6 +1061,7 @@ describe(info, dbp, restype, textBind)
     int use_datetime = 0;
     int use_money = 0;
     int use_numeric = 0;
+    int use_char = 0;
 
     cleanUp(info);
 
@@ -1099,6 +1103,7 @@ describe(info, dbp, restype, textBind)
     use_datetime = info->connection->attr.UseDateTime;
     use_money    = info->connection->attr.UseMoney;
     use_numeric  = info->connection->attr.UseNumeric;
+    use_char     = info->connection->attr.UseChar;
 
     info->numBoundCols = info->numCols;
 
@@ -1189,9 +1194,8 @@ describe(info, dbp, restype, textBind)
 		
 	  case CS_NUMERIC_TYPE:
 	  case CS_DECIMAL_TYPE:
-	    /* FIXME:
-	       Should this be DoChar: when not using native numeric
-	       formats (overflow problems...)? */
+	    if(use_char)
+		goto DoChar;
 	    if(!use_numeric)
 		goto DoFloat;
 	    info->datafmt[i].maxlength = sizeof(CS_NUMERIC);
@@ -1206,6 +1210,8 @@ describe(info, dbp, restype, textBind)
 	    
 	  case CS_MONEY_TYPE:
 	  case CS_MONEY4_TYPE:
+	    if(use_char)
+		goto DoChar;
 	    if(!use_money)
 		goto DoFloat;
 	    info->datafmt[i].maxlength = sizeof(CS_MONEY);
@@ -1690,7 +1696,7 @@ initialize()
     if((sv = perl_get_sv("Sybase::CTlib::Version", TRUE|GV_ADDMULTI)))
     {
 	char buff[256];
-	sprintf(buff, "This is sybperl, version %s\n\nSybase::CTlib $Revision: 1.39 $ $Date: 1999/05/14 17:48:32 $\n\nCopyright (c) 1995-1999 Michael Peppler\nPortions Copyright (c) 1995 Sybase, Inc.\n\n",
+	sprintf(buff, "This is sybperl, version %s\n\nSybase::CTlib $Revision: 1.40 $ $Date: 1999/09/21 21:05:01 $\n\nCopyright (c) 1995-1999 Michael Peppler\nPortions Copyright (c) 1995 Sybase, Inc.\n\n",
 		SYBPLVER);
 	sv_setnv(sv, atof(SYBPLVER));
 	sv_setpv(sv, buff);
