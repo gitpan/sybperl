@@ -1,4 +1,4 @@
-# $Id: BCP.pm,v 1.2 1999/09/21 21:07:10 mpeppler Exp $
+# $Id: BCP.pm,v 1.3 2000/03/27 16:06:36 mpeppler Exp $
 # from	@(#)BCP.pm	1.15	03/05/98
 #
 # Copyright (c) 1996-1999
@@ -419,13 +419,11 @@ sub do_in {
     # The user has defined a reordering pattern of columns:
     # If the target columns are entered as column names, we must
     # convert that back to column numbers...
-    if(defined(%reorder)) {
-	foreach (keys(%reorder)) {
-	    if($reorder{$_} =~ /\D+/) {
-		for($i = 0; $i < @tabinfo; ++$i) {
-		    if(${$tabinfo[$i]}[0] eq $reorder{$_}) {
-		    $reorder{$_} = $i+1;
-		}
+    foreach (keys(%reorder)) {
+	if($reorder{$_} =~ /\D+/) {
+	    for($i = 0; $i < @tabinfo; ++$i) {
+		if(${$tabinfo[$i]}[0] eq $reorder{$_}) {
+		$reorder{$_} = $i+1;
 	    }
 	}
     }
@@ -469,12 +467,10 @@ my $row;
 local $" = $sep;		# Set the output field separator."
 
 while(@data = &$in_sub($sep)) {
-    if(defined(%reorder)) {
-	foreach $i (keys(%reorder)) {
-	    $t_data[$reorder{$i}-1] = $data[$i-1];
-	}
-	@data = @t_data;
+    foreach $i (keys(%reorder)) {
+	$t_data[$reorder{$i}-1] = $data[$i-1];
     }
+    @data = @t_data;
     
     if(defined($g_cb)){
 	next unless &$g_cb(\@data);
@@ -494,7 +490,7 @@ while(@data = &$in_sub($sep)) {
     }
     # Do any special data handling: set NULL fields, maybe convert dates,
     # call the callbacks if they are defined.
-    if(defined($null_pattern) || defined(%cols)) {
+    if(defined($null_pattern) || %cols) {
 	for($i = 0; $i < $cols; ++$i) {
 	    if($cols{$i}->{SKIP} == TRUE) {
 		splice(@data, $i, 1);

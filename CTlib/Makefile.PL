@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# $Id: Makefile.PL,v 1.20 1999/09/21 21:06:27 mpeppler Exp $
+# $Id: Makefile.PL,v 1.21 2000/05/13 22:56:29 mpeppler Exp $
 # @(#)Makefile.PL	1.19	03/26/99
 
 
@@ -48,7 +48,13 @@ if($^O eq 'MSWin32') {
     $inc_string = "-I$SYBASE/include";
     $def_string = "-DCTLIBVS=$CTLIBVS -DSYBPLVER='\"\${VERSION}\"' $$sattr{EXTRA_DEFS}";
     $lib_string = "-L$SYBASE/lib -lct -lcs -ltcl -lcomn -lintl";
-    $lib_string =~ s/-ltcl/-lsybtcl/ if -e "$SYBASE/lib/libsybtcl$Config{_a}";
+
+    # Linux uses libsybtcl instead of libtcl to avoid conflicts with tcl/tk
+    if(-e "$SYBASE/lib/libsybtcl$Config{lib_ext}" || 
+       -e "$SYBASE/lib/libsybtcl$Config{so}") {
+	$lib_string =~ s/-ltcl/-lsybtcl/;
+    }
+
     $lib_string =~ s/-l/-lsyb_/g if $^O eq 'VMS';
     $lib_string .= " $$sattr{EXTRA_LIBS} -lm";
 

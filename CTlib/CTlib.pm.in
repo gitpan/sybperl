@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# $Id: CTlib.pm.in,v 1.29 1999/09/21 21:03:01 mpeppler Exp $
+# $Id: CTlib.pm.in,v 1.30 2000/05/13 22:50:56 mpeppler Exp $
 # @(#)CTlib.pm	1.27	03/26/99
 
 # Copyright (c) 1995-1997
@@ -50,6 +50,7 @@ sub TIEHASH {
     bless {UseDateTime => 0,
 	   UseMoney => 0,
 	   UseNumeric => 0,
+	   UseBin0x => 1,
 	   MaxRows => 0}
 }
 sub FETCH { 

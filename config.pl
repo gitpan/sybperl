@@ -1,5 +1,5 @@
 # -*-Perl-*-
-#	$Id: config.pl,v 1.2 1999/09/21 21:12:53 mpeppler Exp $
+#	$Id: config.pl,v 1.3 2000/05/13 22:58:24 mpeppler Exp $
 #
 # Extract relevant info from the CONFIG and patchlevel.h files.
 
@@ -54,6 +54,7 @@ sub config
 	
 	($dummy, $left, $right) = split(' ');
 	$left =~ s/\s*//g;
+	$right =~ s/^\s*//g;
 
 	$patchlvl{$left} = $right;
     }
@@ -127,7 +128,7 @@ sub getExtraLibs {
 	my $file = $f;
 	$file =~ s/-l//;
 	next if($file =~ /^-/);
-	delete($x{$f}) unless exists($files{$file});
+	delete($x{$f}) unless (exists($files{$file}) || $f =~ /dnet_stub/);
     }
     
 
@@ -156,10 +157,17 @@ sub putEnv {
     my $replace = '';
 
     if($$sattr{EMBED_SYBASE}) {
-	$replace = "BEGIN {
-\$ENV{SYBASE} = \"$$sattr{SYBASE}\"; 
+	$replace = qq(
+BEGIN {
+    if(!\$ENV{'SYBASE'}) {
+	if(\@_ = getpwnam("sybase")) {
+	    \$ENV{'SYBASE'} = \$_[7];
+	} else {
+	    \$ENV{'SYBASE'} = '$$sattr{SYBASE}';
+	}
+    }
 }
-";
+);
     }
 
     $data =~ s/__SYBASE__/$replace/;

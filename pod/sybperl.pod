@@ -1,4 +1,4 @@
-<--$Id: sybperl.pod,v 1.35 1999/09/21 21:10:34 mpeppler Exp $-->
+<--$Id: sybperl.pod,v 1.36 2000/05/13 22:54:50 mpeppler Exp $-->
 
 =head1 NAME
 
@@ -122,10 +122,11 @@ A generic I<perl> script using I<Sybase::DBlib> would look like this:
     $dbh = new Sybase::DBlib 'sa', $pwd, $server, 'test_app';
     $dbh->dbcmd("select * from sysprocesses\n");
     $dbh->dbsqlexec;
-    $dbh->dbresults;
-    while(@data = $dbh->dbnextrow)
-    {
-    .... do something with @data ....
+    while($dbh->dbresults != NO_MORE_RESULTS) {
+        while(@data = $dbh->dbnextrow)
+       {
+          .... do something with @data ....
+       }
     }
 
 
@@ -206,7 +207,7 @@ for results (if called as Sybase::DBlib->dbpoll()) or poll the specified
 DBPROCESS (if called as $dbh->dbpoll()). If it finds a DBPROCESS that is
 ready it returns it, along with the reason why it's ready. If dbpoll()
 times out, or if an interupt occurs $dbproc will be undefined, and $reason 
-will be either DBTIMEOUT or DBINTERUPT. If $millisecs is 0 then dbpoll()
+will be either DBTIMEOUT or DBINTERRUPT. If $millisecs is 0 then dbpoll()
 returns immediately. If $millisecs is -1 then it will not return until
 either results are pending or a system interupt has occured. Please see
 the Sybase documentation for further details.
@@ -2118,12 +2119,12 @@ Dave Bowen & Amy Lin for help with Sybase::CTlib.
 
 Jeffrey Wong for the Sybase::DBlib DBMONEY routines.
 
-W. Phillip Moore E<lt>F<wpm@ms.com>E<gt> for the nsql() method.
+W. Phillip Moore E<lt>F<Phil.Moore@msdw.com>E<gt> for the nsql() method.
 
 Numerous folks have contributed ideas and bug fixes for which they
 have my undying thanks :-) 
 
-The sybperl mailing list E<lt>F<sybperl-l@listproc.net>E<gt> is the
+The sybperl mailing list E<lt>F<sybperl-l@list.cren.net>E<gt> is the
 best place to ask questions.
 
 =cut

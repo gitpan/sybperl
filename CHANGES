@@ -1,4 +1,13 @@
-	$Id: CHANGES,v 1.2 1999/09/21 21:15:20 mpeppler Exp $
+	$Id: CHANGES,v 1.2 1999/09/21 21:15:20 mpeppler Exp mpeppler $
+
+2.12    More bug fixes
+
+	Better EMBED_SYBASE, thanks to Mike Hiller.
+	Added UseBix0x mode to CTlib.
+
+	269: dbsqlsend() missing from Sybperl.pm emulation layer.
+	315: -ldnet_stub directive in CONFIG ignored for OSF1/Tru64 Unix.
+	312: DBINTERRUPT misspelled in DBlib.xs.
 
 2.11	Various bug fixes.
 

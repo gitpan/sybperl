@@ -23,7 +23,7 @@ SYBASE=/opt/sybase
 # in particular) in a different location (say /opt/sybase/11.9.2 instead of
 # /opt/sybase/11.5.1) then you need to rebuild sybperl with the new value - 
 # setting the SYBASE environment variable will have no effect.
-EMBED_SYBASE = 1
+EMBED_SYBASE = 0
 
 # Additional libraries.
 # Some systems require -lnsl or -lBSD.
@@ -51,6 +51,8 @@ EXTRA_LIBS=-linsck
 # Use -DNCR_BUG if you are on NCR 3.0 and OpenClient 10.0.x
 # Add -DMSSQL if you want to use the Sybase::DBlib portion of sybperl
 # to connect to an MS-SQL 7 server.
+# Add -DTDS_DBOPEN_HACK if you are building with the FreeTDS libraries, and
+# you have configured freetds with --enable-dbm-conflict-fix.
 EXTRA_DEFS=-DDO_TIE
 
 

@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# $Id: Sybperl.pm,v 1.29 1999/06/07 15:40:43 mpeppler Exp $
+# $Id: Sybperl.pm,v 1.30 2000/05/13 22:54:13 mpeppler Exp $
 #
 # From
 # 	@(#)Sybperl.pm	1.27	03/26/98
@@ -99,7 +99,7 @@ tie $dbBin0x, Sybase::Sybperl::Attribs, 'dbBin0x', 0;
 
 @AttKeys = qw(dbNullIsUndef dbKeepNumeric dbBin0x);
 
-@EXPORT = qw(dblogin dbcmd dbsqlexec dbresults dbnextrow dbstrcpy
+@EXPORT = qw(dblogin dbcmd dbsqlexec dbsqlsend dbresults dbnextrow dbstrcpy
 	     dbuse dbopen dbclose
 	     $SUCCEED $FAIL $NO_MORE_RESULTS $NO_MORE_ROWS
 	     $MORE_ROWS $REG_ROW $DBTRUE $DBFALSE $DB_IN $DB_OUT
@@ -242,6 +242,20 @@ sub dbcmd
     $dbproc->dbcmd(@params);
 }
     
+sub dbsqlsend
+{
+    my($dbproc) = @_;
+    my($ret);
+
+    if(!defined($dbproc) || !$dbproc || !&isadb($dbproc))
+    {
+	croak("It doesn't make sense to call dbsqlsend with an undefined \$dbproc") if(!defined($default_db));
+	$dbproc = $default_db;
+    }
+    $ret = $dbproc->dbsqlsend;
+    $ret;
+}
+
 sub dbsqlexec
 {
     my($dbproc) = @_;

@@ -1,5 +1,5 @@
 /* -*-C-*-
- * $Id: DBlib.xs,v 1.49 1999/09/21 21:08:01 mpeppler Exp $
+ * $Id: DBlib.xs,v 1.50 2000/05/13 22:52:58 mpeppler Exp $
  *
  * From
  *	@(#)DBlib.xs	1.47	03/26/99
@@ -33,6 +33,10 @@
 #define PL_sv_undef sv_undef
 #define PL_dirty dirty
 
+#endif
+
+#ifdef TDS_DBOPEN_HACK
+#define dbopen(a,b) tdsdbopen((a), (b))
 #endif
 
 
@@ -933,7 +937,7 @@ initialize()
 	if((sv = perl_get_sv("Sybase::DBlib::Version", TRUE|GV_ADDMULTI)))
 	{
 	    char buff[256];
-	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib $Revision: 1.49 $ $Date: 1999/09/21 21:08:01 $ \n\nCopyright (c) 1991-1999 Michael Peppler\n\n",
+	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib $Revision: 1.50 $ $Date: 2000/05/13 22:52:58 $ \n\nCopyright (c) 1991-1999 Michael Peppler\n\n",
 		    SYBPLVER);
 	    sv_setnv(sv, atof(SYBPLVER));
 	    sv_setpv(sv, buff);
@@ -1341,9 +1345,9 @@ int arg;
 #else
 	    goto not_there;
 #endif
-	if (strEQ(name, "DBINTERUPT"))
-#ifdef DBINTERUPT
-	    return DBINTERUPT;
+	if (strEQ(name, "DBINTERRUPT"))
+#ifdef DBINTERURPT
+	    return DBINTERRUPT;
 #else
 	    goto not_there;
 #endif

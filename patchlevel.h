@@ -1,7 +1,7 @@
-/*	$Id: patchlevel.h,v 1.4 1999/09/21 21:11:59 mpeppler Exp $ */
+/*	$Id: patchlevel.h,v 1.5 1999/11/17 19:12:11 mpeppler Exp $ */
 
 #define VERSION		2
 
-#define PATCHLEVEL 	11
+#define PATCHLEVEL 	12
 
 /*#define UNOFFICIAL      _03*/

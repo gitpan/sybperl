@@ -1,14 +1,9 @@
-@(#)README.dbschema	1.2	11/14/96
-dbschema.pl has been substantially re-written by David Whitmarsh and
-now includes very good support for System 10/11 features such as RI
-constraints, inline defaults, numeric/decimal datatypes, etc.
+$Id: README.dbschema,v 1.1 2000/05/13 22:05:43 mpeppler Exp $
 
-There is another version of dbschema, by Dave Partridge, who has added
-disk init, create database, thresholds, etc to the old version. I have
-not had the time to integrate the two...
-
-The original dbschema.pl is available in dbschema.old, but it will not
-work well at all against a System 10/11 database.
-
+The maintenance of the dbschema.pl script has been taken over by
+David Owen (dowen@midsomer.org). The latest version of the script 
+should be retrieved from his site (www.midsomer.org). I have NOT
+updated the code that is included here with David's latest
+changes.
 
 Michael

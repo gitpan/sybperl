@@ -1,6 +1,6 @@
 /* -*-C-*-
  *
- * $Id: CTlib.xs,v 1.40 1999/09/21 21:05:01 mpeppler Exp $
+ * $Id: CTlib.xs,v 1.41 2000/05/13 22:51:14 mpeppler Exp $
  *	@(#)CTlib.xs	1.37	03/26/99
  */
 
@@ -88,6 +88,7 @@ struct attribs {
     int UseMoney;
     int UseNumeric;
     int UseChar;
+    int UseBin0x;
     int MaxRows;
     int ComputeId;
     int ExtendedError;
@@ -149,6 +150,7 @@ typedef enum hash_key_id
     HV_use_money,
     HV_use_numeric,
     HV_use_char,
+    HV_use_bin0x,
     HV_max_rows,
     HV_compute_id,
     HV_extended_error,
@@ -166,6 +168,7 @@ static struct _hash_keys {
     { "UseMoney",    HV_use_money },
     { "UseNumeric",  HV_use_numeric },
     { "UseChar",     HV_use_char },
+    { "UseBin0x",    HV_use_bin0x },
     { "MaxRows",     HV_max_rows },
     { "ComputeId",   HV_compute_id },
     { "ExtendedError", HV_extended_error },
@@ -271,6 +274,9 @@ attr_store(info, key, keylen, sv, flag)
       case HV_use_numeric:
 	  attr->UseNumeric    = SvTRUE(sv);
 	  break;
+      case HV_use_bin0x:
+	  attr->UseBin0x      = SvTRUE(sv);
+	  break;
       case HV_max_rows:
 	  attr->MaxRows       = SvIV(sv);
 	  break;
@@ -331,6 +337,9 @@ attr_fetch(info, key, keylen)
 	  break;
       case HV_use_numeric:
 	  sv = newSViv(attr->UseNumeric);
+	  break;
+      case HV_use_bin0x:
+	  sv = newSViv(attr->UseBin0x);
 	  break;
       case HV_max_rows:
 	  sv = newSViv(attr->MaxRows);
@@ -431,6 +440,11 @@ newdbh(info, package, attr_ref)
 		info->connection->attr.UseNumeric = SvTRUE(*svp);
 	    else
 		info->connection->attr.UseNumeric = 0;
+	    if((svp = hv_fetch(Att, hash_keys[HV_use_bin0x].key,
+			       strlen(hash_keys[HV_use_bin0x].key), 0)))
+		info->connection->attr.UseBin0x = SvTRUE(*svp);
+	    else
+		info->connection->attr.UseBin0x = 0;
 	    if((svp = hv_fetch(Att, hash_keys[HV_max_rows].key,
 			       strlen(hash_keys[HV_max_rows].key), 0)))
 		info->connection->attr.MaxRows = SvIV(*svp);
@@ -1696,7 +1710,7 @@ initialize()
     if((sv = perl_get_sv("Sybase::CTlib::Version", TRUE|GV_ADDMULTI)))
     {
 	char buff[256];
-	sprintf(buff, "This is sybperl, version %s\n\nSybase::CTlib $Revision: 1.40 $ $Date: 1999/09/21 21:05:01 $\n\nCopyright (c) 1995-1999 Michael Peppler\nPortions Copyright (c) 1995 Sybase, Inc.\n\n",
+	sprintf(buff, "This is sybperl, version %s\n\nSybase::CTlib $Revision: 1.41 $ $Date: 2000/05/13 22:51:14 $\n\nCopyright (c) 1995-1999 Michael Peppler\nPortions Copyright (c) 1995 Sybase, Inc.\n\n",
 		SYBPLVER);
 	sv_setnv(sv, atof(SYBPLVER));
 	sv_setpv(sv, buff);
@@ -5552,6 +5566,25 @@ ct_cmd_alloc(dbp)
     }
 }
 
+void
+ct_close(dbp, close_option = CS_FORCE_CLOSE)
+	SV *	dbp
+	int	close_option
+CODE:
+{
+    ConInfo *info = get_ConInfo(dbp);
+    ConInfo *o_info;
+    RefCon *refCon;
+
+    refCon = info->connection;
+        
+    ct_cmd_drop(info->cmd);
+    --refCon->refcount;
+    
+    ct_close(refCon->connection, close_option);
+/*    ct_con_drop(refCon->connection); */
+}
+
 
 void
 DESTROY(dbp)
@@ -6036,7 +6069,15 @@ PPCODE:
 		    sv_setpvn(sv, info->coldata[i].value.c, len);
 		    break;
 		  case CS_CHAR_TYPE:
-		    sv_setpv(sv, info->coldata[i].value.c);
+		    if(info->coldata[i].realtype == CS_BINARY_TYPE && 
+		       info->connection->attr.UseBin0x) {
+			char buff[MAX_CHAR_BUF];
+			strcpy(buff, "0x");
+			strcat(buff, info->coldata[i].value.c);
+			sv_setpv(sv, buff);
+		    } else {
+			sv_setpv(sv, info->coldata[i].value.c);
+		    }
 		    break;
 		  case CS_FLOAT_TYPE:
 		    sv_setnv(sv, info->coldata[i].value.f);

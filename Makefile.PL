@@ -1,5 +1,5 @@
 # -*-Perl-*-
-#	$Id: Makefile.PL,v 1.3 1999/09/21 21:14:14 mpeppler Exp $
+#	$Id: Makefile.PL,v 1.4 2000/05/13 22:58:57 mpeppler Exp $
 require 5.002;
 use ExtUtils::MakeMaker;
 use Config;
@@ -41,7 +41,7 @@ One way to do so would be to run the following command
     mv $_/Sybase $_/Sybase.old
 
 MSG_EOF
-	
+#'	
     }
 }
 
