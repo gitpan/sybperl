@@ -6,6 +6,7 @@
 # (Linux, for example)
 DBLIBVS=1000
 
+
 # CTlib version. Set to 0 if Client Library is not available on your
 # system, or if you don't want to build the CTlib module. The Client
 # Library started shipping with System 10.
@@ -16,19 +17,24 @@ CTLIBVS=100
 
 # Where is the Sybase directory on your system (include files &
 # libraries are expected to be found at SYBASE/include & SYBASE/lib
-SYBASE=/usr/local/sybase10.0.2
+SYBASE=/opt/sybase
 
 # Additional libraries.
 # Some systems require -lnsl or -lBSD.
+# Solaris 2.x needs -ltli
+# DEC OSF/1 needs -ldnet_stub
 # See the Sybase OpenClient Supplement for your OS/Hardware
 # combination.
-EXTRA_LIBS=
+EXTRA_LIBS=-ltli
 
 # Additional #defines.
 # With Perl 5.001m, you will need -DUNDEF_BUG.
-# With Perl 5.002, none are normally needed.
+# With Perl 5.002, none are normally needed, but you may wish to
+# use -DDO_TIE to get the benefit of stricter checking on the
+# Sybase::DBlib and Sybase::CTlib attributes.
 #EXTRA_DEFS=-DUNDEF_BUG
-EXTRA_DEFS=
+EXTRA_DEFS=-DDO_TIE
+
 
 # LINKTYPE
 # If you wish to link Sybase::DBlib and/or Sybase::CTlib statically

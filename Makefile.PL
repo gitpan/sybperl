@@ -1,7 +1,8 @@
 # -*-Perl-*-
-#	@(#)Makefile.PL	1.16	1/5/96
+#	@(#)Makefile.PL	1.19	03/22/96
+require 5.002;
 use ExtUtils::MakeMaker;
-require 5.001;
+use Config;
 
 require './config';
 
@@ -9,69 +10,36 @@ $sattr = &config;
 
 $linktype = defined($$sattr{LINKTYPE}) ? $$sattr{LINKTYPE} : 'dynamic';
 
-# Make sure we can handle both MakeMaker version 4.x and 5.x
-#
-# $MM_VERSION is set in the 'config' file.
-if($MM_VERSION > 5) {
-    eval <<'EOF_EVAL';
 sub MY::libscan
 {
     my($self, $path) = @_;
     return '' if $path =~ m:/SCCS/:;
     $path;
 }
-EOF_EVAL
-} else {
-    eval <<'EOF_EVAL';
 
-sub MY::libscan
-{
-    return '' if m:/SCCS/:;
-    $_;
+foreach (@INC) {
+    next if(/site_perl/);
+    if(-d "$_/Sybase") {
+	warn <<"MSG_EOF";
+*** WARNING ***
+An installed copy of the Sybase modules found in $_
+This can cause a version conflict as this version installs in
+    $Config{installprivlib}/site_perl
+which comes later in Perl 5.002's include directory list.
+
+You may need to manually remove these older Sybase directories if
+sybperl 2.05 does not run correctly.
+
+MSG_EOF
+	
+    }
 }
 
-sub MY::staticmake
-{
-    my($self, %attribs) = @_;
-    my(%att) = %ExtUtils::MakeMaker::att;
-    my(%searchdirs)=($att{PERL_ARCHLIB} => 1,  $att{INST_ARCHLIB} => 1);
-    my(@searchdirs)=keys %searchdirs;
-    my @static;
-    
-    my(@perlinc) = ($att{INST_ARCHLIB}, $att{INST_LIB}, $att{PERL_ARCHLIB}, $att{PERL_LIB});
-    # Check the sybperl CONFIG status to see which extensions to add:
-    push(@static, "$att{INST_ARCHLIB}/auto/$att{FULLEXT}/DBlib/DBlib.a") if $sattr{DBLIBVS} > 0; 
-    push(@static, "$att{INST_ARCHLIB}/auto/$att{FULLEXT}/CTlib/CTlib.a") if $sattr{CTLIBVS} > 0;
-    
-    MY->makeaperl('MAKE' => $att{MAKEFILE}, 
-			     'DIRS' => \@searchdirs, 
-			     'STAT' => \@static, 
-			     'INCL' => \@perlinc,
-			     'TARGET' => $att{MAP_TARGET},
-			     'TMP' => "",
-			     'LIBPERL' => $att{LIBPERL_A}
-			     );
-}
-    
-EOF_EVAL
-}
-
-
-if($MM_VERSION > 5) {
-    WriteMakefile('DISTNAME' => "sybperl",
-		  'NAME' => Sybase, 
-		  'VERSION' => $$sattr{VERSION},
-		  'dist' => {'TARFLAGS' => "cvfF", 'COMPRESS' => "gzip"},
-		  'LINKTYPE' => $linktype,
-		  'XSPROTOARG' => '-prototypes'
-		  );
-} else {
-    WriteMakefile(DISTNAME => "sybperl",
-		  NAME => Sybase, 
-		  VERSION => $$sattr{VERSION},
-		  dist => {'TARFLAGS' => "cvfF", 'COMPRESS' => "gzip"},
-		  LINKTYPE => $linktype,
-		  'linkext' => {LINKTYPE => ''}
-		  );
-}
+WriteMakefile('DISTNAME' => "sybperl",
+	      'NAME' => Sybase, 
+	      'VERSION' => $$sattr{VERSION},
+	      'dist' => {'TARFLAGS' => "cvfF", 'COMPRESS' => "gzip"},
+	      'LINKTYPE' => $linktype,
+	      'XSPROTOARG' => '-prototypes'
+	      );
 

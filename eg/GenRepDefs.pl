@@ -1,4 +1,5 @@
 #!/bin/perl5
+#	@(#)GenRepDefs.pl	1.1	2/28/96
 # GenRepDefs.pl, a script to generate RepDefs and Subscriptions for a 
 # database. Ashu Joglekar, Oct 6th 1995. Hacked from 
 # dbschema.pl	A script to extract a database structure from

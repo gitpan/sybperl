@@ -1,4 +1,5 @@
 #!/bin/perl5
+#	@(#)dbschema.10.pl	1.1	2/28/96
 # Hacked by Ashu Joglekar, Oct 13th 1995, supports Sys10 datatypes. Some mysterious
 # Sys10 thing that prints permission grant statements backwards also fixed.
 #

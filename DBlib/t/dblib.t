@@ -1,14 +1,15 @@
 #!./perl
 
-#	@(#)dblib.t	1.14	12/22/95
+#	@(#)dblib.t	1.17	2/20/96
 
-print "1..16\n";
+print "1..19\n";
 
-use Sybase::DBlib qw(2.0);
+use Sybase::DBlib qw(2.04);
 
 # This test file is still under construction...
 $Version = $SybperlVer;
 $Version = $Sybase::DBlib::Version;
+$Sybase::DBlib::Att{UseDateTime} = TRUE;
 
 print "Sybperl Version $Version\n";
 
@@ -76,14 +77,15 @@ $X->dbnextrow;
 ($X->dbresults == &SUCCEED)
     and print("ok 11\n")
     or die "not ok 11\n";
+$err = 0;
 while(@row = $X->dbnextrow)
 {
     $rows++;
-    ($X->{DBstatus} == &REG_ROW)
-	and print("ok 12\n")
-	    or die "not ok 12\n"; # 
+    ++$err if($X->{DBstatus} != &REG_ROW);
 }
-
+($err == 0)
+    and print("ok 12\n")
+    or die "not ok 12\n";
 ($count == $rows)
     and print "ok 13\n"
     or die "not ok 13\n";
@@ -101,6 +103,20 @@ dbmsghandle (\&msg_handler); # different handler to check callbacks
 
 dbmsghandle ("message_handler"); # Some user defined error handlers
 
+$date1 = $X->newdate('Jan 1 1995');
+$date2 = $X->newdate('Jan 3 1995');
+
+($date1 < $date2)
+    and print "ok 17\n"
+    or print "not ok 17\n";
+($days, $msecs) = $date1->diff($date2);
+($days == 2 && $msecs == 0)
+    and print "ok 18\n"
+    or print "not ok 18\n";
+$ref = $X->sql("select getdate()");
+(ref(${$$ref[0]}[0]) eq 'Sybase::DBlib::DateTime')
+    and print "ok 19\n"
+    or print "not ok 19\n";
 
 sub message_handler
 {

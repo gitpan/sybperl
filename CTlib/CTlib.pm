@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# @(#)CTlib.pm	1.14	1/30/96
+# @(#)CTlib.pm	1.15	2/29/96
 
 # Copyright (c) 1995
 #   Michael Peppler
@@ -11,6 +11,84 @@
 #   You may copy this under the terms of the GNU General Public License,
 #   or the Artistic License, copies of which should have accompanied
 #   your Perl kit.
+
+require 5.002;
+
+
+package Sybase::CTlib::_attribs;
+
+use Carp;
+
+
+sub FETCH { 
+    return $_[0]->{$_[1]} if (exists $_[0]->{$_[1]});
+    carp("'$_[1]' is not a valid Sybase::CTlib attribute") if(!defined($_[0]->{$_[1]}));
+    return undef;
+}
+ 
+sub FIRSTKEY {
+    each %{$_[0]};
+}
+
+sub NEXTKEY {
+    each %{$_[0]};
+}
+
+sub EXISTS{ 
+     exists($_[0]->{$_[1]});
+}
+
+sub STORE {
+    if(!defined($_[0]->{$_[1]})) {
+	carp("'$_[1]' is not a valid Sybase::CTlib attribute");
+	return undef;
+    }
+    $_[0]->{$_[1]} = $_[2];
+}
+
+sub readonly {
+    carp "Can't delete or clear attributes from a Sybase::CTlib handle.\n";
+}
+
+sub DELETE{ &readonly }
+sub CLEAR { &readonly }
+
+package Sybase::CTlib::Att;
+
+use Carp;
+
+sub TIEHASH {
+    bless {UseDateTime => 0,
+	   UseMoney => 0,
+	   UseNumeric => 0,
+	   MaxRows => 0}
+}
+sub FETCH { 
+    return $_[0]->{$_[1]} if (exists $_[0]->{$_[1]});
+    return undef;
+}
+ 
+sub FIRSTKEY {
+    each %{$_[0]};
+}
+
+sub NEXTKEY {
+    each %{$_[0]};
+}
+
+sub EXISTS{ 
+     exists($_[0]->{$_[1]});
+}
+
+sub STORE {
+    croak("'$_[1]' is not a valid Sybase::CTlib attribute") if(!defined($_[0]->{$_[1]}));
+    $_[0]->{$_[1]} = $_[2];
+}
+
+sub readonly { croak "\%Sybase::CTlib::Att is read-only\n" }
+
+sub DELETE{ &readonly }
+sub CLEAR { &readonly }
 
 package Sybase::CTlib::DateTime;
 
@@ -24,7 +102,7 @@ require Time::Local;
 # Here we set up overloading operators
 # for certain operations.
 
-%OVERLOAD = ("\"\"" => \&d_str,		# convert to string
+use overload ("\"\"" => \&d_str,		# convert to string
 	     "cmp" => \&d_cmp,		# compare two dates
 	     "<=>" => \&d_cmp);		# same thing
 
@@ -85,7 +163,7 @@ package Sybase::CTlib::Money;
 # Sybase MONEY handling. Again, we set up overloading for
 # certain operators (in particular the arithmetic ops.)
 
-%OVERLOAD = ("\"\"" => \&m_str,		# Convert to string
+use overload ("\"\"" => \&m_str,		# Convert to string
 	     "0+" => \&m_num,		# Convert to floating point
 	     "<=>" => \&m_cmp,		# Compare two money items
 	     "+" => \&m_add,		# These you can guess...
@@ -139,7 +217,7 @@ package Sybase::CTlib::Numeric;
 # Sybase Numeric/Decimal handling. Again, we set up overloading for
 # certain operators (in particular the arithmetic ops.)
 
-%OVERLOAD = ("\"\"" => \&n_str,		# Convert to string
+use overload ("\"\"" => \&n_str,		# Convert to string
 	     "0+" => \&n_num,		# Convert to floating point
 	     "<=>" => \&n_cmp,		# Compare
 	     "+" => \&n_add,		# These you can guess...
@@ -188,43 +266,6 @@ sub n_div {
     $left->calc($right, '/', $order);
 }
 
-package Sybase::CTlib::Att;
-
-use Carp;
-
-sub TIEHASH { bless {UseDateTime => 0,
-		 UseMoney => 0,
-		 UseNumeric => 0,
-		 MaxRows => 0}
-	  }
-sub FETCH { 
-    return $_[0]->{$_[1]} if (exists $_[0]->{$_[1]});
-    return undef;
-}
- 
-sub FIRSTKEY {
-    each %{$_[0]};
-}
-
-sub NEXTKEY {
-    each %{$_[0]};
-}
-
-sub EXISTS{ 
-     exists($_[0]->{$_[1]});
-}
-
-sub STORE {
-    croak("'$_[1]' is not a valid Sybase::CTlib attribute") if(!defined($_[0]->{$_[1]}));
-    $_[0]->{$_[1]} = $_[2];
-}
-
-sub readonly { croak "\%Sybase::CTlib::Att is read-only\n" }
-
-sub DELETE{ &readonly }
-sub CLEAR { &readonly }
-
-
 
 package Sybase::CTlib;
 
@@ -232,20 +273,18 @@ require Exporter;
 require AutoLoader;
 require DynaLoader;
 
-# This does not work with 5.001 (produces a lot of 'subroutine redefined'
-# warnings...
-if($] >= 5.002) {
-    eval '
-use subs qw(CS_SUCCEED CS_ROW_RESULT CS_PARAM_RESULT CS_STATUS_RESULT
-		    CS_CURSOR_RESULT CS_COMPUTE_RESULT CS_CANCEL_CURRENT);
-    '
-}
+use Carp;
+
+use subs qw(CS_SUCCEED CS_FAIL CS_CMD_DONE CS_ROW_COUNT
+  CS_ROW_RESULT CS_PARAM_RESULT CS_STATUS_RESULT CS_CURSOR_RESULT
+  CS_COMPUTE_RESULT CS_CANCEL_CURRENT);
+
+use vars qw(%Att);
 
 @ISA = qw(Exporter AutoLoader DynaLoader);
 # Items to export into callers namespace by default
 # (move infrequently used names to @EXPORT_OK below)
-@EXPORT = qw(
-	     ct_callback
+@EXPORT = qw( ct_callback
 	CS_12HOUR
 	CS_ABSOLUTE
 	CS_ACK
@@ -783,65 +822,21 @@ use subs qw(CS_SUCCEED CS_ROW_RESULT CS_PARAM_RESULT CS_STATUS_RESULT
 	CS_VER_STRING
 	CS_WILDCARD
 	CS_ZERO
-	CT_BIND
-	CT_BR_COLUMN
-	CT_BR_TABLE
-	CT_CALLBACK
-	CT_CANCEL
-	CT_CAPABILITY
-	CT_CLOSE
-	CT_CMD_ALLOC
-	CT_CMD_DROP
-	CT_CMD_PROPS
-	CT_COMMAND
-	CT_COMPUTE_INFO
-	CT_CONFIG
-	CT_CONNECT
-	CT_CON_ALLOC
-	CT_CON_DROP
-	CT_CON_PROPS
-	CT_CON_XFER
-	CT_CURSOR
-	CT_DATA_INFO
-	CT_DEBUG
-	CT_DESCRIBE
-	CT_DIAG
-	CT_DYNAMIC
-	CT_DYNDESC
-	CT_EXIT
-	CT_FETCH
-	CT_GETFORMAT
-	CT_GETLOGINFO
-	CT_GET_DATA
-	CT_INIT
-	CT_KEYDATA
-	CT_LABELS
-	CT_NOTIFICATION
-	CT_OPTIONS
-	CT_PARAM
-	CT_POLL
-	CT_RECVPASSTHRU
-	CT_REMOTE_PWD
-	CT_RESULTS
-	CT_RES_INFO
-	CT_SEND
-	CT_SENDPASSTHRU
-	CT_SEND_DATA
-	CT_SETLOGINFO
-	CT_USER_FUNC
-	CT_WAKEUP
-	SQLCA_TYPE
-	SQLCODE_TYPE
-	SQLSTATE_TYPE
 );
 # Other items we are prepared to export if requested
-@EXPORT_OK = qw(
+@EXPORT_OK = qw(TRACE_NONE TRACE_ALL TRACE_CREATE TRACE_DESTROY TRACE_SQL
+    TRACE_RESULTS TRACE_FETCH TRACE_CURSOR TRACE_PARAMS	TRACE_OVERLOAD
+    SQLCA_TYPE SQLCODE_TYPE SQLSTATE_TYPE
+    CT_BIND CT_BR_COLUMN CT_BR_TABLE CT_CALLBACK CT_CANCEL CT_CAPABILITY
+    CT_CLOSE CT_CMD_ALLOC CT_CMD_DROP CT_CMD_PROPS CT_COMMAND CT_COMPUTE_INFO
+    CT_CONFIG CT_CONNECT CT_CON_ALLOC CT_CON_DROP CT_CON_PROPS CT_CON_XFER
+    CT_CURSOR CT_DATA_INFO CT_DEBUG CT_DESCRIBE CT_DIAG CT_DYNAMIC
+    CT_DYNDESC CT_EXIT CT_FETCH CT_GETFORMAT CT_GETLOGINFO CT_GET_DATA
+    CT_INIT CT_KEYDATA CT_LABELS CT_NOTIFICATION CT_OPTIONS CT_PARAM
+    CT_POLL CT_RECVPASSTHRU CT_REMOTE_PWD CT_RESULTS CT_RES_INFO CT_SEND
+    CT_SENDPASSTHRU CT_SEND_DATA CT_SETLOGINFO CT_USER_FUNC CT_WAKEUP
 );
 
-#%Att = (UseDateTime => 0,
-#	UseMoney => 0,
-#	UseNumeric => 0,
-#	MaxRows => 0);
 
 tie %Att, Sybase::CTlib::Att;
 
@@ -900,15 +895,15 @@ sub ct_sql
     local($res_type);  # it's local so that it can be examined by &$sub
     my($count, $max);
 
-    ($db->ct_execute($cmd) == CS_SUCCEED) || return undef;
+    ($db->ct_execute($cmd) == &CS_SUCCEED) || return undef;
 
     $max = $db->{'MaxRows'};
     $res_type = 0;		# avoid 'unitialized variable' warnings...
     $flag = 0 unless $flag;
 
-    while(($rc = $db->ct_results($res_type)) == CS_SUCCEED) {
-        $db->{'ROW_COUNT'} = $db->ct_res_info(CS_ROW_COUNT)
-            if $res_type == CS_CMD_DONE;
+    while(($rc = $db->ct_results($res_type)) == &CS_SUCCEED) {
+        $db->{'ROW_COUNT'} = $db->ct_res_info(&CS_ROW_COUNT)
+            if $res_type == &CS_CMD_DONE;
 	next unless $fetchable{$res_type};
 
         while (@data = $db->ct_fetch($flag)) {
@@ -923,7 +918,7 @@ sub ct_sql
 		}
             }
         }
-	$db->ct_cancel(CS_CANCEL_CURRENT) if($max && $count > $max);
+	$db->ct_cancel(&CS_CANCEL_CURRENT) if($max && $count > $max);
     }
     $db->{RC} = $rc;
     wantarray ? @res : \@res;  # return the result array

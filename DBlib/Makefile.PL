@@ -1,7 +1,10 @@
 # -*-Perl-*-
-#	@(#)Makefile.PL	1.12	1/5/96
+#	@(#)Makefile.PL	1.13	03/22/96
+
+require 5.002;
 
 use ExtUtils::MakeMaker;
+use Config;
 
 require '../config';
 
@@ -20,19 +23,6 @@ $linktype = defined($$sattr{LINKTYPE}) ? $$sattr{LINKTYPE} : 'dynamic';
 #####
 ### Configure End
 #####
-if($MM_VERSION < 5) {
-    eval <<'EOF_EVAL';
-sub MY::staticmake
-{
-    my($self, %attribs) = @_;
-
-'
-# --- MakeMaker makeaperl section ---
-MAP_TARGET    = ../perl
-';
-}
-EOF_EVAL
-}
 
 # Write a dummy makefile if DBLIBVS is 0 - this means that we don't have
 # DBlibrary on this system...
@@ -45,24 +35,15 @@ if($DBLIBVS == 0)
 }
 else
 {
-    if($MM_VERSION > 5) {
-	WriteMakefile('LIBS' => [$lib_string],
+    WriteMakefile('LIBS' => [$lib_string],
 		  'NAME' => "Sybase::DBlib",
 		  'INC' => $inc_string,
 		  'VERSION' => "$$sattr{VERSION}",
 		  'DEFINE' => $def_string,
 		  'XSPROTOARG' => '-prototypes',
 		  'LINKTYPE' => $linktype,
+		  'LDDLFLAGS' => "-L$SYBASE/lib $Config{lddlflags}",
+		  'LDFLAGS' => "-L$SYBASE/lib $Config{ldflags}",
 		  );
-    } else {
-	WriteMakefile('LIBS' => [$lib_string],
-		  'NAME' => "Sybase::DBlib",
-		  'INC' => $inc_string,
-		  'VERSION' => "$$sattr{VERSION}",
-		  'DEFINE' => $def_string,
-#		  'XSPROTOARG' => '-prototypes',
-		  'LINKTYPE' => $linktype,
-		  );
-    }	
 }
 

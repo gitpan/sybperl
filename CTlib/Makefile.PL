@@ -1,8 +1,11 @@
 # -*-Perl-*-
-# @(#)Makefile.PL	1.11	1/30/96
+# @(#)Makefile.PL	1.12	03/22/96
 
+
+require 5.002;
 
 use ExtUtils::MakeMaker;
+use Config;
 
 require '../config';
 
@@ -27,19 +30,6 @@ $lib_string = "-L$SYBASE/lib -lct -lcs -ltcl -lcomn -lintl -linsck $$sattr{EXTRA
 ### Configure End
 #####
 
-if($MM_VERSION < 5) {
-    eval <<'EOF_EVAL';
-sub MY::staticmake
-{
-    my($self, %attribs) = @_;
-
-'
-# --- MakeMaker makeaperl section ---
-MAP_TARGET    = ../perl
-';
-}
-EOF_EVAL
-}    
 
 # Write a dummy makefile if CTLIBVS is 0 - this means that we don't have
 # CTlibrary on this system...
@@ -52,23 +42,14 @@ if($CTLIBVS == 0)
 }
 else
 {
-    if($MM_VERSION > 5) {
-	WriteMakefile('NAME'	=> 'Sybase::CTlib',
+    WriteMakefile('NAME'	=> 'Sybase::CTlib',
 		  'VERSION'	=> $VERSION,
 		  'LIBS'	=> [$lib_string],
 		  'DEFINE'	=> $def_string,
 		  'INC'	=> $inc_string,
 		  'LINKTYPE' => $linktype,
-		  'XSPROTOARG' => '-prototypes'
+		  'XSPROTOARG' => '-prototypes',
+		  'LDDLFLAGS' => "-L$SYBASE/lib $Config{lddlflags}",
+		  'LDFLAGS' => "-L$SYBASE/lib $Config{ldflags}"
 		  );
-    } else {
-	WriteMakefile('NAME'	=> 'Sybase::CTlib',
-		  'VERSION'	=> $VERSION,
-		  'LIBS'	=> [$lib_string],
-		  'DEFINE'	=> $def_string,
-		  'INC'	=> $inc_string,
-		  'LINKTYPE' => $linktype,
-#		  'XSPROTOARG' => '-prototypes'
-		  );
-    }
 }

@@ -1,30 +1,227 @@
 # -*-Perl-*-
-# @(#)DBlib.pm	1.21	1/31/96
+# @(#)DBlib.pm	1.24	03/22/96
 
-# Copyright (c) 1991-1995
+# Copyright (c) 1991-1996
 #   Michael Peppler
 #
 #   You may copy this under the terms of the GNU General Public License,
 #   or the Artistic License, copies of which should have accompanied
 #   your Perl kit.
 
+require 5.002;
+
+package Sybase::DBlib::_attribs;
+
+use Carp;
+
+
+sub FETCH { 
+    return $_[0]->{$_[1]} if (exists $_[0]->{$_[1]});
+    carp("'$_[1]' is not a valid Sybase::DBlib attribute") if(!defined($_[0]->{$_[1]}));
+    return undef;
+}
+ 
+sub FIRSTKEY {
+    each %{$_[0]};
+}
+
+sub NEXTKEY {
+    each %{$_[0]};
+}
+
+sub EXISTS{ 
+     exists($_[0]->{$_[1]});
+}
+
+sub STORE {
+    if(!defined($_[0]->{$_[1]})) {
+	carp("'$_[1]' is not a valid Sybase::DBlib attribute");
+	return undef;
+    }
+    $_[0]->{$_[1]} = $_[2];
+}
+
+sub readonly {
+    carp "Can't delete or clear attributes from a Sybase::DBlib handle.\n";
+}
+
+sub DELETE{ &readonly }
+sub CLEAR { &readonly }
+
+
+package Sybase::DBlib::Att;
+
+use Carp;
+
+sub TIEHASH {
+    bless {
+	UseDateTime => 0,
+	UseMoney => 0,
+#	   UseNumeric => 0,      # I don't think this can work with DBlib
+	MaxRows => 0,
+	dbKeepNumeric => 1,
+	dbNullIsUndef => 1,
+	dbBin0x => 0,
+       }
+}
+sub FETCH { 
+    return $_[0]->{$_[1]} if (exists $_[0]->{$_[1]});
+    return undef;
+}
+ 
+sub FIRSTKEY {
+    each %{$_[0]};
+}
+
+sub NEXTKEY {
+    each %{$_[0]};
+}
+
+sub EXISTS{ 
+     exists($_[0]->{$_[1]});
+}
+
+sub STORE {
+    croak("'$_[1]' is not a valid Sybase::DBlib attribute") if(!defined($_[0]->{$_[1]}));
+    $_[0]->{$_[1]} = $_[2];
+}
+
+sub readonly { croak "\%Sybase::DBlib::Att is read-only\n" }
+
+sub DELETE{ &readonly }
+sub CLEAR { &readonly }
+
+package Sybase::DBlib::DateTime;
+
+# Sybase DATETIME handling.
+
+# For converting to Unix time:
+
+require Time::Local;
+
+
+# Here we set up overloading operators
+# for certain operations.
+
+use overload ("\"\"" => \&d_str,		# convert to string
+	      "cmp" => \&d_cmp,		# compare two dates
+	     "<=>" => \&d_cmp);		# same thing
+
+sub d_str {
+    my $self = shift;
+
+    $self->str;
+}
+
+sub d_cmp {
+    my ($left, $right, $order) = @_;
+
+    $left->cmp($right, $order);
+}
+
+sub mktime {
+    my $self = shift;
+    my (@data, $ret);
+
+    # Wrapped in an eval() in case POSIX is not compiled in this
+    # copy of Perl.
+    eval {
+    require POSIX;		# This isn't very clean, but it speeds
+				# up loading for something that is rarely
+				# used...
+    
+    @data = $self->crack;
+
+    $ret = POSIX::mktime($data[7], $data[6], $data[5], $data[2],
+			 $data[1], $data[0]-1900);
+    };
+    $ret;
+}
+
+sub timelocal {
+    my $self = shift;
+    my (@data, $ret);
+
+    @data = $self->crack;
+
+    $ret = Time::Local::timelocal($data[7], $data[6], $data[5], $data[2],
+				  $data[1], $data[0]-1900);
+}
+
+sub timegm {
+    my $self = shift;
+    my (@data, $ret);
+
+    @data = $self->crack;
+
+    $ret = Time::Local::timegm($data[7], $data[6], $data[5], $data[2],
+			       $data[1], $data[0]-1900);
+}
+
+package Sybase::DBlib::Money;
+
+# Sybase MONEY handling. Again, we set up overloading for
+# certain operators (in particular the arithmetic ops.)
+
+use overload ("\"\"" => \&m_str,		# Convert to string
+	     "0+" => \&m_num,		# Convert to floating point
+	     "<=>" => \&m_cmp,		# Compare two money items
+	     "+" => \&m_add,		# These you can guess...
+	     "-" => \&m_sub,
+	     "*" => \&m_mul,
+	     "/" => \&m_div);
+
+    
+sub m_str {
+    my $self = shift;
+
+    $self->str;
+}
+
+sub m_num {
+    my $self = shift;
+
+    $self->num;
+}
+
+sub m_cmp {
+    my ($left, $right, $order) = @_;
+    my $ret;
+
+    $ret = $left->cmp($right, $order);
+}
+
+sub m_add {
+    my ($left, $right) = @_;
+
+    $left->calc($right, '+');
+}
+sub m_sub {
+    my ($left, $right, $order) = @_;
+
+    $left->calc($right, '-', $order);
+}
+sub m_mul {
+    my ($left, $right) = @_;
+
+    $left->calc($right, '*');
+}
+sub m_div {
+    my ($left, $right, $order) = @_;
+
+    $left->calc($right, '/', $order);
+}
 
 package Sybase::DBlib;
-
-require 5.000;
 
 require Exporter;
 require AutoLoader;
 require DynaLoader;
 use Carp;
 
-# This does not work with 5.001 (produces a lot of 'subroutine redefined'
-# warnings...
-if($] >= 5.002) {
-    eval '
-use subs qw(SUCCEED FAIL NO_MORE_RESULTS);
-'
-}
+use subs qw(sql SUCCEED FAIL NO_MORE_RESULTS SYBESMSG INT_CANCEL);
+
+use vars qw(%Att);
 
 @ISA = qw(Exporter AutoLoader DynaLoader);
 
@@ -83,6 +280,8 @@ use subs qw(SUCCEED FAIL NO_MORE_RESULTS);
 	SYBEXTDN SYBEXTN SYBEXTSN SYBEZTXT
 );
 
+tie %Att, Sybase::DBlib::Att;
+
 sub AUTOLOAD {
     local($constname);
     ($constname = $AUTOLOAD) =~ s/.*:://;
@@ -120,12 +319,12 @@ sub dbsucceed
     my($abort) = shift;
     my($ret);
     
-    if(($ret = $self->dbsqlexec) == SUCCEED)
+    if(($ret = $self->dbsqlexec) == &SUCCEED)
     {
 	$ret = $self->dbresults;
     }
 
-    croak "dbsucceed failed\n" if($abort && $ret == FAIL);
+    croak "dbsucceed failed\n" if($abort && $ret == &FAIL);
 
     $ret;
 }
@@ -143,7 +342,7 @@ sub sql				# Submitted by Gisle Aas
     my @data;
 
     if($db->{'MaxRows'}) {
-	$db->dbsetopt(DBROWCOUNT, "$db->{'MaxRows'}");
+	$db->dbsetopt(&DBROWCOUNT, "$db->{'MaxRows'}");
     }
 
     $db->dbcmd($cmd);
@@ -151,7 +350,7 @@ sub sql				# Submitted by Gisle Aas
 
     $flag = 0 unless $flag;
     
-    while($db->dbresults != NO_MORE_RESULTS) {
+    while($db->dbresults != &NO_MORE_RESULTS) {
         while (@data = $db->dbnextrow($flag)) {
             if (defined $sub) {
                 &$sub(@data);
@@ -166,7 +365,7 @@ sub sql				# Submitted by Gisle Aas
     }
     
     if($db->{'MaxRows'}) {
-	$db->dbsetopt(DBROWCOUNT, "0");
+	$db->dbsetopt(&DBROWCOUNT, "0");
     }
     
     wantarray ? @res : \@res;  # return the result array
@@ -180,7 +379,7 @@ sub r_sql {
 
     my @res;
     my @data;
-    while($db->dbresults != NO_MORE_RESULTS) {
+    while($db->dbresults != &NO_MORE_RESULTS) {
         while (@data = $db->dbnextrow) {
             if (defined $sub) {
                 &$sub(@data);

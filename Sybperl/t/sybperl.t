@@ -1,6 +1,6 @@
 #!./perl
 
-#	@(#)sybperl.t	1.11	12/22/95
+#	@(#)sybperl.t	1.12	2/13/96
 
 print "1..28\n";
 
@@ -76,13 +76,16 @@ $Sybase::DBlib::Version = $Sybase::DBlib::Version;
 (&dbresults($dbproc) == $SUCCEED)
     and print("ok 11\n")
     or print "not ok 11\n";
+$err = 0;
 while(&dbnextrow($dbproc))
 {
     $rows++;
-    ($DBstatus == $REG_ROW)
-	and print("ok 12\n")
-	    or print "not ok 12\n"; # 
+    ++$err if($DBstatus != $REG_ROW);
 }
+
+($err == 0)
+    and print("ok 12\n")
+    or print "not ok 12\n";
 
 ($count == $rows)
     and print "ok 13\n"
@@ -136,12 +139,14 @@ $old = &dbmsghandle ("msg_handler");
 (&dbsqlexec() == $SUCCEED && &dbresults() == $SUCCEED)
     and print("ok 24\n")
     or print "not ok 24\n";
+$err = 0;
 while(($uid, $printfmt) = &dbnextrow())
 {
-    (!defined($printfmt))
-	and print("ok 25\n")
-	    or print "not ok 25\n";
+    ++$err if (defined($printfmt));
 }
+($err == 0)
+    and print("ok 25\n")
+    or print "not ok 25\n";
 
 $dbNullIsUndef = 0;
 (&dbcmd("select uid, printfmt from systypes where printfmt is null\n") == $SUCCEED)
@@ -150,12 +155,14 @@ $dbNullIsUndef = 0;
 (&dbsqlexec() == $SUCCEED && &dbresults() == $SUCCEED)
     and print("ok 27\n")
     or print "not ok 27\n";
+$err = 0;
 while(($uid, $printfmt) = &dbnextrow())
 {
-    ($printfmt =~ /NULL/)
-	and print("ok 28\n")
-	    or print "not ok 28\n";
+    ++$err if($printfmt !~ /NULL/);
 }
+($err == 0)
+    and print("ok 28\n")
+    or print "not ok 28\n";
 
 &dbexit();
 

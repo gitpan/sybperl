@@ -1,19 +1,26 @@
-# -*-Perl-*-
-#	@(#)Makefile.PL	1.11	03/22/96
+#	@(#)Makefile.PL	1.5	03/22/96
 
 require 5.002;
 use ExtUtils::MakeMaker;
 
-require '../config';
+$VERSION='0.03';
+$DBLIBVS = 0;
 
-$sattr = &config;
+if(-f '../config') {
+    require '../config';
 
-$DBLIBVS = $$sattr{DBLIBVS};
+    $sattr = &config;
 
-#####
-### Configure End
-#####
-
+    $DBLIBVS = $$sattr{DBLIBVS};
+}
+else
+{
+    eval {
+	require Sybase::DBlib;
+	$DBLIBVS = &Sybase::DBlib::DBLIBVS;
+    }
+}
+    
 
 # Write a dummy makefile if DBLIBVS is 0 - this means that we don't have
 # DBlibrary on this system...
@@ -26,10 +33,9 @@ if($DBLIBVS == 0)
 }
 else
 {
-    WriteMakefile('NAME' => "Sybase::Sybperl",
-		  'VERSION' => "$$sattr{VERSION}",
+    WriteMakefile('NAME' => "Sybase::BCP",
+		  'VERSION' => "$VERSION",
 		  'NEEDS_LINKING' => 1,
+		  'dist' => {'TARFLAGS' => "cvfF", 'COMPRESS' => "gzip"},
 		  );
 }
-
-

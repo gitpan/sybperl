@@ -1,7 +1,7 @@
-/*	@(#)patchlevel.h	1.7	1/31/96 */
+/*	@(#)patchlevel.h	1.10	03/22/96 */
 
 #define VERSION		2
 
-#define PATCHLEVEL 	03
+#define PATCHLEVEL 	05
 
-/*#define UNOFFICIAL	/**/
+#define UNOFFICIAL	

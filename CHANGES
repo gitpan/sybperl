@@ -1,20 +1,96 @@
-	@(#)CHANGES	1.5	1/31/96
+	@(#)CHANGES	1.7	03/22/96
 
+2.05	Bug Fixes
+
+	BugId	   Description
+
+	165	   Make fails if DBLIBVS < 461.
+	166	   bcp_sendrow() truncates binary (ie TEXT/IMAGE)
+		   fields if they contain NULL bytes.
+	167	   The 5.002 make install places local module in
+		   $PERL5LIB/site_perl, which is searched *after*
+		   $PERL5LIB.
+	169	   -L$SYBASE/lib comes too late in the
+		   $LDFLAGS/$LDDLFLAGS Makefile variables, which can
+		   cause the wrong library to be referenced (tcl/tk's
+		   libtcl.a vs. Sybase's).
+	170	   Retrieving numeric data causes the fields to be
+		   padded with spaces instead of being NULL terminated
+		   after the last digit.
+
+
+2.04	DBlib and CTlib Feature release.
+        New Sybase::BCP module.
+
+	** NOTE **
+
+	This version requires Perl 5.002.
+
+	- Added ct_describe to retrieve the information held in the
+	  CS_DATAFMT structure for each column in the result set.
+	- Added Sybase::{CTlib, DBlib}::debug(level) which enables the
+	  tracing of certain internal states and operations.
+	- Turned Sybase::CTlib and Sybase::DBlib database handle
+	  attributes into a tied hash, so that invalid attribute names
+	  (such as spelling mistakes) can be caught (NOTE: This is a
+	  compile time option that can be turned OFF if you don't like
+	  it). To allow add hoc attributes to be set by the programer
+	  you can pass a hash reference as fifth parameter to the
+	  dblogin/ct_connect calls with the additional attributes that
+	  you want the DBlib or CTlib modules to recognize.
+	- Added Sybase::DBlib::DBSETLPACKET and
+	  Sybase::DBlib::dbgetpacket to allow the use of non-default
+	  network packet sizes (this can increase the performance
+	  tremendously in certain situations).
+	- Sybase::DBlib can now return DATETIME and MONEY values in native
+	  format, with the same functionality as Sybase::CTlib.
+	- Re-wrote and cleaned up some of the logic in
+	  Sybase::DBlib::dbnextrow() and dbretdata().
+	- bcp_sendrow() can now take an array reference as data
+	  parameter instead of a LIST. This is a small performance
+	  improvement when processing wide tables. (Passing a LIST is
+	  still supported).
+	  
+	- Added some additional regression tests.
+
+	- Reviewed the documentation.
+
+	- Sybase::BCP is a new module that attempts to make it easier
+	  to use the bulk copy library. Sybase::BCP includes many
+	  features such as input column re-ordering, failed batch
+	  retries and date/time conversions. It is sub-classed from
+	  the Sybase::DBlib module.
+
+	- Sybase::Login is a tkPerl login widget for sybperl. It
+	  requires the Tk module. You will find it in
+	  eg/Login.pm. Contributed by Brent B. Powers.
+
+	Bug Fixes:
+	
+	BugId	   Description
+
+	158	   Sybase::CTlib dumps core when retrieving "Extended
+		   Error" data in the default Server Message handler.
+	159	   Make DBSETLPACKET() available in DBlib.
+	161	   make test fails for Sybase::DBlib, Sybase::Sybperl
+		   with perl5.002gamma.
+	163	   bcp_batch is not documented.
+			   
+	
 2.03	Bug fixes to Sybase::DBlib.
 
-	Retrieving large numeric/decimal/identity values caused
-	floating point values in exponential notation to be
-	returned. This was due to the default behaviour of DBlibrary
-	to be compatible with release 4.6.1. This version
-	AUTOMATICALLY calls dbsetversion() to enable System 10
-	handling of numeric/decimal/identity data if you build against
-	a System 10 version of DBlibrary.
-
-	Logging for dbwritetext() has been enabled by adding an
-	additional (optional) $log parameter. I'm not very happy with
-	the calling sequence (it's getting further and further from
-	the C version), but that's the cost of not doing it right from
-	the start, I guess...
+	- Retrieving large numeric/decimal/identity values caused
+	  floating point values in exponential notation to be
+	  returned. This was due to the default behaviour of DBlibrary
+	  to be compatible with release 4.6.1. This version
+	  AUTOMATICALLY calls dbsetversion() to enable System 10
+	  handling of numeric/decimal/identity data if you build against
+	  a System 10 version of DBlibrary.
+	- Logging for dbwritetext() has been enabled by adding an
+	  additional (optional) $log parameter. I'm not very happy with
+	  the calling sequence (it's getting further and further from
+	  the C version), but that's the cost of not doing it right from
+	  the start, I guess...
 
 	BugId	   Description
 
@@ -29,20 +105,20 @@
 
 	New Features:
 
-	Sybase::CTlib::ct_sql() can now return an array of references
-	to associative arrays (one for each row).
-	Sybase::CTlib::ct_fetchable() uses a precomputed hash to check
-	the fetchable status (suggested by Gisle Aas).
-	Added Sybase::CTlib::ct_cmd_alloc to allow multiple CS_COMMAND
-	structures with a single connection.
-	Added Sybase::CTlib::ct_cmd_realloc to drop and realloc the
-	current CS_COMMAND structure.
+	- Sybase::CTlib::ct_sql() can now return an array of references
+	  to associative arrays (one for each row).
+	- Sybase::CTlib::ct_fetchable() uses a precomputed hash to check
+	  the fetchable status (suggested by Gisle Aas).
+	  Added Sybase::CTlib::ct_cmd_alloc to allow multiple CS_COMMAND
+	  structures with a single connection.
+	- Added Sybase::CTlib::ct_cmd_realloc to drop and realloc the
+	  current CS_COMMAND structure.
 
-	Added Sybase::DBlib::db*opt() calls. The dbsetopt() call was
-	implemented in version 1.0xx but somehow did not get recoded
-	in 2.x.
-	Sybase::DBlib::sql() can now return an array of references to
-	associative arrays (one for each row).
+	- Added Sybase::DBlib::db*opt() calls. The dbsetopt() call was
+	  implemented in version 1.0xx but somehow did not get recoded
+	  in 2.x.
+	- Sybase::DBlib::sql() can now return an array of references to
+	  associative arrays (one for each row).
 
 	Bug Fixes:
 
@@ -62,13 +138,13 @@
 
 	New Features:
 
-	CTlib DateTime, Money and Numeric data handling is now done
-	either in native mode (ie the data is converted to char
-	strings or floating precision only when needed which is
-	sometimes slow) or in 'convert' mode (all data is retrieved in
-	string or floating point format). The default is to retrieve
-	data in 'convert' mode. See the 'Attributes' sub-section in
-	the CTlib section of the manual (pod/sybperl.pod)
+	- CTlib DateTime, Money and Numeric data handling is now done
+	  either in native mode (ie the data is converted to char
+	  strings or floating precision only when needed which is
+	  sometimes slow) or in 'convert' mode (all data is retrieved in
+	  string or floating point format). The default is to retrieve
+	  data in 'convert' mode. See the 'Attributes' sub-section in
+	  the CTlib section of the manual (pod/sybperl.pod)
 
 	Bug Fixes
 

@@ -1,4 +1,4 @@
-# @(#)ctutil.pl	1.2	1/30/96
+# @(#)ctutil.pl	1.3	2/29/96
 #
 # Copyright (c) 1995
 #   Michael Peppler
@@ -11,59 +11,74 @@
 # Some utility stuff for Sybase::CTlib
 #
 
-use Carp;
-
 sub msg_cb
 {
     my($layer, $origin, $severity, $number, $msg, $osmsg) = @_;
-    my($string);
 
-    $string = "\nOpen Client Message:\n";
-    $string .= sprintf("Message number: LAYER = (%ld) ORIGIN = (%ld) ",
-		       $layer, $origin);
-    $string .= sprintf("SEVERITY = (%ld) NUMBER = (%ld)\n",
-		       $severity, $number);
-    $string .= "Message String: $msg\n";
-    if (defined($osmsg))
-    {
-	$string .= sprintf("Operating System Error: %s\n",
-			   $osmsg);
+    print STDERR "\nOpen Client Message:\n";
+    printf STDERR ("Message number: LAYER = (%ld) ORIGIN = (%ld) ",
+		   $layer, $origin);
+    printf STDERR ("SEVERITY = (%ld) NUMBER = (%ld)\n",
+		   $severity, $number);
+    print STDERR "Message String: $msg\n";
+    if (defined($osmsg)) {
+	printf STDERR ("Operating System Error: %s\n", $osmsg);
     }
-    carp($string) if $string;
+
     CS_SUCCEED;
 }
     
 sub srv_cb
 {
-    my($cmd, $number, $severity, $state, $line, $server, $proc, $msg)
+    my($dbh, $number, $severity, $state, $line, $server, $proc, $msg)
 	= @_;
-    my($string);
 
     # Don't print informational or status messages
     if($severity > 10)
     {
-        $string = sprintf("Message number: %ld, Severity %ld, ",
+        printf STDERR ("Message number: %ld, Severity %ld, ",
 			  $number, $severity);
-	$string .= sprintf("State %ld, Line %ld\n",
+	printf STDERR ("State %ld, Line %ld\n",
 			   $state, $line);
 	       
-	if (defined($server))
-	{
-	    $string .= sprintf("Server '%s'\n", $server);
+	if (defined($server)) {
+	    printf STDERR ("Server '%s'\n", $server);
 	}
     
-	if (defined($proc))
-	{
-	    $string .= sprintf(" Procedure '%s'\n", $proc);
+	if (defined($proc)) {
+	    printf STDERR (" Procedure '%s'\n", $proc);
 	}
 
-	$string .= "Message String: $msg\n";
+	print STDERR "Message String: $msg\n";
+
+	# Handle Extended Error information:
+	if($dbh->{ExtendedError}) {
+	    my(@fmt, $key, $l, @dat);
+	    
+	    print STDERR "\n[Start Extended Error]\n\n";
+	    
+	    @fmt = $dbh->ct_describe;
+	    foreach (@fmt) {
+		printf STDERR "%-$$_{MAXLENGTH}s", $$_{NAME};
+	    }
+	    print STDERR "\n";
+	    foreach (@fmt) {
+		$l = '-' x ($$_{MAXLENGTH}-1);
+		print STDERR "$l ";
+	    }
+	    print STDERR "\n";
+	    while(@dat = $dbh->ct_fetch) {
+		for($i = 0; $i < scalar(@dat); ++$i) {
+		    printf STDERR "%-$fmt[$i]->{MAXLENGTH}s", $dat[$i];
+		}
+		print STDERR "\n\n[End Extended Error]\n";
+	    }
+	}
     }
     elsif ($number == 0)
     {
-	$string = "$msg\n";
+	print STDERR "$msg\n";
     }
-    carp($string) if $string;
 
     CS_SUCCEED;
 }

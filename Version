@@ -1,24 +1,25 @@
 #!/usr/local/bin/perl
 #
-#	@(#)Version	1.2	10/27/95
+#	@(#)Version	1.3	2/29/96
 #
 # Execute this script in the Sybperl source directory (after building
 # sybperl...) to find out the exact version that you have
 # This info is very usefull when submitting bugs, problems etc...
 
+require 5.002;
 
-BEGIN {
-    unshift(@INC, "./blib");
-}
+use lib './blib/lib';
+use lib './blib/arch';
 
-if( -e "./blib/Sybase/DBlib.pm") {
+
+if( -e "./blib/lib/Sybase/DBlib.pm") {
     require Sybase::DBlib;
     print $Sybase::DBlib::Version;
 } else {
     print "Sybase::DBlib is not available.\n";
 }
 
-if( -e "./blib/Sybase/CTlib.pm") {
+if( -e "./blib/lib/Sybase/CTlib.pm") {
     require Sybase::CTlib;
     print $Sybase::CTlib::Version;
 } else {
