@@ -1,9 +1,9 @@
 /* -*-C-*-
- *	@(#)DBlib.xs	1.41	03/05/98
+ *	@(#)DBlib.xs	1.43	03/26/98
  */	
 
 
-/* Copyright (c) 1991-1997
+/* Copyright (c) 1991-1998
    Michael Peppler
 
    You may copy this under the terms of the GNU General Public License,
@@ -215,6 +215,8 @@ typedef struct
 
 static CallBackInfo err_callback 	= { 0 } ;
 static CallBackInfo msg_callback 	= { 0 } ;
+
+static int dbexit_called;
 
 /* Debugging/tracing: */
 #define TRACE_NONE	(0)
@@ -917,7 +919,7 @@ initialize()
 	if((sv = perl_get_sv("Sybase::DBlib::Version", TRUE|GV_ADDMULTI)))
 	{
 	    char buff[256];
-	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib version 1.41 03/05/98\n\nCopyright (c) 1991-1997 Michael Peppler\n\n",
+	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib version 1.43 03/26/98\n\nCopyright (c) 1991-1997 Michael Peppler\n\n",
 		    SYBPLVER);
 	    sv_setnv(sv, atof(SYBPLVER));
 	    sv_setpv(sv, buff);
@@ -3233,7 +3235,7 @@ CODE:
 	Safefree(info->bcp_data);
     }
 
-    if(info->dbproc)
+    if(info->dbproc && !dbexit_called)
 	dbclose(info->dbproc);
 
     hv_undef(info->hv);
@@ -4414,6 +4416,11 @@ dbsetlogintime(seconds)
 
 void
 dbexit()
+CODE:
+{
+    ++dbexit_called;
+    dbexit();
+}
 
 void
 BCP_SETL(state)
@@ -5550,6 +5557,145 @@ dbrpcsend(dbp)
 }
   OUTPUT:
 RETVAL
+
+int
+dbreginit(dbp, proc_name)
+	SV *	dbp
+	char *	proc_name
+CODE:
+{
+    ConInfo *info = get_ConInfo(dbp);
+    DBPROCESS *dbproc = info->dbproc;
+
+				/* XXX pass DBNULLTERM? */
+
+    RETVAL = dbreginit(dbproc, proc_name, strlen(proc_name));
+}
+OUTPUT:
+RETVAL
+
+int
+dbreglist(dbp)
+	SV *	dbp
+CODE:
+{
+    ConInfo *info = get_ConInfo(dbp);
+    DBPROCESS *dbproc = info->dbproc;
+
+    RETVAL = dbreglist(dbproc);
+}
+OUTPUT:
+RETVAL
+
+
+int
+dbregparam(dbp, parname, type, datalen, value)
+        SV *    dbp
+        char *  parname
+        int     type
+        int     datalen
+        char *  value
+  CODE:
+{
+#if !defined(max)
+#define max(a, b)       ((a) > (b) ? (a) : (b))
+#endif
+    ConInfo *info = get_ConInfo(dbp);
+    DBPROCESS *dbproc = info->dbproc;
+    HV *hv;
+    SV **svp, *sv;
+    struct RpcInfo *head = info->rpcInfo, *ptr = NULL;
+    char buff[256];
+
+    /* FIXME
+       The 'value' parameter should be an SV*, so that we can pass DateTime
+       or Money values directly, without converting them
+       to char* first. */
+
+    New(902, ptr, 1, struct RpcInfo);
+    switch(type)
+    {
+      case SYBBIT:
+      case SYBINT1:
+      case SYBINT2:
+      case SYBINT4:
+        ptr->type = SYBINT4;
+        ptr->u.i = atoi(value);
+        ptr->value = &ptr->u.i;
+        break;
+      case SYBFLT8:
+      case SYBMONEY:
+#if DBLIBVS >= 420
+      case SYBREAL:
+#if DBLIBVS >= 461
+      case SYBMONEY4:
+#if DBLIBVS >= 1000
+      case SYBNUMERIC:          /* dunno if this is the right place */
+      case SYBDECIMAL:
+#endif
+#endif
+#endif
+        ptr->type = SYBFLT8;
+        ptr->u.f = atof(value);
+        ptr->value = &ptr->u.f;
+        break;
+      case SYBCHAR:
+      case SYBVARCHAR:
+      case SYBDATETIME:
+      case SYBTEXT:
+#if DBLIBVS >= 420
+      case SYBDATETIME4:
+#endif
+        ptr->type = SYBCHAR;
+        ptr->size = datalen;
+        New(902, ptr->u.c, ptr->size+1, char);
+        strcpy(ptr->u.c, value);
+        ptr->value = ptr->u.c;
+        break;
+      default:
+        sprintf(buff, "Invalid type value (%d) for dbregparam()", type);
+        croak(buff);
+    }
+    ptr->next = head;
+    head = ptr;
+    info->rpcInfo = head;
+
+    RETVAL = dbregparam(dbproc, parname, ptr->type, datalen, ptr->value);
+}
+  OUTPUT:
+RETVAL
+
+
+int
+dbregexec(dbp, opt = 0)
+        SV *    dbp
+        int     opt
+  CODE:
+{
+    ConInfo *info = get_ConInfo(dbp);
+    DBPROCESS *dbproc = info->dbproc;
+    struct RpcInfo *ptr = info->rpcInfo, *next = NULL;
+
+    RETVAL = dbregexec(dbproc, opt);
+
+    /* clean-up the rpcParam list
+       according to the DBlib docs, it should be safe to this here. */
+    if(ptr)
+    {
+        for(; ptr; ptr = next)
+        {
+            next = ptr->next;
+            if(ptr->type == SYBCHAR)
+                Safefree(ptr->u.c);
+            Safefree(ptr);
+        }
+        info->rpcInfo = NULL;
+    }
+}
+  OUTPUT:
+RETVAL
+
+
 
 int
 dbrpwset(srvname, pwd)

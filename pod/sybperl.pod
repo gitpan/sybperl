@@ -1,4 +1,4 @@
-<--@(#)sybperl.pod	1.29	03/05/98-->
+<--@(#)sybperl.pod	1.30	03/26/98-->
 
 =head1 NAME
 
@@ -605,6 +605,24 @@ Set the password for connecting to a remote server.
 =item dbrpwclr
 
 Clear all remote server passwords.
+
+=back
+
+B<Registered procedure execution:>
+
+=over 8
+
+=item $status = $dbh->dbreginit($proc_name)
+
+=item $status = $dbh->dbreglist
+
+=item $status = $dbh->dbreglist($parname, $type, $datalen, $value)
+
+=item $status = $dbh->dbregexec($opt)
+
+These routines are used to execute an OpenServer registered procedure.
+Please the Sybase DBlibrary manual for a description of what these
+routnines do, and how to call them.
 
 =back
 

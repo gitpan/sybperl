@@ -1,4 +1,14 @@
-	@(#)CHANGES	1.16	03/10/98
+	@(#)CHANGES	1.18	03/26/98
+
+2.09_04 DBlib dbreg*() calls
+
+	Added dbreg*() calls to allow execution of OpenServer registered
+	procedures.
+
+2.09_03 Bug Fixes
+
+	235: Calling DBlib's dbexit() breaks Sybase::DBlib on Win32
+	236: Sybase::CTlib doesn't work with OC 11.x on Win32.
 
 2.09_02	Bug Fixes
 

@@ -1,7 +1,7 @@
-# @(#)sybutil.pl	1.7	03/05/98
+# @(#)sybutil.pl	1.8	03/25/98
 #
-# Copyright (c) 1994
-#   Michael Peppler and ITF Management SA
+# Copyright (c) 1994, 1998
+#   Michael Peppler
 #
 #   You may copy this under the terms of the GNU General Public License,
 #   or the Artistic License, copies of which should have accompanied

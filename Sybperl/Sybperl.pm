@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# %W%	%G%
+# @(#)Sybperl.pm	1.27	03/26/98
 #
 # Copyright (c) 1994-1995
 #   Michael Peppler
@@ -1126,6 +1126,74 @@ sub dbrpcinit
     }
 
     $dbproc->dbrpcinit(@param);
+}
+
+sub dbreginit
+{
+    my(@param) = @_;
+    my($dbproc);
+
+    if(@param == 2)
+    {
+	$dbproc = shift(@param);
+    }
+    else
+    {
+	$dbproc = $default_db;
+    }
+
+    $dbproc->dbreginit(@param);
+}
+
+sub dbreglist
+{
+    my(@param) = @_;
+    my($dbproc);
+
+    if(@param == 1)
+    {
+	$dbproc = shift(@param);
+    }
+    else
+    {
+	$dbproc = $default_db;
+    }
+
+    $dbproc->dbreglist(@param);
+}
+
+sub dbregparam
+{
+    my(@param) = @_;
+    my($dbproc);
+
+    if(@param == 5)
+    {
+	$dbproc = shift(@param);
+    }
+    else
+    {
+	$dbproc = $default_db;
+    }
+
+    $dbproc->dbregparam(@param);
+}
+
+sub dbregexec
+{
+    my(@param) = @_;
+    my($dbproc);
+
+    if(@param == 2)
+    {
+	$dbproc = shift(@param);
+    }
+    else
+    {
+	$dbproc = $default_db;
+    }
+
+    $dbproc->dbregexec(@param);
 }
 
 sub dbwritetext

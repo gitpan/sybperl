@@ -1,5 +1,5 @@
 # -*-Perl-*-
-#	@(#)Makefile.PL	1.21	06/02/97
+#	@(#)Makefile.PL	1.22	03/20/98
 require 5.002;
 use ExtUtils::MakeMaker;
 use Config;
@@ -44,6 +44,7 @@ WriteMakefile('DISTNAME' => "sybperl",
 	      'VERSION' => $$sattr{VERSION},
 	      'dist' => {'TARFLAGS' => "cvfF", 'COMPRESS' => "gzip"},
 	      'LINKTYPE' => $linktype,
-	      'XSPROTOARG' => '-prototypes'
+	      'XSPROTOARG' => '-prototypes',
+              'MAN3PODS' => 'pod/sybperl.pod'
 	      );
 

@@ -1,9 +1,9 @@
 /* -*-C-*-
- *	@(#)CTlib.xs	1.33	03/10/98
+ *	%W%	%G%
  */
 
 
-/* Copyright (c) 1995-1997
+/* Copyright (c) 1995-1998
    Michael Peppler
 
    Parts of this file are
@@ -198,9 +198,9 @@ static CS_INT display_dlen _((CS_DATAFMT *));
 static CS_RETCODE display_header _((CS_INT, CS_DATAFMT*));
 static CS_RETCODE describe _((ConInfo *, SV*, int));
 static CS_RETCODE fetch_data _((CS_COMMAND*));
-static CS_RETCODE clientmsg_cb _((CS_CONTEXT*, CS_CONNECTION*, CS_CLIENTMSG*));
-static CS_RETCODE servermsg_cb _((CS_CONTEXT*, CS_CONNECTION*, CS_SERVERMSG*));
-static CS_RETCODE notification_cb _((CS_CONNECTION*, CS_CHAR*, CS_INT));
+static CS_RETCODE CS_PUBLIC clientmsg_cb _((CS_CONTEXT*, CS_CONNECTION*, CS_CLIENTMSG*));
+static CS_RETCODE CS_PUBLIC servermsg_cb _((CS_CONTEXT*, CS_CONNECTION*, CS_SERVERMSG*));
+static CS_RETCODE CS_PUBLIC notification_cb _((CS_CONNECTION*, CS_CHAR*, CS_INT));
 static void initialize _((void));
 static int not_here _((char*));
 static double constant _((char*,int));
@@ -1366,7 +1366,7 @@ CS_COMMAND	*cmd;
 }
 
 
-static CS_RETCODE
+static CS_RETCODE CS_PUBLIC
 clientmsg_cb(context, connection, errmsg)
 CS_CONTEXT	*context;
 CS_CONNECTION	*connection;	
@@ -1399,9 +1399,12 @@ CS_CLIENTMSG	*errmsg;
 	    if((ct_con_props(connection, CS_GET, CS_USERDATA,
 			     &info, CS_SIZEOF(info), NULL)) != CS_SUCCEED)
 		croak("Panic: clientmsg_cb: Can't find handle from connection");
-	    rv = newRV((SV*)info->magic);
-	    
-	    XPUSHs(sv_2mortal(rv));
+	    if(info) {
+		rv = newRV((SV*)info->magic);
+		XPUSHs(sv_2mortal(rv));
+	    } else {
+		XPUSHs(&sv_undef);
+	    }
 	}
 	
 	    
@@ -1434,7 +1437,7 @@ CS_CLIENTMSG	*errmsg;
     return CS_SUCCEED;
 }
 
-static CS_RETCODE
+static CS_RETCODE CS_PUBLIC
 servermsg_cb(context, connection, srvmsg)
 CS_CONTEXT	*context;
 CS_CONNECTION	*connection;
@@ -1573,7 +1576,7 @@ CS_SERVERMSG	*srvmsg;
     return CS_SUCCEED;
 }
 
-static CS_RETCODE
+static CS_RETCODE CS_PUBLIC
 notification_cb(connection, procname, pnamelen)
 CS_CONNECTION	*connection;
 CS_CHAR		*procname;
@@ -1634,7 +1637,7 @@ initialize()
     if((sv = perl_get_sv("Sybase::CTlib::Version", TRUE|GV_ADDMULTI)))
     {
 	char buff[256];
-	sprintf(buff, "This is sybperl, version %s\n\nSybase::CTlib version 1.33 03/10/98\n\nCopyright (c) 1995-1997 Michael Peppler\nPortions Copyright (c) 1995 Sybase, Inc.\n\n",
+	sprintf(buff, "This is sybperl, version %s\n\nSybase::CTlib version %I% %G%\n\nCopyright (c) 1995-1997 Michael Peppler\nPortions Copyright (c) 1995 Sybase, Inc.\n\n",
 		SYBPLVER);
 	sv_setnv(sv, atof(SYBPLVER));
 	sv_setpv(sv, buff);
@@ -5413,7 +5416,6 @@ ct_connect(package="Sybase::CTlib", user=NULL, pwd=NULL, server=NULL, appname=NU
 				       &info, CS_SIZEOF(info), NULL)) != CS_SUCCEED)
 	    {
 		warn("ct_con_props(CS_USERDATA) failed");
-		//return 0;
 	    }
 	    
 
@@ -5570,8 +5572,7 @@ CODE:
 	if(debug_level & TRACE_DESTROY)
 	    warn("[In DESTROY] Freeing refCon");
 	Safefree(refCon);
-
-	//hv_undef(info->magic);
+	/*hv_undef(info->magic); XXX */
     }
     
     if(info->numCols)
