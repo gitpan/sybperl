@@ -1,5 +1,5 @@
 /* -*-C-*-
- * $Id: DBlib.xs,v 1.55 2002/01/11 23:50:29 mpeppler Exp $
+ * $Id: DBlib.xs,v 1.58 2003/12/25 17:16:03 mpeppler Exp $
  *
  * From
  *	@(#)DBlib.xs	1.47	03/26/99
@@ -136,6 +136,10 @@ typedef struct daterec
 #endif /* DBLIBVS < 461 */
 #endif /* DBLIBVS < 1000 */
 
+#if !defined(DBMAXNAME)
+#define DBMAXNAME          MAXNAME
+#endif
+
 typedef enum hash_key_id
 {
     HV_compute_id,
@@ -251,7 +255,7 @@ static unsigned int debug_level = TRACE_NONE;
 static char DateTimePkg[]="Sybase::DBlib::DateTime";
 static char MoneyPkg[]="Sybase::DBlib::Money";
 
-static LOGINREC *login;
+static LOGINREC *syb_login;
 
 static int attr_store _((ConInfo*, char*, int, SV*, int));
 static SV* attr_fetch _((ConInfo*, char*, int));
@@ -908,10 +912,10 @@ setAppName(ptr)
 	else
 	    p = scriptname;
 	
-	/* The script name must not be longer than MAXNAME or DBSETLAPP */
+	/* The script name must not be longer than DBMAXNAME or DBSETLAPP */
 	/* fails */
-	if((int)strlen(p) > MAXNAME)
-	    p[MAXNAME] = 0;
+	if((int)strlen(p) > DBMAXNAME)
+	    p[DBMAXNAME] = 0;
 	
 	DBSETLAPP(ptr, p);
     }
@@ -920,7 +924,7 @@ setAppName(ptr)
 static void
 initialize()
 {
-    if(!login)
+    if(!syb_login)
     {
 	SV *sv;
 	
@@ -931,9 +935,9 @@ initialize()
 #endif
 	dberrhandle(err_handler);
 	dbmsghandle(msg_handler);
-	login = dblogin();
+	syb_login = dblogin();
 
-	setAppName(login);
+	setAppName(syb_login);
 
 	/* This is deprecated: use Sybase::DBlib::Version instead */
 	if((sv = perl_get_sv("main::SybperlVer", TRUE|GV_ADDMULTI)))
@@ -942,7 +946,7 @@ initialize()
 	if((sv = perl_get_sv("Sybase::DBlib::Version", TRUE|GV_ADDMULTI)))
 	{
 	    char buff[2048];
-	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib $Revision: 1.55 $ $Date: 2002/01/11 23:50:29 $ \n\nCopyright (c) 1991-2001 Michael Peppler\n\nDB-Library version: %s\n",
+	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib $Revision: 1.58 $ $Date: 2003/12/25 17:16:03 $ \n\nCopyright (c) 1991-2001 Michael Peppler\n\nDB-Library version: %s\n",
 		    SYBPLVER, dbversion());
 	    sv_setnv(sv, atof(SYBPLVER));
 	    sv_setpv(sv, buff);
@@ -1269,6 +1273,12 @@ int arg;
 	if (strEQ(name, "DBLIBVS"))
 #ifdef DBLIBVS
 	    return DBLIBVS;
+#else
+	    goto not_there;
+#endif
+	if (strEQ(name, "DBMAXNAME"))
+#ifdef DBMAXNAME
+	    return DBMAXNAME;
 #else
 	    goto not_there;
 #endif
@@ -3124,11 +3134,7 @@ int arg;
 	if (strEQ(name, "TRACE_ALL"))
 	    return TRACE_ALL;
 	if (strEQ(name, "TRUE"))
-#ifdef TRUE
 	    return TRUE;
-#else
-	    goto not_there;
-#endif
 	break;
     case 'U':
 	break;
@@ -3179,25 +3185,25 @@ dblogin(package="Sybase::DBlib",user=NULL,pwd=NULL,server=NULL,appname=NULL,attr
     SV *sv;
 #if defined(NCR_BUG)
 /* ugly hack to fix a bug with DBSETLUSER() on NCR & OC 10.x */
-    char *ptr = (char*)login->ltds_loginrec+31;
+    char *ptr = (char*)syb_login->ltds_loginrec+31;
     memset(ptr,0,30);
 #endif
 
     if(user && *user) 
-	DBSETLUSER(login, user);
+	DBSETLUSER(syb_login, user);
     else
-	DBSETLUSER(login, NULL);
+	DBSETLUSER(syb_login, NULL);
 	
     if(pwd && *pwd)
-	DBSETLPWD(login, pwd);
+	DBSETLPWD(syb_login, pwd);
     else
-	DBSETLPWD(login, NULL);
+	DBSETLPWD(syb_login, NULL);
     
     if(server && !*server)
 	server = NULL;
     if(appname && *appname)
-	DBSETLAPP(login, appname);
-    if(!(dbproc = dbopen(login, server)))
+	DBSETLAPP(syb_login, appname);
+    if(!(dbproc = dbopen(syb_login, server)))
     {
 	ST(0) = sv_newmortal();
     }
@@ -3228,9 +3234,9 @@ dbopen(package="Sybase::DBlib",server=NULL,appname=NULL,attr=&PL_sv_undef)
     if(server && !*server)
 	server = NULL;
     if(appname && *appname)
-	DBSETLAPP(login, appname);
+	DBSETLAPP(syb_login, appname);
     
-    if(!(dbproc = dbopen(login, server)))
+    if(!(dbproc = dbopen(syb_login, server)))
     {
 	ST(0) = sv_newmortal();
     }
@@ -4549,15 +4555,25 @@ DBSETLCHARSET(char_set)
 	char *	char_set
   CODE:
 {
-    DBSETLCHARSET(login, char_set);
+    DBSETLCHARSET(syb_login, char_set);
 }
+
+int
+DBSETLENCRYPT(value)
+	int value
+  CODE:
+{
+    RETVAL = DBSETLENCRYPT(syb_login, value);
+}
+OUTPUT:
+RETVAL
 
 void
 DBSETLNATLANG(language)
 	char *	language
   CODE:
 {
-    DBSETLNATLANG(login, language);
+    DBSETLNATLANG(syb_login, language);
 }
 
 void
@@ -4565,7 +4581,7 @@ DBSETLPACKET(packet_size)
 	int	packet_size
   CODE:
 {
-    DBSETLPACKET(login, packet_size);
+    DBSETLPACKET(syb_login, packet_size);
 }
 
 void
@@ -4573,7 +4589,7 @@ DBSETLHOST(host)
 	char *	host
   CODE:
 {
-    DBSETLHOST(login, host);
+    DBSETLHOST(syb_login, host);
 }
 
 
@@ -4614,14 +4630,14 @@ BCP_SETL(state)
 	int	state
   CODE:
 {
-    BCP_SETL(login, state);
+    BCP_SETL(syb_login, state);
 }
 
 int
 bcp_getl()
   CODE:
 {
-    RETVAL = bcp_getl(login);
+    RETVAL = bcp_getl(syb_login);
 }
  OUTPUT:
 RETVAL
@@ -5540,14 +5556,14 @@ open_commit(package="Sybase::DBlib",user=NULL,pwd=NULL,server=NULL,appname=NULL,
     SV *sv;
     
     if(user && *user)
-	DBSETLUSER(login, user);
+	DBSETLUSER(syb_login, user);
     if(pwd && *pwd)
-	DBSETLPWD(login, pwd);
+	DBSETLPWD(syb_login, pwd);
     if(server && !*server)
 	server = NULL;
     if(appname && *appname)
-	DBSETLAPP(login, appname);
-    if(!(dbproc = open_commit(login, server)))
+	DBSETLAPP(syb_login, appname);
+    if(!(dbproc = open_commit(syb_login, server)))
     {
 	ST(0) = sv_newmortal();
     }
@@ -5949,7 +5965,7 @@ dbrpwset(srvname, pwd)
 {
     if(!srvname || strlen(srvname) == 0)
 	srvname = NULL;
-    RETVAL = dbrpwset(login, srvname, pwd, strlen(pwd));
+    RETVAL = dbrpwset(syb_login, srvname, pwd, strlen(pwd));
 }
   OUTPUT:
 RETVAL
@@ -5958,7 +5974,7 @@ void
 dbrpwclr()
   CODE:
 {
-    dbrpwclr(login);
+    dbrpwclr(syb_login);
 }
 
 

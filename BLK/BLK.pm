@@ -1,9 +1,9 @@
-# $Id: BLK.pm,v 1.4 2002/06/27 22:43:25 mpeppler Exp $
+# $Id: BLK.pm,v 1.10 2003/12/31 19:43:22 mpeppler Exp $
 #
 # Shamelessly copied 2001 from Sybase::BCP and transformed magically
 # into Sybase::BLK by Scott Zetlan
 #
-# Copyright (c) 2001
+# Copyright (c) 2001-2002
 #   Michael Peppler
 #
 #   You may copy this under the terms of the GNU General Public License,
@@ -48,7 +48,7 @@ table 'mydb.dbo.bar'. The fields in the file are separated by a '|'.
     $bcp = new Sybase::BLK $user, $passwd;
     $bcp->config(INPUT => 'foo.bcp',
 		 OUTPUT => 'mydb.dbo.bar',
-		 SEPARATOR => '\|');
+		 SEPARATOR => '|');
     $bcp->run;
 
 That's it!
@@ -137,22 +137,34 @@ The file where invalid rows should be recorded. Default: bcp.err.
 
 The pattern that separates fields in the input file, or that should be used
 to separate fields in the output file. Since this pattern is passed to 
-B<split>, it can be a regular expression.  This also means that any
-regular expression meta-characters in the pattern (e.g. '|' need to be
-escaped with a '\'. Default: TAB.
+B<split>, it can be a regular expression.  By default regular expression
+meta-characters are I<not> interpreted as such, unless the I<RE_USE_META>
+attribute is set. Default: TAB.
+
+=item RE_USE_META
+
+If this attribute is set then the regular expression used to split rows
+into columns (defined by SEPARATOR) will interpret regular expression
+meta-characters normally (i.e. a '|' means alternation - see perldoc perlre
+for details on regular expression meta-characters). Default: false.
 
 =item RECORD_SEPARATOR
 
 The pattern that separates records (rows) in the input file. Sybase:BLK will
-set a local copy of $\ to this value before reading the file. Default: NEWLINE.
+set a local copy of $/ to this value before reading the file. Default: NEWLINE.
 
 =item BATCH_SIZE
 
 Number of rows to be batched together before committing to the server for
 B<bcp IN> operations. Defaults to 100. If there is a risk that retries could
-be requiered due to failed batches (e.g. duplicat rows/keys errors) then
+be requiered due to failed batches (e.g. duplicate rows/keys errors) then
 you should not use a large batch size: one failed row in a batch requires
 the entire batch to be resent.
+
+=item RETRY_FAILED_BATCHES
+
+If this attribute is set then a failed batch will be retried one row at a time
+so that all the rows that don't fail get loaded. Default: false.
 
 =item NULL
 
@@ -289,7 +301,7 @@ plain bcp.
 
 Scott Zetlan F<E<lt>scottzetlan@aol.comE<gt>> after the original Sybase::BCP by
 Michael Peppler F<E<lt>mpeppler@peppler.orgE<gt>>. Contact the sybperl mailing
-list C<mailto:sybperl-l@listproc.net> if you have any questions.
+list C<mailto:sybperl-l@peppler.org> if you have any questions.
 
 =cut
 
@@ -308,12 +320,13 @@ use vars qw(@ISA @EXPORT $VERSION $Version);
 
 use strict;
 
-$VERSION = '0.01';
-$Version = '$Id: BLK.pm,v 1.4 2002/06/27 22:43:25 mpeppler Exp $';
+$VERSION = substr(q$Revision: 1.10 $, 10);
+$Version = q|$Id: BLK.pm,v 1.10 2003/12/31 19:43:22 mpeppler Exp $|;
 
 my @g_keys = qw(INPUT OUTPUT ERRORS SEPARATOR FIELDS BATCH_SIZE
 		NULL DATE REORDER CALLBACK TAB_INFO DIRECTION CONDITION
-		LOGGER RECORD_SEPARATOR HAS_IDENTITY IDENTITY_COL);
+		LOGGER RECORD_SEPARATOR HAS_IDENTITY IDENTITY_COL
+		RE_USE_META RETRY_FAILED_BATCHES);
 my @f_keys = qw(CALLBACK SKIP);
 my %g_keys = map { $_ => 1 } @g_keys;
 my %f_keys = map { $_ => 1 } @f_keys;
@@ -342,16 +355,10 @@ sub new {
     
     # Have to set CS_BULK_LOGIN to CS_TRUE when the connection is 
     # allocated, or bulk-mode operations are disabled.
-    if(!$attr) {
-	$attr = { _blk_global => {},
-		  _blk_cols => {},
-		  CON_PROPS => { CS_BULK_LOGIN => CS_TRUE }
-		};
-    } else {
-	$attr->{_blk_global} = {};
-	$attr->{_blk_cols} = {};
-	$attr->{CON_PROPS}->{CS_BULK_LOGIN} = CS_TRUE;
-    }
+    $attr = {} unless $attr;
+    $attr->{_blk_global} = {};
+    $attr->{_blk_cols} = {};
+    $attr->{CON_PROPS}->{CS_BULK_LOGIN} = CS_TRUE;
 
     $d = $package->SUPER::new($user, $passwd, $server, $appname, $attr);
 }
@@ -376,7 +383,7 @@ sub config {
     }
     croak "Sybase::BLK processing aborted because of errors\n" if($errs);
     $ref{DIRECTION} = 'IN' unless ($ref{DIRECTION});
-    $self->{_blk_global} = \%ref;
+    $self->{_blk_global} = {%ref};
     # Get the table definition from Sybase system tables:
     $self->{_blk_global}->{TAB_INFO} = 
 	$self->_gettabinfo($self->{_blk_global}->{OUTPUT}) if($ref{DIRECTION} eq 'IN'); ### FIXME
@@ -470,7 +477,11 @@ sub do_in {
     if(!ref($infile)) {
 	open(IN, $infile) || croak "Can't open file $infile: $!";
 	binmode(IN);
-	$in_sub = \&_readln;
+	if($self->{_blk_global}->{RE_USE_META}) {
+	    $in_sub = \&_readln_meta;
+	} else {
+	    $in_sub = \&_readln;
+	}
     } elsif(ref($infile) eq 'CODE') {
 	$in_sub = $infile;
     } else {
@@ -514,30 +525,33 @@ sub do_in {
 
 	# Do any special data handling: set NULL fields, maybe convert dates,
 	# call the callbacks if they are defined.
-	if(defined($null_pattern) || %cols) {
-	    for($i = 0; $i < $cols; ++$i) {
+	for($i = 0; $i < $cols; ++$i) {
 		
-		# Skip any SKIPped cols: 
-		if(defined ($cols{$i}->{SKIP})) {
-		    splice(@data, $i, 1);
-		    next;
-		}
+	    # Skip any SKIPped cols: 
+	    if(defined ($cols{$i}->{SKIP})) {
+		splice(@data, $i, 1);
+		next;
+	    }
 
-		# Run column callbacks:
-		if(defined($cols{$i}->{CALLBACK})) {
-		    $data[$i] = &{$cols{$i}->{CALLBACK}}($data[$i]);
-		}
+	    # Run column callbacks:
+	    if(defined($cols{$i}->{CALLBACK})) {
+		$data[$i] = &{$cols{$i}->{CALLBACK}}($data[$i]);
+	    }
 		
-		# Check for nulls:
-		if(defined($null_pattern) && length($null_pattern) > 0 && $data[$i] =~ /$null_pattern/o) {
-		    $data[$i] = undef;
-		}
+	    # Check for nulls:
+	    if(defined($null_pattern) && length($null_pattern) > 0 && 
+	       $data[$i] =~ /$null_pattern/) 
+	    {
+		$data[$i] = undef;
+	    } elsif(length($data[$i]) == 0) {
+		# default NULL handling.
+		$data[$i] = undef;
 	    }
 	}
 
 	# Send the row to the server. A failure here indicates a
-	# conversion error of data from the @data array. The row has NOT been sent to
-	# the server. We log the row data and move on to the next row.
+	# conversion error of data from the @data array. The row has NOT been 
+	# sent to the server. We log the row data and move on to the next row.
 	if($self->blk_rowxfer (\@data) == CS_FAIL) {
 	    print LOG "@data\n";
 	    next;
@@ -554,6 +568,27 @@ sub do_in {
 	    if ($self->blk_done (CS_BLK_BATCH, $batch_commit) == CS_SUCCEED) {
 		$total_commit += $batch_commit;
 		&$logger ("Sent $batch_commit ($total_commit total so far) rows to the server");
+	    } elsif($self->{_blk_global}->{RETRY_FAILED_BATCHES}) {
+		my $retry_count = 0;
+		&$logger ("Batch failed to commit - redoing");
+		# The batch failed, so re-run it one row at a time.
+		foreach my $row (@rows) {
+		    if($self->blk_rowxfer($row) == CS_FAIL) {
+			print LOG "@$row\n";
+			next;
+		    }
+		    # batch each row, so that we can find which is wrong...
+		    if($self->blk_done (CS_BLK_BATCH, $batch_commit) 
+		       != CS_SUCCEED) 
+		    { 
+			# This row failed to commit - dup index, for example.
+			print LOG "@$row\n";
+		    } else {
+			++$retry_count;
+		    }  
+		}
+		$total_commit += $retry_count;
+		&$logger (sprintf("Sent $retry_count (%d failed) ($total_commit total so far) rows to the server", $batch_size - $retry_count));
 	    } else {
 		&$logger ("Batch failed to commit: saved rows in error file");
 		foreach my $rowref (@rows) {
@@ -590,7 +625,19 @@ sub _readln {
     my @d;
     if(defined($ln = <IN>)) {
 	chomp $ln;
-	@d = split(/$sep/o, $ln, -1);
+	@d = split(/\Q$sep\E/, $ln, -1);
+    }
+    @d;
+}
+
+# Default data read method
+sub _readln_meta {
+    my $sep = shift;
+    my $ln; 
+    my @d;
+    if(defined($ln = <IN>)) {
+	chomp $ln;
+	@d = split(/$sep/, $ln, -1);
     }
     @d;
 }

@@ -1,5 +1,5 @@
 #!./perl
-# $Id: cursor.t,v 1.1 1999/05/14 17:24:20 mpeppler Exp $
+# $Id: 2_ct_cursor.t,v 1.2 2003/12/25 18:12:00 mpeppler Exp $
 #
 # From
 #	@(#)cursor.t	1.5	05/20/97
@@ -122,7 +122,7 @@ while(@dat = $d->ct_fetch()) {
 	if(!(@dat2 = $d2->ct_fetch())) {
 	    $last = 0;
 	}
-	print "$dat[0] - $dat2[0]\n";
+	print "$dat[0] - $dat2[0]\n" if $last;
     }
 }
 if($last) {

@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# $Id: ctlib.t,v 1.1 1999/05/14 17:24:03 mpeppler Exp $
+# $Id: 2_ct_ctlib.t,v 1.1 2003/12/25 17:16:42 mpeppler Exp $
 #
 # From
 # @(#)ctlib.t	1.17	03/05/98

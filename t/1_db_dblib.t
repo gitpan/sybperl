@@ -1,5 +1,5 @@
 #!./perl
-# $Id: dblib.t,v 1.1 1999/05/14 17:33:24 mpeppler Exp $
+# $Id: 1_db_dblib.t,v 1.1 2003/12/25 17:16:42 mpeppler Exp $
 #
 # from
 #	@(#)dblib.t	1.20	11/23/98

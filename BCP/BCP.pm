@@ -1,4 +1,4 @@
-# $Id: BCP.pm,v 1.4 2000/11/15 00:28:32 mpeppler Exp $
+# $Id: BCP.pm,v 1.6 2003/12/26 21:29:27 mpeppler Exp $
 # from	@(#)BCP.pm	1.15	03/05/98
 #
 # Copyright (c) 1996-1999
@@ -286,8 +286,8 @@ use vars qw(@ISA @EXPORT $VERSION $Version);
 
 use strict;
 
-$VERSION = '0.07';
-$Version = '1.15 03/05/98';
+$VERSION = substr(q$Revision: 1.6 $, 10);
+$Version = q|$Id: BCP.pm,v 1.6 2003/12/26 21:29:27 mpeppler Exp $|;
 
 my @g_keys = qw(INPUT OUTPUT ERRORS SEPARATOR FIELDS BATCH_SIZE
 	     NULL DATE REORDER CALLBACK TAB_INFO DIRECTION CONDITION
@@ -347,7 +347,7 @@ sub config {
     }
     croak "Sybase::BCP processing aborted because of errors\n" if($errs);
     $ref{DIRECTION} = 'IN' unless ($ref{DIRECTION});
-    $self->{Global} = \%ref;
+    $self->{Global} = {%ref};
     # Get the table definition from Sybase system tables:
     $self->{Global}->{TAB_INFO} = $self->_gettabinfo($self->{Global}->{OUTPUT})
 	if($ref{DIRECTION} eq 'IN'); ### FIXME
@@ -500,7 +500,7 @@ while(@data = &$in_sub($sep)) {
 		$data[$i] = &{$cols{$i}->{CALLBACK}}($data[$i]);
 	    }
 	    if(defined($null_pattern) && length($null_pattern) > 0 &&
-	       $data[$i] =~ /\Q$null_pattern\E/o) 
+	       $data[$i] =~ /\Q$null_pattern\E/) 
 	    {
 		$data[$i] = undef;
 	    }
@@ -578,7 +578,7 @@ sub _readln {
     my $ln; my @d;
     if(defined($ln = <IN>)) {
 	chomp $ln;
-	@d = split(/\Q$sep\E/o, $ln, -1);
+	@d = split(/\Q$sep\E/, $ln, -1);
     }
     @d;
 }

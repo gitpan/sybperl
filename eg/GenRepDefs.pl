@@ -7,17 +7,13 @@
 # Written by:	Michael Peppler (mpeppler@itf.ch)
 # Last Mods:    22 Feb 1994
 #
-# Usage:	GenRepDefs.pl -d database -o script.name -t pattern -s server -v 
--u user
+# Usage:	GenRepDefs.pl -d database -o script.name -t pattern -s server -v -u user
 #		    where   database is self-explanatory (default: master)
 #                           script.name is the output file (default: script.isql)
 #                           pattern is the pattern of object names (in sysobjects)
-#                           that we will look at (default: %), user is the sybase 
-login
-#                           id to use (defaults to uid running the program) and 
-server is
-#			    the server to connect to (default, the value of 
-$ENV{DSQUERY}).
+#                           that we will look at (default: %), user is the sybase login
+#                           id to use (defaults to uid running the program) and server is
+#			    the server to connect to (default, the value of $ENV{DSQUERY}).
 #
 #		    -v turns on a verbose switch.
 #
@@ -119,8 +115,7 @@ foreach (@tables)		# For each line in the list
     $first = 1;
     while((@field = &dbnextrow($dbproc)))
     {
-        print REPDEFS ",\n" if !$first; # add a , and a \n if not first field in 
-table
+        print REPDEFS ",\n" if !$first; # add a , and a \n if not first field in table
         
 	# Check if its an identity column
 	if ( $field[8] != 1 )
@@ -131,8 +126,7 @@ table
         	$first = 0 if $first;
 	} 
 	else {
-        	print REPDEFS "\t$field[0] \t$field[1]($field[3], 
-$field[4])\tidentity";
+        	print REPDEFS "\t$field[0] \t$field[1]($field[3], $field[4])\tidentity";
         	$first = 0 if $first;
 	}
     }
@@ -175,8 +169,7 @@ $field[4])\tidentity";
 	print "Error! Table $tab[1].$tab[0] has no primary key !!\n" if $opt_v;
     }
 
-    # I like to replicate minimal columns. If you do this you cannot use 
-non-atomic
+    # I like to replicate minimal columns. If you do this you cannot use non-atomic
     # or bulk materialisation
     print REPDEFS "replicate minimal columns\ngo\n";
 

@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# $Id: Sybperl.pm,v 1.31 2001/08/09 00:02:06 mpeppler Exp $
+# $Id: Sybperl.pm,v 1.32 2003/12/24 21:48:43 mpeppler Exp $
 #
 # From
 # 	@(#)Sybperl.pm	1.27	03/26/98
@@ -108,7 +108,7 @@ tie $dbBin0x, Sybase::Sybperl::Attribs, 'dbBin0x', 0;
 	     bcp_control bcp_columns bcp_colfmt bcp_collen bcp_exec
 	     bcp_readfmt bcp_writefmt
 	     dbcancel dbcanquery dbfreebuf
-	     DBCURCMD DBMORECMDS DBCMDROW DBROWS DBCOUNT dbhasretstat
+	     DBCURCMD DBMORECMDS DBCMDROW DBROWS DBCOUNT DBDEAD dbhasretstat
 	     dbretstatus dbnumcols dbcoltype dbcollen dbcolname
 	     dbretdata dbsafestr
 	     dbmsghandle dberrhandle dbexit dbrecftos
@@ -455,6 +455,15 @@ sub DBCOUNT
 
     $dbproc = $default_db if(!defined($dbproc) || !&isadb($dbproc));
     $ret = $dbproc->DBCOUNT;
+}
+
+sub DBDEAD
+{
+    my($dbproc) = @_;
+    my($ret);
+
+    $dbproc = $default_db if(!defined($dbproc) || !&isadb($dbproc));
+    $ret = $dbproc->DBDEAD;
 }
 
 sub dbhasretstat

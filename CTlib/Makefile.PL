@@ -1,43 +1,49 @@
 # -*-Perl-*-
-# $Id: Makefile.PL,v 1.25 2002/01/11 23:50:29 mpeppler Exp $
+# $Id: Makefile.PL,v 1.32 2003/12/29 01:21:24 mpeppler Exp $
 # @(#)Makefile.PL	1.19	03/26/99
 
 
 require 5.002;
 
+use strict;
+
 use ExtUtils::MakeMaker;
 use Config;
 
-require '../config.pl';
+require '../util/config.pl';
 
-$sattr = &config;
+my $sattr = &config();
 
 #####
 ### Configure
 #####
 
-$CTLIBVS = $$sattr{CTLIBVS};
-$SYBASE = $$sattr{SYBASE};
-$VERSION = $$sattr{VERSION};
+my $CTLIBVS = $$sattr{CTLIBVS};
+my $SYBASE = $$sattr{SYBASE};
+my $VERSION = $$sattr{VERSION};
 
 if($ENV{SYBASE_OCS}) {
     $SYBASE .= "/$ENV{SYBASE_OCS}";
 }
 
-open(IN, "CTlib.pm.in") || die "Can't open CTlib.pm.in: $!";
+if(!-e "CTlib.pmi") {
+    rename("CTlib.pm", "CTlib.pmi");
+}
+open(IN, "CTlib.pmi") || die "Can't open CTlib.pmi: $!";
 {
     local $/ = undef;
     my $data = <IN>;
     close(IN);
     open(OUT, ">CTlib.pm") || die "Can't open CTlib.pm: $!";
-    print OUT "# This file is auto generated from CTlib.pm.in.\n# Please edit CTlib.pm.in to make any changes\n";
     $data = putEnv($sattr, $data);
     print OUT $data;
     close(OUT);
 }
 
 
-$linktype = defined($$sattr{LINKTYPE}) ? $$sattr{LINKTYPE} : 'dynamic';
+my $linktype = defined($$sattr{LINKTYPE}) ? $$sattr{LINKTYPE} : 'dynamic';
+
+my ($inc_string, $def_string, $lib_string);
 
 # Extra flags to pass to CPP
 if($^O eq 'MSWin32') {
@@ -63,10 +69,11 @@ if($^O eq 'MSWin32') {
     $lib_string .= " $$sattr{EXTRA_LIBS} -lm";
 
 
+
     # Logic to replace normal libs with _r (re-entrant) libs if
     # usethreads is defined provided by W. Phillip Moore (wpm@ms.com)
     # I have no idea if this works on Win32 systems (probably not!)
-    if ( $Config{usethreads} eq 'define' && $Config{osname} =~ /solaris|linux/ ) {
+    if ( $Config{usethreads} ) {
 	print "Running in threaded mode - looking for _r libraries...\n";
 	opendir(SYBLIB,"$SYBASE/lib")
 	    or die "Unable to opendir $SYBASE/lib: $!\n";
@@ -74,7 +81,7 @@ if($^O eq 'MSWin32') {
 	my %libname = ();
 	
 	foreach ( readdir(SYBLIB) ) {
-	    next unless /^lib(\S+)\.(so|a)/;
+	    next unless /^lib(\S+)\.(so|a|sl)/;
 	    next unless -f "$SYBASE/lib/$_";
 	    $libname{$1} = 1;
 	}
@@ -89,11 +96,11 @@ if($^O eq 'MSWin32') {
 	    print "Found -l$newname for -l$oldname\n";
 	    $lib_string =~ s/-l$oldname\b/-l$newname/;
 	}
-	
     }
+
     # If we are building for a 64 bit platform that also supports 32 bit
     # (i.e. Solaris 8, HP-UX11, etc) then we need to make some adjustments
-    if($$sattr{BUILD_TYPE} == 64) {
+    if( $Config{use64bitall} ) {
 	$def_string .= ' -DSYB_LP64';
 
 	print "Running in 64bit mode - looking for '64' libraries...\n";
@@ -104,7 +111,7 @@ if($^O eq 'MSWin32') {
 	
 	foreach ( readdir(SYBLIB) ) {
 	    next unless -f "$SYBASE/lib/$_";
-	    next unless /^lib(\S+)\.(so|a)/;
+	    next unless /^lib(\S+)\.(so|a|sl)/;
 	    $libname{$1} = 1;
 	}
 	
@@ -117,9 +124,9 @@ if($^O eq 'MSWin32') {
 	    next unless exists $libname{$newname};
 	    print "Found -l$newname for -l$oldname\n";
 	    $lib_string =~ s/-l$oldname\b/-l$newname/;
-	}
-	
+	}	
     }
+
 }
 
 #####
@@ -139,18 +146,19 @@ if($CTLIBVS == 0)
 else
 {
     my %opts = ('NAME'	=> 'Sybase::CTlib',
-		  'VERSION'	=> $VERSION,
+		  'VERSION_FROM'	=> '../patchlevel',
 		  'LIBS'	=> [$lib_string],
 		  'DEFINE'	=> $def_string,
 		  'INC'	=> $inc_string,
+		'clean' => { FILES => 'CTlib.pmi'},
 		  'LINKTYPE' => $linktype,
 		($] >= 5.005 ?
 		 (ABSTRACT   => 'Sybase OpenClient API modules',
-		  AUTHOR     => 'Michael Peppler (mpeppler@mbay.net)') : ()),
+		  AUTHOR     => 'Michael Peppler (mpeppler@peppler.org)') : ()),
 		($] >= 5.005 && $^O eq 'MSWin32' && 
 		 $Config{archname} =~ /-object\b/i ? (CAPI => 'TRUE') :()),
 		'XSPROTOARG' => '-prototypes');
-    if($^O ne VMS && $^O ne 'MSWin32') {
+    if($^O ne 'VMS' && $^O ne 'MSWin32') {
 	$opts{'LDDLFLAGS'} = "-L$SYBASE/lib $Config{lddlflags}";
 #	$opts{'LDFLAGS'}   = "-L$SYBASE/lib $Config{lddlflags}";
     }

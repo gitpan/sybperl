@@ -1,4 +1,33 @@
-	$Id: CHANGES,v 1.11 2002/06/27 22:43:25 mpeppler Exp $
+	$Id: CHANGES,v 1.15 2003/12/31 16:47:07 mpeppler Exp $
+
+2.16    Various bug fixes
+
+        Added DBSETLENCRYPT() to Sybase::DBlib.
+	Added DBDEAD() to Sybase::Sybperl.
+	Rearranged the directory structure somewhat so that all the
+	tests are now in one directory and are run as one unit.
+	64-bit builds should now be detected automatically (assuming
+	the perl binary was built in 64-bit mode)
+        Split out the documentation so that there are now pod entries
+	in DBlib.pm and CTlib.pm.
+
+	Bug Fixes
+	494   Do not try to use the ocs.cfg file if it exists.
+        499   Change MAXNAME to DBMAXNAME in the DBlib source.
+        500   $date->info return invalid data.
+        511   Change login to syb_login in DBlib.xs (work-around for FreeBSD).
+	516   Money/Numeric values lose precision when not using 
+              UseMoney/UseNumeric.
+	518   looking for non-existent library file (solaris 2.8/ASE 12.5.0.3
+	      perl 5.8)
+	498   Problem compiling sybperl under HP-UX 64-bit mode.
+	488   Sybase::CTlib and DBD::Sybase end up using the same error 
+	      handler
+	470   BLK.pm does not handle empty columns as NULL, and does not 
+              have retry logic of BCP.pm
+	410   BCP.pm has regex bug.
+	379   Sybase::BCP::config() does not correctly handle incremental 
+              changes
 
 2.15    Various bug fixes
 

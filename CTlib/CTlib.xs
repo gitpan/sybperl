@@ -1,6 +1,6 @@
 /* -*-C-*-
  *
- * $Id: CTlib.xs,v 1.53 2002/06/27 22:43:25 mpeppler Exp $
+ * $Id: CTlib.xs,v 1.63 2003/12/31 19:43:22 mpeppler Exp $
  *	@(#)CTlib.xs	1.37	03/26/99
  */
 
@@ -130,6 +130,7 @@ struct attribs {
     int MaxRows;
     int ComputeId;
     int ExtendedError;
+    int SkipEED;
     int RowCount;
     int RC;
     int pid;
@@ -204,6 +205,7 @@ typedef enum hash_key_id
     HV_max_rows,
     HV_compute_id,
     HV_extended_error,
+    HV_skip_eed,
     HV_row_count,
     HV_last_restype,
     HV_rc,
@@ -223,6 +225,7 @@ static struct _hash_keys {
     { "MaxRows",     HV_max_rows },
     { "ComputeId",   HV_compute_id },
     { "ExtendedError", HV_extended_error },
+    { "SkipEED",     HV_skip_eed },
     { "ROW_COUNT",   HV_row_count },
     { "LastRestype", HV_last_restype },
     { "RC",          HV_rc },
@@ -260,14 +263,14 @@ static ConInfo *get_ConInfoFromMagic _((HV*));
 static ConInfo *get_ConInfo _((SV*));
 static char *neatsvpv _((SV*, STRLEN));
 static CS_DATETIME to_datetime _((char*, CS_LOCALE*));
-static char *from_datetime _((CS_DATETIME*, CS_LOCALE*));
+static char *from_datetime _((CS_DATETIME*, char *, int, CS_LOCALE*));
 static SV *newdate _((CS_DATETIME*));
 static CS_MONEY to_money _((char *, CS_LOCALE*));
-static char *from_money _((CS_MONEY*, CS_LOCALE*));
+static char *from_money _((CS_MONEY*, char*, int, CS_LOCALE*));
 static CS_FLOAT money2float _((CS_MONEY *, CS_LOCALE*));
 static SV *newmoney _((CS_MONEY*));
 static CS_NUMERIC to_numeric _((char*, CS_LOCALE*, CS_DATAFMT*, int));
-static char *from_numeric _((CS_NUMERIC*, CS_LOCALE*));
+static char *from_numeric _((CS_NUMERIC*, char*, int, CS_LOCALE*));
 static CS_FLOAT numeric2float _((CS_NUMERIC *, CS_LOCALE*));
 static SV *newnumeric _((CS_NUMERIC*));
 static CS_CONNECTION *get_con _((SV*));
@@ -342,6 +345,9 @@ attr_store(info, key, keylen, sv, flag)
       case HV_extended_error:
 	attr->ExtendedError = SvIV(sv);
 	break;
+      case HV_skip_eed:
+	attr->SkipEED       = SvIV(sv);
+	break;
       case HV_row_count:
 	attr->RowCount      = SvIV(sv);
 	break;
@@ -409,6 +415,9 @@ attr_fetch(info, key, keylen)
       case HV_extended_error:
 	sv = newSViv(attr->ExtendedError);
 	break;
+      case HV_skip_eed:
+	sv = newSViv(attr->SkipEED);
+	break;
       case HV_row_count:
 	sv = newSViv(attr->RowCount);
 	break;
@@ -463,7 +472,17 @@ newdbh(info, package, attr_ref)
     /* Turn on the 'tie' magic */
     sv_magic((SV*)hv, rv, 'P', Nullch, 0);
 
+#if 0
+    SvREFCNT_dec(rv);
+    SvREFCNT_dec(thv);
+    SvREFCNT_dec(sv);
+    SvREFCNT_dec(sv);
+#endif
+
     SvRMAGICAL_on((SV*)hv);
+
+/*    fprintf(stderr, "Refcount hv = %d, rv = %d, thv = %d, sv = %d\n",
+//	    SvREFCNT(hv), SvREFCNT(rv), SvREFCNT(thv), SvREFCNT(sv)); */
 
     info->magic = hv;    
 
@@ -525,6 +544,7 @@ newdbh(info, package, attr_ref)
 	info->connection->attr.ComputeId  = 0;
 	info->connection->attr.pid        = getpid();
 	info->connection->attr.ExtendedError = 0;
+	info->connection->attr.SkipEED    = 0;
 	info->connection->attr.restype    = 0;
     }
 
@@ -532,6 +552,9 @@ newdbh(info, package, attr_ref)
     rv = newRV((SV*)hv);
     stash = gv_stashpv(package, TRUE);
     sv = sv_bless(rv, stash);
+
+    /*    fprintf(stderr, "Refcount hv = %d, rv = %d, thv = %d, sv = %d\n",
+//	    SvREFCNT(hv), SvREFCNT(rv), SvREFCNT(thv), SvREFCNT(sv)); */
         
     return sv;
 }
@@ -667,12 +690,13 @@ to_datetime(str, locale)
 }
 
 static char *
-from_datetime(dt, locale)
+from_datetime(dt, buff, len, locale)
     CS_DATETIME *dt;
+    char *buff;
+    int len;
     CS_LOCALE   *locale;
 {
     CS_DATAFMT srcfmt, destfmt;
-    static char buff[256];
     
     memset(&srcfmt, 0, sizeof(srcfmt));
     srcfmt.datatype  = CS_DATETIME_TYPE;
@@ -681,7 +705,7 @@ from_datetime(dt, locale)
 	    
     memset(&destfmt, 0, sizeof(destfmt));
 	    
-    destfmt.maxlength = 256;
+    destfmt.maxlength = len;
     destfmt.datatype  = CS_CHAR_TYPE;
     destfmt.format    = CS_FMT_NULLTERM;
     destfmt.locale    = locale;
@@ -713,7 +737,7 @@ static SV
            fields to 0. */
 	memset(ptr, 0, sizeof(CS_DATETIME));
     }
-    sv = newSV(0);
+    sv = NEWSV(983, 0);
     sv_setref_pv(sv, package, (void*)ptr);
     
     if(debug_level & TRACE_CREATE)
@@ -760,12 +784,13 @@ to_money(str, locale)
 }
 
 static char *
-from_money(mn, locale)
+from_money(mn, buff, len, locale)
     CS_MONEY *mn;
+    char *buff;
+    int len;
     CS_LOCALE *locale;
 {
     CS_DATAFMT srcfmt, destfmt;
-    static char buff[256];
     
     memset(&srcfmt, 0, sizeof(srcfmt));
     srcfmt.datatype  = CS_MONEY_TYPE;
@@ -774,7 +799,7 @@ from_money(mn, locale)
 	    
     memset(&destfmt, 0, sizeof(destfmt));
 	    
-    destfmt.maxlength = 256;
+    destfmt.maxlength = len;
     destfmt.datatype  = CS_CHAR_TYPE;
     destfmt.format    = CS_FMT_NULLTERM;
     destfmt.locale    = locale;
@@ -825,7 +850,7 @@ static SV
     if(mn)
 	*value = *mn;
 
-    sv = newSV(0);
+    sv = NEWSV(983, 0);
     sv_setref_pv(sv, package, (void*)value);
 
     if(debug_level & TRACE_CREATE)
@@ -920,12 +945,13 @@ to_numeric(str, locale, datafmt, type)
 }
 
 static char *
-from_numeric(mn, locale)
+from_numeric(mn, buff, len, locale)
     CS_NUMERIC *mn;
+    char *buff;
+    int  len;
     CS_LOCALE  *locale;
 {
     CS_DATAFMT srcfmt, destfmt;
-    static char buff[256];
     
     memset(&srcfmt, 0, sizeof(srcfmt));
     srcfmt.datatype  = CS_NUMERIC_TYPE;
@@ -934,7 +960,7 @@ from_numeric(mn, locale)
 	    
     memset(&destfmt, 0, sizeof(destfmt));
 	    
-    destfmt.maxlength = 256;
+    destfmt.maxlength = len;
     destfmt.datatype  = CS_CHAR_TYPE;
     destfmt.format    = CS_FMT_NULLTERM;
     destfmt.locale    = locale;
@@ -986,7 +1012,7 @@ static SV
     if(mn)
 	*value = *mn;
 
-    sv = newSV(0);
+    sv = NEWSV(983, 0);
     sv_setref_pv(sv, package, (void*)value);
 
     if(debug_level & TRACE_CREATE)
@@ -1261,7 +1287,7 @@ describe(info, dbp, restype, textBind)
     hv_clear(info->hv);
     i = info->numCols;
     while(i--)
-	av_store(info->av, i, newSV(0));
+	av_store(info->av, i, NEWSV(982, 0));
     
     if(restype == CS_COMPUTE_RESULT) {
 	CS_INT comp_id, outlen;
@@ -1371,10 +1397,11 @@ describe(info, dbp, restype, textBind)
 		
 	  case CS_NUMERIC_TYPE:
 	  case CS_DECIMAL_TYPE:
-	    if(use_char)
+	    /* We want to preserve precision. So if we're not keeping
+	       the data as NUMERIC, then convert to string. */
+	    if(use_char || !use_numeric)
 		goto DoChar;
-	    if(!use_numeric)
-		goto DoFloat;
+
 	    info->datafmt[i].maxlength = sizeof(CS_NUMERIC);
 	    info->datafmt[i].datatype = CS_NUMERIC_TYPE;
 	    info->datafmt[i].format   = CS_FMT_UNUSED;
@@ -1387,10 +1414,9 @@ describe(info, dbp, restype, textBind)
 	    
 	  case CS_MONEY_TYPE:
 	  case CS_MONEY4_TYPE:
-	    if(use_char)
+	    if(use_char || !use_money)
 		goto DoChar;
-	    if(!use_money)
-		goto DoFloat;
+
 	    info->datafmt[i].maxlength = sizeof(CS_MONEY);
 	    info->datafmt[i].datatype = CS_MONEY_TYPE;
 	    info->datafmt[i].format   = CS_FMT_UNUSED;
@@ -1614,7 +1640,8 @@ fetch2sv(info, doAssoc, wantref)
 	len = 0;
 	
 	if(info->coldata[i].indicator == CS_NULLDATA) { /* NULL data */
-	    (void)SvOK_off(sv);
+	    /*(void)SvOK_off(sv);*/
+	    sv_setsv(sv, &PL_sv_undef);
 	} else {
 	    switch(info->datafmt[i].datatype) {
 	      case CS_TEXT_TYPE:
@@ -1624,10 +1651,12 @@ fetch2sv(info, doAssoc, wantref)
 	      case CS_CHAR_TYPE:
 		if(info->coldata[i].realtype == CS_BINARY_TYPE && 
 		   info->connection->attr.UseBin0x) {
-		    char buff[MAX_CHAR_BUF];
+		    char *buff;
+		    Newz(931, buff, info->coldata[i].valuelen+10, char);
 		    strcpy(buff, "0x");
 		    strcat(buff, info->coldata[i].value.c);
 		    sv_setpv(sv, buff);
+		    Safefree(buff);
 		} else {
 		    sv_setpv(sv, info->coldata[i].value.c);
 		}
@@ -1811,7 +1840,8 @@ CS_SERVERMSG	*srvmsg;
 	SAVETMPS;
 	PUSHMARK(sp);
 	    
-	if (srvmsg->status & CS_HASEED)
+	if (srvmsg->status & CS_HASEED && 
+	    info->connection->attr.SkipEED == 0)
 	{
 	    if (ct_con_props(connection, CS_GET, CS_EED_CMD,
 			     &cmd, CS_UNUSED, NULL) != CS_SUCCEED)
@@ -1950,6 +1980,7 @@ initialize()
     CS_RETCODE	retcode = CS_FAIL;
     CS_INT	netio_type = CS_SYNC_IO;
     CS_INT      cs_ver;
+    CS_INT      boolean = CS_FALSE;
     dTHR;
 
 #if 0
@@ -1966,29 +1997,35 @@ initialize()
 
 #if defined(CS_VERSION_125)
     cs_ver = CS_VERSION_125;
-    retcode = cs_ctx_global(cs_ver, &context);
+    retcode = cs_ctx_alloc(cs_ver, &context);
 #if defined(CS_VERSION_120)
     if(retcode != CS_SUCCEED) {
 	cs_ver = CS_VERSION_120;
-	retcode = cs_ctx_global(cs_ver, &context);
+	retcode = cs_ctx_alloc(cs_ver, &context);
     }
 #if defined(CS_VERSION_110)
     if(retcode != CS_SUCCEED) {
 	cs_ver = CS_VERSION_110;
-	retcode = cs_ctx_global(cs_ver, &context);
+	retcode = cs_ctx_alloc(cs_ver, &context);
     }
 #endif
 #endif
 #endif
     if(retcode != CS_SUCCEED) {
 	cs_ver = CS_VERSION_100;
-	retcode = cs_ctx_global(cs_ver, &context);
+	retcode = cs_ctx_alloc(cs_ver, &context);
     }
 
     if(retcode != CS_SUCCEED)
 	croak("Sybase::CTlib initialize: cs_ctx_alloc(%d) failed", cs_ver);
 
 /*    warn("context version: %d", cs_ver); */
+
+#if defined(CS_EXTERNAL_CONFIG)
+    if(cs_config(context, CS_SET, CS_EXTERNAL_CONFIG, &boolean, CS_UNUSED, NULL) != CS_SUCCEED) {
+	/* warn("Can't set CS_EXTERNAL_CONFIG to false"); */
+    }
+#endif
 
     if((retcode = ct_init(context, cs_ver)) != CS_SUCCEED) {
 	context = NULL;
@@ -2033,7 +2070,7 @@ initialize()
 	if((p = strchr(ocVersion, '\n')))
 	    *p = 0;
 	
-	sprintf(buff, "This is sybperl, version %s\n\nSybase::CTlib $Revision: 1.53 $ $Date: 2002/06/27 22:43:25 $\n\nCopyright (c) 1995-2001 Michael Peppler\nPortions Copyright (c) 1995 Sybase, Inc.\n\nOpenClient version: %s\n",
+	sprintf(buff, "This is sybperl, version %s\n\nSybase::CTlib $Revision: 1.63 $ $Date: 2003/12/31 19:43:22 $\n\nCopyright (c) 1995-2001 Michael Peppler\nPortions Copyright (c) 1995 Sybase, Inc.\n\nOpenClient version: %s\n",
 		SYBPLVER, ocVersion);
 	sv_setnv(sv, atof(SYBPLVER));
 	sv_setpv(sv, buff);
@@ -2044,14 +2081,14 @@ initialize()
 	sv_setnv(sv, atof(SYBPLVER));
     }
 
-    if((sv = perl_get_sv("0", FALSE)))
-    {
-	char *p;
-	strcpy(scriptName, SvPV(sv, PL_na));
-	if((p = strrchr(scriptName, '/')))
-	{
+    if((sv = perl_get_sv("0", FALSE))) {
+	char *p, *str;
+	str = SvPV(sv, PL_na);
+	if((p = strrchr(str, '/'))) {
 	    ++p;
-	    strcpy(scriptName, p);
+	    strncpy(scriptName, p, 255);
+	} else {
+	    strncpy(scriptName, str, 255);
 	}
     }
 }
@@ -6068,7 +6105,10 @@ CODE:
 	    warn("[In DESTROY] Freeing datafmt");
 	Safefree(info->datafmt);
     }
-/*    hv_undef(info->magic); */
+/*    fprintf(stderr, "Refcount of info->magic: %d\n", SvREFCNT(info->magic));
+    sv_unmagic(info->magic, '~');
+    sv_unmagic(info->magic, 'P');
+    hv_undef(info->magic); */
     hv_undef(info->hv);
     av_undef(info->av);
     if(debug_level & TRACE_DESTROY)
@@ -7065,12 +7105,25 @@ ct_param(dbp, sv_params)
 	}
 	break;
 
+      case CS_BINARY_TYPE:
+      case CS_VARBINARY_TYPE:
+	datafmt.datatype = CS_BINARY_TYPE;
+	if(svp || datafmt.status == CS_RETURN)
+	{
+	    datafmt.maxlength = 255; /* FIXME???*/
+	    if(svp)
+	    {
+		STRLEN klen;
+		
+		value = SvPV(*svp, klen);
+		datalen = klen; /*strlen(ptr->u.c); */
+	    }
+	}
+	break;
+	
       case CS_TEXT_TYPE:
       case CS_IMAGE_TYPE:
 	warn("CS_TEXT_TYPE or CS_IMAGE_TYPE is invalid for ct_param - converting to CS_CHAR_TYPE");
-
-      case CS_BINARY_TYPE:
-      case CS_VARBINARY_TYPE:
 
       case CS_CHAR_TYPE:
       case CS_VARCHAR_TYPE:
@@ -7430,9 +7483,9 @@ CODE:
 	svp = av_fetch(av, i, 0);
 	info->datafmt[i].format = CS_FMT_UNUSED;
 	info->datafmt[i].count = 1;
-	if(!svp || !SvOK(*svp)) {
+	if(!svp || !SvOK(*svp) || *svp == &PL_sv_undef) {
 	    info->coldata[i].indicator = 0;
-	    ptr = "foo";
+	    ptr = "";
 	    info->coldata[i].valuelen = 0;
 	    if(!info->has_identity && info->id_column == i + 1)
 		continue;
@@ -7492,11 +7545,13 @@ CODE:
 		break;
 	      default:
 		ptr = info->coldata[i].ptr;
-		info->coldata[i].valuelen = SvCUR(*svp);
+		/*info->coldata[i].valuelen = SvCUR(*svp);*/
+		info->coldata[i].valuelen = slen;
 		break;
 	    }
 	}
 /*	warn("blk_bind(%d %s\n", i+1, info->coldata[i].ptr); */
+    BIND:
 	ret = blk_bind(info->bcp_desc,
 		       i + 1,
 		       &info->datafmt[i],
@@ -7602,14 +7657,16 @@ str(valp)
   CODE:
 {
     CS_DATETIME *ptr;
+    char buff[128];
+
     if (sv_isa(valp, DateTimePkg)) {
 	IV tmp = SvIV((SV*)SvRV(valp));
 	ptr = (CS_DATETIME *) tmp;
     }
     else
 	croak("valp is not of type %s", DateTimePkg);
-    
-    RETVAL = from_datetime(ptr, locale); /* XXX */
+
+    RETVAL = from_datetime(ptr, buff, 128, locale); /* XXX */
 
     if(debug_level & TRACE_OVERLOAD)
 	warn("%s->str == %s", neatsvpv(valp,0), RETVAL);
@@ -7790,8 +7847,10 @@ info(valp, op)
 	if(cs_dt_info(context, CS_GET, NULL, op, item,
 		      buff, 32, &ret) != CS_SUCCEED)
 	    warn("cs_dt_info failed");
-	else
+	else {
+	    buff[ret] = 0;
 	    RETVAL = buff;
+	}
     }
 }
  OUTPUT:
@@ -7823,9 +7882,11 @@ DESTROY(valp)
 char *
 str(valp)
 	SV *	valp
-  CODE:
+CODE:
 {
     CS_MONEY *ptr;
+    char buff[128];
+    
     if (sv_isa(valp, MoneyPkg)) {
 	IV tmp = SvIV((SV*)SvRV(valp));
 	ptr = (CS_MONEY *) tmp;
@@ -7833,7 +7894,7 @@ str(valp)
     else
 	croak("valp is not of type %s", MoneyPkg);
 
-    RETVAL = from_money(ptr, locale); /* XXX */
+    RETVAL = from_money(ptr, buff, 128, locale); /* XXX */
     if(debug_level & TRACE_OVERLOAD)
 	warn("%s->str == %s", neatsvpv(valp,0), RETVAL);
 }
@@ -7981,10 +8042,14 @@ calc(valp1, valp2, op, ord = &PL_sv_undef)
     {
 	warn("cs_calc(CS_MONEY) failed");
     }
-    if(debug_level & TRACE_OVERLOAD)
+
+    if(debug_level & TRACE_OVERLOAD) {
+	char buff[128];
+	from_money(&result, buff, 128, locale);
 	warn("%s->calc(%s, %c, %s) == %s", neatsvpv(valp1, 0),
 	     neatsvpv(valp2, 0), op, SvTRUE(ord) ? "TRUE" : "FALSE",
-	     from_money(&result, locale)); /* XXX */
+	     buff); /* XXX */
+    }
 
     ST(0) = sv_2mortal(newmoney(&result));
 }    
@@ -8017,6 +8082,8 @@ str(valp)
   CODE:
 {
     CS_NUMERIC *ptr;
+    char buff[128];
+
     if (sv_isa(valp, NumericPkg)) {
 	IV tmp = SvIV((SV*)SvRV(valp));
 	ptr = (CS_NUMERIC *) tmp;
@@ -8024,7 +8091,7 @@ str(valp)
     else
 	croak("valp is not of type %s", NumericPkg);
 
-    RETVAL = from_numeric(ptr, locale);	/* XXX */
+    RETVAL = from_numeric(ptr, buff, 128, locale);	/* XXX */
     if(debug_level & TRACE_OVERLOAD)
 	warn("%s->str == %s", neatsvpv(valp,0), RETVAL);
 }
@@ -8171,10 +8238,13 @@ calc(valp1, valp2, op, ord = &PL_sv_undef)
     if(cs_calc(context, cs_op, CS_NUMERIC_TYPE, m1, m2, &result) != CS_SUCCEED)
 	warn("cs_calc(CS_NUMERIC) failed");
 
-    if(debug_level & TRACE_OVERLOAD)
+    if(debug_level & TRACE_OVERLOAD) {
+	char buff[128];
+	
 	warn("%s->calc(%s, %c, %s) == %s", neatsvpv(valp1, 0),
 	     neatsvpv(valp2, 0), op, SvTRUE(ord) ? "TRUE" : "FALSE",
-	     from_numeric(&result, locale)); /* XXX */
+	     from_numeric(&result, buff, 128, locale)); /* XXX */
+    }
     
     ST(0) = sv_2mortal(newnumeric(&result));
 }    

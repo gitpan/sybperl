@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# $Id: prepare.t,v 1.1 2001/09/28 19:02:51 mpeppler Exp $
+# $Id: 2_ct_prepare.t,v 1.1 2003/12/25 17:16:42 mpeppler Exp $
 #
 #
 # Small test script for Sybase::CTlib dynamic SQL

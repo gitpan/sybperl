@@ -1,4 +1,4 @@
-	$Id: README,v 1.5 2001/07/03 23:24:57 mpeppler Exp $
+	$Id: README,v 1.6 2003/12/25 18:47:10 mpeppler Exp $
 
 			   sybperl 2.0
 	
@@ -55,36 +55,70 @@ System 10.
 
 Recent Changes:
 
-2.13    Yet more bug fixes
+2.16    Various bug fixes
 
-        Correct EMBED_SYBASE handling (bug in config.pl script).
-	Fix building for Sybase 12.0 (uses SYBASE_OCS environment 
-	variable.)
-	Added dbretlen(), dbretname(), dbrettype() to DBlib.
-        Minor changes to support wide data in Sybase 12.5.
+        Added DBSETLENCRYPT() to Sybase::DBlib.
+	Added DBDEAD() to Sybase::Sybperl.
 
-	340: Sybase::BCP fails unless REORDER is defined.
-	342: DateTime calc method microseconds aren't.
+	Bug Fixes
+	494   Do not try to use the ocs.cfg file if it exists.
+        499   Change MAXNAME to DBMAXNAME in the DBlib source.
+        500   $date->info return invalid data.
+        511   Change login to syb_login in DBlib.xs (work-around for FreeBSD).
+	516   Money/Numeric values lose precision when not using 
+              UseMoney/UseNumeric.
+	518   looking for non-existent library file (solaris 2.8/ASE 12.5.0.3
+	      perl 5.8)
+	498   Problem compiling sybperl under HP-UX 64-bit mode.
+	488   Sybase::CTlib and DBD::Sybase end up using the same error 
+	      handler
+	470   BLK.pm does not handle empty columns as NULL, and does not 
+              have retry logic of BCP.pm
+	410   BCP.pm has regex bug.
+	379   Sybase::BCP::config() does not correctly handle incremental 
+              changes
 
-2.12    More bug fixes
+2.15    Various bug fixes
 
-	Better EMBED_SYBASE, thanks to Mike Hiller.
-	Added UseBix0x mode to CTlib.
+        Support for 64bit OpenClient on platforms that support this
+        (Thanks to Pamela Schulz for her help with this)
+        Added CTlib/t/xblk.t and CTlib/t/prepare.t test scripts.
+	CS_BLK_CANCEL was not exported.
+	For building with FreeTDS you can now add -DNOBLK to the 
+	EXTRA_DEFS line in CONFIG.
 
-	269: dbsqlsend() missing from Sybperl.pm emulation layer.
-	315: -ldnet_stub directive in CONFIG ignored for OSF1/Tru64 Unix.
-	312: DBINTERRUPT misspelled in DBlib.xs.
+	Bug Fixes
+	468   Makefile.PL has syntax error when used with perl 5.8.x
+	460   Idem.
+	439   Makefile.PL fails for very old Sybase installation (i.e.
+              installation with no CT-Library)
+	423   Fix Makefile.PL for Win32 builds.
+	422   t/bcp.t fails against 11.0.3.3 linux servers.
 
-2.11	Various bug fixes.
 
-	nsql() patch from W. Philipp Moore.
-	Added EMBED_SYBASE configuration variable.
-	dbreadtext() could cause a core dump if the internal call failed.
-	Figured out what was needed to get Sybase::DBlib to talk to an 
-	MS-SQL 7 dataserver. Sybase::CTlib still does not work with the
-	normal, non-patched MS-SQL 7 server.
-	Fixed bug 261: Money/Numeric potentially lose precision in
-		       Sybase::CTlib.
+2.14	And more (minor) bug fixes
+
+	config.pl's getExtraLibs() now tries to determine the Client
+	Library version to avoid linking with -linsck or -ltli for
+	OC 11 or later (as the correct library is loaded dynamically 
+	based on the values defined in $SYBASE/config/libtcl.cfg)
+        Added support for CS_HAFAILOVER connect option (thanks to 
+	Ranko Popovic)
+        Added CTlib version of nsql().
+	Documentation patches from Geoffrey Rommel.
+	Fixed memory leak when using UseDateTime/UseMoney/UseNumeric.
+	Add Async calls for CTlib (ct_poll(), etc).
+	Add CS_DATA_LCHAR connection capability.
+        Add ct_dyn_prepare() and ct_dyn_execute() to handle "dynamic SQL"
+	- thanks to Masatsuyo Takahas for the patch.
+	Add experimental blk_*() calls.
+	Ask for the PWD entries during the perl Makefile.PL phase.
+	Add Sybase::BLK module (based on Sybase::BCP) (*many* thanks to
+        Scott Zetlan for this!)
+	
+	Bug Fixes
+	309   Sybase::BCP fails test if server is set to use 
+	      datarows locking by default.
 
 ---------------------------------------------------------------------
 
@@ -207,6 +241,10 @@ h) Linux -lndbm and -lgbdm issues.
    rebuilding perl without -lndbm and -lgdbm in the extra libraries
    line (and of course without -ldb) seems to solve the problem.
 
+   Note that recent versions of linux (at least from Red Hat 6.2 onwards)
+   don't seem to have any problem at all. The perl binary that is shipped
+   with these systems can be used directly.
+
 i) Sybase 12.0 or later.
 
    If you have Sybase 12.0 installed then the build process uses the
@@ -214,6 +252,26 @@ i) Sybase 12.0 or later.
    below the directory defined by $SYBASE. The script tests for the
    existence of the SYBASE_OCS environment variable, and uses it if
    it exists.
+
+j) 32-bit vs. 64-bit mode
+
+   As of version 12.5 Sybase started shipping 64 bit versions of the
+   OpenClient libraries. If you wish to use these 64 bit libraries
+   you need to have a perl binary that is also built in 64 bit mode.
+   This can be verified via "perl -V" and looking for the "use64bitall"
+   configuration variable. If this is "defined" then you have a 64 bit 
+   binary. The build process detects the use of a 64 bit binary and
+   will attempt to use the appropriate 64 bit Sybase libraries in that
+   case.
+
+k) Threading
+
+   As of perl 5.005 you can build a threaded version of perl. Sybase
+   provides thread-safe libraries on most platforms. These are identified
+   by the _r suffix (i.e. libct_r.so vs. libct.so). If threading is
+   enabled in your perl binary the build will attempt to use the 
+   thread-safe libraries if they exist. See also README.thread in this
+   directory.
 
    
 Once you have answered these eight questions, you can proceed:
@@ -231,11 +289,13 @@ Once you have answered these eight questions, you can proceed:
       
    2) Edit CONFIG
 
-      If the SYBASE environment variable is set correctly you can
-      try to skip this step and see if the build works, as the
-      build process tries to determine what libraries to use and
-      where to locate them automatically. 
-      If the build fails you should check the following.
+      NOTE: In general, if the SYBASE environment variable (and
+      the SYBASE_OCS for Sybase 12.0 and later) is set correctly then
+      no changes to CONFIG should be needed. The build process will
+      attempt to determine all the necessary information from the 
+      environment.
+      However, if the build fails then you may need to make 
+      changes to this file as described below.
 
       See comments under b) above regarding dynamic vs static loading.
       Some systems require extra libraries to build (Solaris 2.x
@@ -285,6 +345,10 @@ Once you have answered these eight questions, you can proceed:
       DB-Library!)
 
    6) Edit PWD
+
+      NOTE: This step is not normally necessary as the build process
+      now asks for this information up front.
+
       Enter the user id and password that you want to use to run the
       tests. It's probably a good idea to reset this file to its
       original state once you're done, unless you really don't have
@@ -356,7 +420,7 @@ In case of problems:
 First, read the FAQ file in the sybperl distribution.
 
 Second, fire off an e-mail to me (mpeppler@peppler.org) or to the Sybperl
-mailing list (sybperl-l@list.cren.net) with a *full* description of
+mailing list (sybperl-l@peppler.org) with a *full* description of
 what doesn't work, including version numbers of Perl and sybperl, the
 hardware and OS version, and the Sybase Open Client version you are
 using.
@@ -368,9 +432,9 @@ There are quite a few small example scripts in eg/ which illustrate
 the use of both the DBlib and CTlib modules.
 
 There is a mailing list for discussing sybperl related questions
-(sybperl-l@list.cren.net). Send a message to
-listproc@list.cren.net with 'subscribe Sybperl-L your name'
-in the body to subscribe to the list.
+(sybperl-l@peppler.org). Send a message to
+sybperl-l-request@peppler.org with 'subscribe' in the body of the message
+to subscribe to the list.
 
 
 
@@ -379,9 +443,7 @@ Reporting Bugs:
 
 I have set up a (simple) bug tracking database, which can be accessed
 on line at http://www.peppler.org/cgi-bin/bug.cgi. You can submit bugs 
-directly, or send me email using the SPR file in this directory. Keep
-in mind that www.peppler.org is on the end of a K56 line, so it may be 
-slow.
+directly, or send me email using the SPR file in this directory.
 
 When submitting bugs, or any sort of problem report, please make sure
 you include full version information for Sybperl, Perl, Sybase and

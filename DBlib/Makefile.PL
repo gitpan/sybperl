@@ -1,36 +1,41 @@
 # -*-Perl-*-
-# $Id: Makefile.PL,v 1.23 2002/01/11 23:50:29 mpeppler Exp $
+# $Id: Makefile.PL,v 1.27 2003/12/29 01:08:41 mpeppler Exp $
 #	@(#)Makefile.PL	1.19	03/26/99
 
 require 5.002;
 
+use strict;
 use ExtUtils::MakeMaker;
 use Config;
 
-require '../config.pl';
+require '../util/config.pl';
 
-$sattr = &config;
+my $sattr = &config();
 
 # DB-Library version
-$DBLIBVS = $$sattr{DBLIBVS};
-$SYBASE = $$sattr{SYBASE};
-$VERSION = $$sattr{VERSION};
+my $DBLIBVS = $$sattr{DBLIBVS};
+my $SYBASE = $$sattr{SYBASE};
+my $VERSION = $$sattr{VERSION};
 
 if($ENV{SYBASE_OCS}) {
     $SYBASE .= "/$ENV{SYBASE_OCS}";
 }
 
-open(IN, "DBlib.pm.in") || die "Can't open DBlib.pm.in: $!";
+if(!-e "DBlib.pmi") {
+    rename("DBlib.pm", "DBlib.pmi");
+}
+open(IN, "DBlib.pmi") || die "Can't open DBlib.pmi: $!";
 {
     local $/ = undef;
     my $data = <IN>;
     close(IN);
     open(OUT, ">DBlib.pm") || die "Can't open DBlib.pm: $!";
-    print OUT "# This file is auto generated from DBlib.pm.in.\n# Please edit DBlib.pm.in to make any changes\n";
     $data = putEnv($sattr, $data);
     print OUT $data;
     close(OUT);
 }
+
+my ($inc_string, $def_string, $lib_string);
 
 # Extra flags to pass to CPP
 if($^O eq 'MSWin32') {
@@ -50,7 +55,7 @@ if($^O eq 'MSWin32') {
 
     # If we are building for a 64 bit platform that also supports 32 bit
     # (i.e. Solaris 8, HP-UX11, etc) then we need to make some adjustments
-    if($$sattr{BUILD_TYPE} == 64) {
+    if( $Config{use64bitall} ) {
 	$def_string .= ' -DSYB_LP64';
 
 	print "Running in 64bit mode - looking for '64' libraries...\n";
@@ -79,7 +84,7 @@ if($^O eq 'MSWin32') {
     }
 
 }
-$linktype = defined($$sattr{LINKTYPE}) ? $$sattr{LINKTYPE} : 'dynamic';
+my $linktype = defined($$sattr{LINKTYPE}) ? $$sattr{LINKTYPE} : 'dynamic';
 
 #####
 ### Configure End
@@ -99,12 +104,13 @@ else
     my %opts = ('LIBS' => [$lib_string],
 		'NAME' => "Sybase::DBlib",
 		'INC' => $inc_string,
-		'VERSION' => "$VERSION",
+		'VERSION_FROM' => '../patchlevel',
 		'DEFINE' => $def_string,
 		'XSPROTOARG' => '-prototypes',
+		'clean' => { FILES => 'DBlib.pmi' },
 		($] >= 5.005 ?
 		 (ABSTRACT   => 'Sybase DB-Library API module',
-		  AUTHOR     => 'Michael Peppler (mpeppler@mbay.net)') : ()),
+		  AUTHOR     => 'Michael Peppler (mpeppler@peppler.org)') : ()),
 		($] >= 5.005 && $^O eq 'MSWin32' && 
 		 $Config{archname} =~ /-object\b/i ? (CAPI => 'TRUE') :()),
 		'LINKTYPE' => $linktype,);

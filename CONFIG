@@ -62,11 +62,6 @@ EXTRA_LIBS=-linsck
 # Add -DNOBLK if you don't have the libblk.a library available (e.g. FreeTDS)
 EXTRA_DEFS=-DDO_TIE
 
-#
-# Uncomment this if you are building sybperl in 64bit mode
-# with the 12.5 (or later) OpenClient on a 64 bit OS.
-#
-#BUILD_TYPE=64
 
 # LINKTYPE
 # If you wish to link Sybase::DBlib and/or Sybase::CTlib statically

@@ -1,21 +1,24 @@
 # -*-Perl-*-
-#	$Id: Makefile.PL,v 1.6 2002/01/11 23:50:28 mpeppler Exp $
+#	$Id: Makefile.PL,v 1.11 2003/12/31 16:47:07 mpeppler Exp $
 require 5.002;
 use ExtUtils::MakeMaker;
 use Config;
 
-require './config.pl';
+use strict;
 
-$sattr = &config;
+require './util/config.pl';
+
+my $sattr = &config();
+my $written_pwd_file = 'PWD';
 
 configPwd();
 
-$linktype = defined($$sattr{LINKTYPE}) ? $$sattr{LINKTYPE} : 'dynamic';
+my $linktype = defined($$sattr{LINKTYPE}) ? $$sattr{LINKTYPE} : 'dynamic';
 
-if($Config{lns}) {
-    system("cd CTlib; $Config{lns} ../pod/sybperl.pod CTlib.pod") if(!-e 'CTlib/CTlib.pod');
-    system("cd DBlib; $Config{lns} ../pod/sybperl.pod DBlib.pod") if(!-e 'DBlib/DBlib.pod');
-}
+#if($Config{lns}) {
+#    system("cd CTlib; $Config{lns} ../pod/sybperl.pod CTlib.pod") if(!-e 'CTlib/CTlib.pod');
+#    system("cd DBlib; $Config{lns} ../pod/sybperl.pod DBlib.pod") if(!-e 'DBlib/DBlib.pod');
+#}
     
 
 
@@ -31,7 +34,7 @@ This can cause a version conflict as this version installs in
 which comes later in Perl $]'s include directory list.
 
 You may need to manually remove these older Sybase directories if
-sybperl $sattr{VERSION} does not run correctly.
+sybperl $sattr->{VERSION} does not run correctly.
 
 One way to do so would be to run the following command
     mv $_/Sybase $_/Sybase.old
@@ -42,9 +45,10 @@ MSG_EOF
 }
 
 WriteMakefile('DISTNAME' => "sybperl",
-	      'NAME' => Sybase, 
-	      'VERSION' => $$sattr{VERSION},
+	      'NAME' => 'Sybase',
+	      'VERSION_FROM' => 'patchlevel',
 	      'dist' => {'TARFLAGS' => "cvf", 'COMPRESS' => "gzip"},
+	      'clean' => { FILES => $written_pwd_file },
 	      'LINKTYPE' => $linktype,
 	      'XSPROTOARG' => '-prototypes',
 	      ($] >= 5.005 ?
@@ -65,7 +69,7 @@ sub MY::libscan
 }
 
 sub configPwd {
-    open(IN, "PWD") || die "Can't open PWD: $!";
+    open(IN, "PWD.factory") || die "Can't open PWD.factory: $!";
     my %pwd;
     while(<IN>) {
 	chomp;
@@ -80,13 +84,18 @@ sub configPwd {
     print "The sybperl modules need access to a Sybase server to run the tests.\n";
     print "To clear an entry please enter 'undef'\n";
     print "Sybase server to use (default: $pwd{SRV}): ";
-    $pwd{SRV} = getAns() || $pwd{SRV};
+    $pwd{SRV} = getAns(0) || $pwd{SRV};
     print "User ID to log in to Sybase (default: $pwd{UID}): ";
-    $pwd{UID} = getAns() || $pwd{UID};
+    $pwd{UID} = getAns(0) || $pwd{UID};
     print "Password (default: $pwd{PWD}): ";
-    $pwd{PWD} = getAns() || $pwd{PWD};
+    $pwd{PWD} = getAns(1) || $pwd{PWD};
 
-    open(OUT, ">PWD") || die "Can't open PWD: $!";
+    warn "\n* Writing login information, including password, to file $written_pwd_file.\n\n";
+    # Create the file non-readable by anyone else.
+    my $old_umask = umask(077);
+    die "cannot umask(): $!" if not defined $old_umask;
+    open(OUT, ">$written_pwd_file") || die "Can't open $written_pwd_file: $!";
+    umask($old_umask) != 077 && die "strange return from umask()";
     print OUT <<EOF;
 # This file contains optional login id, passwd and server info for the test
 # programs:
@@ -102,9 +111,24 @@ EOF
 }
 
 sub getAns {
+    my $flag = shift;
+
+    if($flag && -t) {
+	eval {
+	    require Term::ReadKey;
+	    Term::ReadKey::ReadMode('noecho');
+	};
+    }
     my $ans = <STDIN>;
-    chomp($ans);
-    $ans;
+    if($flag && -t) {
+	eval {
+	    Term::ReadKey::ReadMode('normal');	# reset terminal
+	};
+    }
+    $ans =~ s/^\s+//;
+    $ans =~ s/\s+$//;
+
+    return $ans;
 }
 
     

@@ -1,5 +1,5 @@
 #!./perl
-# $Id: bcp.t,v 1.3 2002/01/11 23:50:28 mpeppler Exp $
+# $Id: 3_bcp.t,v 1.1 2003/12/25 17:16:42 mpeppler Exp $
 #
 # From:
 #	@(#)bcp.t	1.2	03/22/96

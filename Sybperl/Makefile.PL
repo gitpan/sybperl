@@ -1,16 +1,18 @@
 # -*-Perl-*-
-# $Id: Makefile.PL,v 1.14 1999/05/14 17:59:49 mpeppler Exp $
+# $Id: Makefile.PL,v 1.16 2003/12/27 01:33:13 mpeppler Exp $
 #
 #	@(#)Makefile.PL	1.13	03/26/99
 
 require 5.002;
+
+use strict;
 use ExtUtils::MakeMaker;
 
-require '../config.pl';
+require '../util/config.pl';
 
-$sattr = &config;
+my $sattr = &config();
 
-$DBLIBVS = $$sattr{DBLIBVS};
+my $DBLIBVS = $$sattr{DBLIBVS};
 
 #####
 ### Configure End
@@ -29,10 +31,10 @@ if($DBLIBVS == 0)
 else
 {
     WriteMakefile('NAME' => "Sybase::Sybperl",
-		  'VERSION' => "$$sattr{VERSION}",
+		  'VERSION_FROM' => '../patchlevel',
 		  ($] >= 5.005 ?
 		   (ABSTRACT   => 'Sybperl 1.xx compatibility module',
-		    AUTHOR     => 'Michael Peppler (mpeppler@mbay.net)') : ()),
+		    AUTHOR     => 'Michael Peppler (mpeppler@peppler.org)') : ()),
 		  ($] >= 5.005 && $^O eq 'MSWin32' && 
 		   $Config{archname} =~ /-object\b/i ? (CAPI => 'TRUE') :()),
 		  'NEEDS_LINKING' => 1,

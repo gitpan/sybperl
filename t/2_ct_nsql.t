@@ -1,6 +1,6 @@
 #!/usr/local/bin/perl
 #
-# $Id: nsql.t,v 1.1 2001/07/03 23:26:53 mpeppler Exp $
+# $Id: 2_ct_nsql.t,v 1.1 2003/12/25 17:16:42 mpeppler Exp $
 
 use vars qw($Pwd $Uid $Srv);
 

@@ -1,27 +1,16 @@
-# $Id: Makefile.PL,v 1.1 1999/05/14 17:21:31 mpeppler Exp $
+# $Id: Makefile.PL,v 1.3 2003/12/27 01:33:12 mpeppler Exp $
 # from	@(#)Makefile.PL	1.7	03/26/99
 
 require 5.002;
+use strict;
+
 use ExtUtils::MakeMaker;
 
-$VERSION='0.03';
-$DBLIBVS = 0;
+require '../util/config.pl';
 
-if(-f '../config.pl') {
-    require '../config.pl';
+my $sattr = config();
 
-    $sattr = &config;
-
-    $DBLIBVS = $$sattr{DBLIBVS};
-}
-else
-{
-    eval {
-	require Sybase::DBlib;
-	$DBLIBVS = &Sybase::DBlib::DBLIBVS;
-    }
-}
-    
+my $DBLIBVS = $$sattr{DBLIBVS};    
 
 # Write a dummy makefile if DBLIBVS is 0 - this means that we don't have
 # DBlibrary on this system...
@@ -35,10 +24,10 @@ if($DBLIBVS == 0)
 else
 {
     WriteMakefile('NAME' => "Sybase::BCP",
-		  'VERSION' => "$VERSION",
+		  'VERSION_FROM' => 'BCP.pm',
 		  ($] >= 5.005 ?
 		   (ABSTRACT   => 'Sybase Bulk-Copy modules',
-		    AUTHOR     => 'Michael Peppler (mpeppler@mbay.net)') : ()),
+		    AUTHOR     => 'Michael Peppler (mpeppler@peppler.org)') : ()),
 		  ($] >= 5.005 && $^O eq 'MSWin32' && 
 		   $Config{archname} =~ /-object\b/i ? (CAPI => 'TRUE') :()),
 		  'NEEDS_LINKING' => 1,

@@ -1,21 +1,29 @@
 # -*-Perl-*-
-#	$Id: config.pl,v 1.8 2002/06/27 22:43:25 mpeppler Exp $
+#	$Id: config.pl,v 1.11 2003/12/27 01:33:13 mpeppler Exp $
 #
-# Extract relevant info from the CONFIG and patchlevel.h files.
+# Extract relevant info from the CONFIG files.
 
 use Config;
+use ExtUtils::MakeMaker;
+
+use strict;
 
 my @dirs = ('.', '..', '../..', '../../..');
 
-if(defined($ExtUtils::MakeMaker::VERSION)) {
-    $MM_VERSION = $ExtUtils::MakeMaker::VERSION;
-} else {
-    $MM_VERSION = $ExtUtils::MakeMaker::Version;
-}
+my $syb_version;
+my $VERSION;
+
+#use vars q($MM_VERSION);
+
+#if(defined($ExtUtils::MakeMaker::VERSION)) {
+#    $MM_VERSION = $ExtUtils::MakeMaker::VERSION;
+#} else {
+#    $MM_VERSION = $ExtUtils::MakeMaker::Version;
+#}
 
 sub config
 {
-    my(%attr, %patchlvl);
+    my(%sattr);
     my($left, $right, $dir, $dummy, $config);
     
     foreach $dir (@dirs)
@@ -37,31 +45,17 @@ sub config
 
 	$sattr{$left} = $right;
     }
-
     close(CFG);
 
-    foreach $dir (@dirs)
-    {
-	$config = "$dir/patchlevel.h";
-	last if(-f $config);
+    if(!$VERSION) {
+	foreach $dir (@dirs)
+	{
+	    $config = "$dir/patchlevel";
+	    last if(-f $config);
+	}
+	do $config;
     }
-    open(CFG, $config) || die "Can't open $config: $!";
-
-    while(<CFG>)
-    {
-	chomp;
-	next if !/^#/;
-	
-	($dummy, $left, $right) = split(' ');
-	$left =~ s/\s*//g;
-	$right =~ s/^\s*//g;
-
-	$patchlvl{$left} = $right;
-    }
-    close(CFG);
-    $patchlvl{UNOFFICIAL} = '' if(!defined($patchlvl{UNOFFICIAL}));
-
-    $sattr{VERSION} = "$patchlvl{VERSION}.$patchlvl{PATCHLEVEL}$patchlvl{UNOFFICIAL}";
+    $sattr{VERSION} = $VERSION;
 
     $sattr{LINKTYPE} = 'static' if(!defined($Config{'usedl'}));
 
@@ -81,14 +75,14 @@ sub config
 
     die "Can't find any Sybase libraries under $sattr{SYBASE}/lib.\nPlease set the SYBASE environment correctly, or edit CONFIG and set SYBASE\ncorrectly there." unless checkLib($sattr{SYBASE});
 
-    if($^O ne MSWin32 && $^O ne 'VMS') {
+    if($^O ne 'MSWin32' && $^O ne 'VMS') {
 	$sattr{EXTRA_LIBS} = getExtraLibs($sattr{SYBASE}, $sattr{EXTRA_LIBS});
     }
 
     \%sattr;
 }
 
-if($MM_VERSION > 5) {
+if($ExtUtils::MakeMaker::VERSION > 5) {
     eval <<'EOF_EVAL';
 
 sub MY::const_config {
@@ -121,11 +115,23 @@ sub getExtraLibs {
     if($ENV{SYBASE_OCS}) {
 	$lib = "$dir/$ENV{SYBASE_OCS}/lib";
     }
+    if(!defined($syb_version)) {
+	my $libct;
 
-    my $version = `strings $lib/libct.a`;
-    $version =~ /Sybase Client-Library\/([^\/]+)\//;
-    $version = $1;
-    print "Sybase OpenClient $version found.\n";
+	foreach (qw(libct.a libct.so libct.sl libct64.a libct64.so libct64.sl)) {
+	    $libct = "$lib/$_";
+	    last if -e $libct;
+	}
+
+	my $version = `strings $libct`;
+	if($version =~ /Sybase Client-Library\/([^\/]+)\//) {
+	    $syb_version = $1;
+	    print "Sybase OpenClient $syb_version found.\n";
+	} else {
+	    $syb_version = 0;
+	    print "Unknown OpenClient version found - may be FreeTDS.\n";
+	}
+    }
 
     opendir(DIR, "$lib") || die "Can't access $lib: $!";
     my %files = map { $_ =~ s/lib([^\.]+)\..*/$1/; $_ => 1 } grep(/lib/, readdir(DIR));
@@ -143,7 +149,7 @@ sub getExtraLibs {
     foreach $f (qw(insck tli sdna dnet_stub tds)) {
 	$x{"-l$f"} = 1 if exists $files{$f};
     }
-    if($version gt '11') {
+    if($syb_version gt '11') {
 	delete($x{-linsck});
 	delete($x{-ltli});
     }
@@ -173,7 +179,7 @@ sub putEnv {
     my $replace = '';
 
     if($$sattr{EMBED_SYBASE}) {
-	if($$satter{EMBED_SYBASE_USE_HOME}) {
+	if($$sattr{EMBED_SYBASE_USE_HOME}) {
 	    $replace = qq(
 BEGIN {
     if(!\$ENV{'SYBASE'}) {
@@ -196,7 +202,7 @@ BEGIN {
 	}
     }
 
-    $data =~ s/__SYBASE__/$replace/;
+    $data =~ s/\#__SYBASE_START.*\#__SYBASE_END/\#__SYBASE_START\n$replace\n\#__SYBASE_END/s;
 
     $data;
 }
