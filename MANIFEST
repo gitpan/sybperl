@@ -39,6 +39,8 @@ eg/README
 eg/README.dbschema
 eg/TABLEop.pm
 eg/SecureSql.pm
+eg/Show.cgi
+eg/SybWWW.pm
 eg/bcp.dat
 eg/bcp.pl
 eg/buffer.pl

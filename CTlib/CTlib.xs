@@ -1,5 +1,5 @@
 /* -*-C-*-
- *	@(#)CTlib.xs	1.31	12/30/97
+ *	@(#)CTlib.xs	1.32	03/05/98
  */
 
 
@@ -66,13 +66,6 @@ typedef enum
     CON_EED_CMD
 } ConType;
 
-typedef struct _ref_con
-{
-    CS_CONNECTION *connection;
-    int refcount;
-} RefCon;
-
-
 struct attribs {
     int UseDateTime;
     int UseMoney;
@@ -85,6 +78,19 @@ struct attribs {
     int pid;
     HV *other;
 };
+
+
+typedef struct _ref_con
+{
+    CS_CONNECTION *connection;
+    int refcount;
+
+    struct _con_info *head;
+
+    struct attribs attr;	/* attributes are by connection */
+} RefCon;
+
+
 
 typedef struct _con_info
 {
@@ -100,7 +106,9 @@ typedef struct _con_info
     AV *av;
     HV *hv;
 
-    struct attribs attr;
+    HV *magic;
+
+    struct _con_info *next;
 } ConInfo;
 
 
@@ -166,7 +174,7 @@ static char NumericPkg[]="Sybase::CTlib::Numeric";
 
 static int attr_store _((ConInfo*, char*, int, SV*, int));
 static SV* attr_fetch _((ConInfo*, char*, int));
-static SV *newdbh _((ConInfo *, char *, SV*, SV*));
+static SV *newdbh _((ConInfo *, char *, SV*));
 static ConInfo *get_ConInfoFromMagic _((HV*));
 static ConInfo *get_ConInfo _((SV*));
 static char *neatsvpv _((SV*, STRLEN));
@@ -207,6 +215,8 @@ attr_store(info, key, keylen, sv, flag)
     int flag;
 {
     int i;
+
+    struct attribs *attr = &info->connection->attr;
     
     for(i = 0; hash_keys[i].id >= 0; ++i)
 	if(strlen(hash_keys[i].key) == keylen && strEQ(key, hash_keys[i].key))
@@ -215,43 +225,43 @@ attr_store(info, key, keylen, sv, flag)
     if(hash_keys[i].id < 0) {
 #if defined(DO_TIE)
 	if(!flag) {
-	    if(!hv_exists(info->attr.other, key, keylen)) {
+	    if(!hv_exists(attr->other, key, keylen)) {
 		warn("'%s' is not a valid Sybase::CTlib attribute", key);
 		return 0;
 	    }
 	}
 #endif
-	hv_store(info->attr.other, key, keylen, newSVsv(sv), 0);
+	hv_store(attr->other, key, keylen, newSVsv(sv), 0);
 	return 1;
     }
 
     switch(hash_keys[i].id) {
       case HV_use_datetime:
-	  info->attr.UseDateTime   = SvTRUE(sv);
+	  attr->UseDateTime   = SvTRUE(sv);
 	  break;
       case HV_use_money:
-	  info->attr.UseMoney      = SvTRUE(sv);
+	  attr->UseMoney      = SvTRUE(sv);
 	  break;
       case HV_use_numeric:
-	  info->attr.UseNumeric    = SvTRUE(sv);
+	  attr->UseNumeric    = SvTRUE(sv);
 	  break;
       case HV_max_rows:
-	  info->attr.MaxRows       = SvIV(sv);
+	  attr->MaxRows       = SvIV(sv);
 	  break;
       case HV_compute_id:
-	  info->attr.ComputeId     = SvIV(sv);
+	  attr->ComputeId     = SvIV(sv);
 	  break;
       case HV_extended_error:
-	  info->attr.ExtendedError = SvIV(sv);
+	  attr->ExtendedError = SvIV(sv);
 	  break;
       case HV_row_count:
-	  info->attr.RowCount      = SvIV(sv);
+	  attr->RowCount      = SvIV(sv);
 	  break;
       case HV_rc:
-	  info->attr.RC            = SvIV(sv);
+	  attr->RC            = SvIV(sv);
 	  break;
       case HV_pid:
-	  info->attr.pid           = SvIV(sv);
+	  attr->pid           = SvIV(sv);
 	  break;
       default:
 	  return 0;
@@ -268,6 +278,7 @@ attr_fetch(info, key, keylen)
 {
     int i;
     SV *sv = Nullsv;
+    struct attribs *attr = &info->connection->attr;
     
     for(i = 0; hash_keys[i].id >= 0; ++i)
 	if(strlen(hash_keys[i].key) == keylen && strEQ(key, hash_keys[i].key))
@@ -276,42 +287,42 @@ attr_fetch(info, key, keylen)
     if(hash_keys[i].id < 0) {
 	SV **svp;
 #if defined(DO_TIE)
-	if(!hv_exists(info->attr.other, key, keylen)) {
+	if(!hv_exists(attr->other, key, keylen)) {
 	    warn("'%s' is not a valid Sybase::CTlib attribute", key);
 	    return Nullsv;
 	}
 #endif
-	svp = hv_fetch(info->attr.other, key, keylen, 0);
+	svp = hv_fetch(attr->other, key, keylen, 0);
 	return svp ? *svp : Nullsv;
     }
 
     switch(hash_keys[i].id) {
       case HV_use_datetime:
-	  sv = newSViv(info->attr.UseDateTime);
+	  sv = newSViv(attr->UseDateTime);
 	  break;
       case HV_use_money:
-	  sv = newSViv(info->attr.UseMoney);
+	  sv = newSViv(attr->UseMoney);
 	  break;
       case HV_use_numeric:
-	  sv = newSViv(info->attr.UseNumeric);
+	  sv = newSViv(attr->UseNumeric);
 	  break;
       case HV_max_rows:
-	  sv = newSViv(info->attr.MaxRows);
+	  sv = newSViv(attr->MaxRows);
 	  break;
       case HV_compute_id:
-	  sv = newSViv(info->attr.ComputeId);
+	  sv = newSViv(attr->ComputeId);
 	  break;
       case HV_extended_error:
-	  sv = newSViv(info->attr.ExtendedError);
+	  sv = newSViv(attr->ExtendedError);
 	  break;
       case HV_row_count:
-	  sv = newSViv(info->attr.RowCount);
+	  sv = newSViv(attr->RowCount);
 	  break;
       case HV_rc:
-	  sv = newSViv(info->attr.RC);
+	  sv = newSViv(attr->RC);
 	  break;
       case HV_pid:
-	  sv = newSViv(info->attr.pid);
+	  sv = newSViv(attr->pid);
 	  break;
       case HV_coninfo:
 	  sv = newSViv((IV)info);
@@ -325,24 +336,15 @@ attr_fetch(info, key, keylen)
 
 
 static SV *
-newdbh(info, package, attr_ref, dbp)
+newdbh(info, package, attr_ref)
     ConInfo *info;
     char *package;
     SV *attr_ref;
-    SV *dbp;
 {
     HV *hv, *thv, *stash, *Att;
     SV *rv, *sv, **svp;
     int count;
 
-    /* If this is a cmd_alloc, then copy the old attribute values
-       to this db handle */
-    if(dbp != NULL && dbp != &sv_undef && SvROK(dbp))
-    {
-	ConInfo *tmp = get_ConInfo(dbp);
-	Copy(&tmp->attr, &info->attr, 1, struct attribs);
-    }
-    info->attr.other = newHV();
     info->av = newAV();
     info->hv = newHV();
     
@@ -362,6 +364,11 @@ newdbh(info, package, attr_ref, dbp)
     sv_magic((SV*)hv, rv, 'P', Nullch, 0);
     sv_magic((SV*)hv, sv, '~', "CTlib", 5);
 
+    info->magic = hv;    
+
+    if(info->connection->refcount == 1) {
+	info->connection->attr.other = newHV();
+    }
     if((attr_ref != &sv_undef)) {
 	if(!SvROK(attr_ref))
 	    warn("Attributes parameter is not a reference");
@@ -376,55 +383,42 @@ newdbh(info, package, attr_ref, dbp)
 	    }
 	}
     }
-    /* If this is a cmd_alloc, then copy the old attribute values
-       to this db handle */
-    if(dbp != NULL && dbp != &sv_undef && SvROK(dbp))
-    {
-	ConInfo *tmp = get_ConInfo(dbp);
-	char *key;
-	I32 klen;
-	HV *nhv = tmp->attr.other;
-	hv_iterinit(nhv);
-	while((sv = hv_iternextsv(nhv, &key, &klen)))
-	    attr_store(info, key, klen, sv, 1);
-    }
-    else
-    {
+    if(info->connection->refcount == 1) {
 	if((Att = perl_get_hv("Sybase::CTlib::Att", FALSE)))
 	{
 	    if((svp = hv_fetch(Att, hash_keys[HV_use_datetime].key, 
 			       strlen(hash_keys[HV_use_datetime].key), 0)))
-		info->attr.UseDateTime = SvTRUE(*svp);
+		info->connection->attr.UseDateTime = SvTRUE(*svp);
 	    else
-		info->attr.UseDateTime = 0;
+		info->connection->attr.UseDateTime = 0;
 	    if((svp = hv_fetch(Att, hash_keys[HV_use_money].key, 
 			       strlen(hash_keys[HV_use_money].key), 0)))
-		info->attr.UseMoney = SvTRUE(*svp);
+		info->connection->attr.UseMoney = SvTRUE(*svp);
 	    else
-		info->attr.UseMoney = 0;
+		info->connection->attr.UseMoney = 0;
 	    if((svp = hv_fetch(Att, hash_keys[HV_use_numeric].key,
 			       strlen(hash_keys[HV_use_numeric].key), 0)))
-		info->attr.UseNumeric = SvTRUE(*svp);
+		info->connection->attr.UseNumeric = SvTRUE(*svp);
 	    else
-		info->attr.UseNumeric = 0;
+		info->connection->attr.UseNumeric = 0;
 	    if((svp = hv_fetch(Att, hash_keys[HV_max_rows].key,
 			       strlen(hash_keys[HV_max_rows].key), 0)))
-		info->attr.MaxRows = SvIV(*svp);
+		info->connection->attr.MaxRows = SvIV(*svp);
 	    else
-		info->attr.MaxRows = 0;
+		info->connection->attr.MaxRows = 0;
 	}
 	else
 	{
-	    info->attr.UseDateTime = 0;
-	    info->attr.UseMoney    = 0;
-	    info->attr.UseNumeric  = 0;
-	    info->attr.MaxRows     = 0;
+	    info->connection->attr.UseDateTime = 0;
+	    info->connection->attr.UseMoney    = 0;
+	    info->connection->attr.UseNumeric  = 0;
+	    info->connection->attr.MaxRows     = 0;
 	}
-	info->attr.RowCount   = 0;
-	info->attr.RC         = 0;
-	info->attr.ComputeId  = 0;
-	info->attr.pid        = getpid(); /* XXX - is this portable to NT??? */
-	info->attr.ExtendedError = 0;
+	info->connection->attr.RowCount   = 0;
+	info->connection->attr.RC         = 0;
+	info->connection->attr.ComputeId  = 0;
+	info->connection->attr.pid        = getpid(); /* XXX - is this portable to NT??? */
+	info->connection->attr.ExtendedError = 0;
     }
 
 
@@ -461,13 +455,6 @@ get_ConInfo(dbp)
 {
     ConInfo *info;
     dTHR;
-
-#if 0
-#if defined(DO_TIE)
-    if(dirty)
-	return NULL;
-#endif
-#endif
     
     if(!SvROK(dbp))
 	croak("connection parameter is not a reference");
@@ -1064,13 +1051,13 @@ describe(info, dbp, restype)
 	    warn("ct_compute_info failed");
 	    goto GoodBye;
 	}
-	info->attr.ComputeId = comp_id;
+	info->connection->attr.ComputeId = comp_id;
     }
     else
-	info->attr.ComputeId = 0;
-    use_datetime = info->attr.UseDateTime;
-    use_money    = info->attr.UseMoney;
-    use_numeric  = info->attr.UseNumeric;
+	info->connection->attr.ComputeId = 0;
+    use_datetime = info->connection->attr.UseDateTime;
+    use_money    = info->connection->attr.UseMoney;
+    use_numeric  = info->connection->attr.UseNumeric;
 
 
     for(i = 0; i < info->numCols; ++i)
@@ -1403,6 +1390,20 @@ CS_CLIENTMSG	*errmsg;
 	    XPUSHs(sv_2mortal(newSVpv(errmsg->osstring, 0)));
 	else
 	    XPUSHs(&sv_undef);
+
+	if(connection) {
+	    ConInfo *info;
+	    SV *rv;
+	 
+	    if((ct_con_props(connection, CS_GET, CS_USERDATA,
+			     &info, CS_SIZEOF(info), NULL)) != CS_SUCCEED)
+		croak("Panic: clientmsg_cb: Can't find handle from connection");
+	    rv = newRV((SV*)info->magic);
+	    
+	    XPUSHs(sv_2mortal(rv));
+	}
+	
+	    
 	PUTBACK;
 	if((count = perl_call_sv(client_cb.sub, G_SCALAR)) != 1)
 	    croak("A msg handler cannot return a LIST");
@@ -1452,6 +1453,10 @@ CS_SERVERMSG	*srvmsg;
 	ConInfo *info;
 	RefCon *refCon;
 
+	if((ct_con_props(connection, CS_GET, CS_USERDATA,
+			 &info, CS_SIZEOF(info), NULL)) != CS_SUCCEED)
+	    croak("Panic: servermsg_cb: Can't find handle from connection");
+
 	ENTER;
 	SAVETMPS;
 	PUSHMARK(sp);
@@ -1481,19 +1486,23 @@ CS_SERVERMSG	*srvmsg;
 	    info->type = CON_EED_CMD;
 	    ++info->connection->refcount;
 
-	    describe(info, NULL, 0);
-
-	    sv = newdbh(info, package, &sv_undef, NULL);
+	    sv = newdbh(info, package, &sv_undef);
 	    if(!SvROK(sv))
 		croak("The newly created dbh is not a reference (this should never happen!)");
-	    info->attr.ExtendedError = TRUE;
+	    describe(info, NULL, 0);
+
+	    info->connection->attr.ExtendedError = TRUE;
 	    if(debug_level & TRACE_CREATE)
 		warn("Created %s", neatsvpv(sv, 0));
 	    
 	    XPUSHs(sv_2mortal(sv));
-	}
-	else
+	} else if(info) {
+	    SV *rv = newRV((SV*)info->magic);
+	
+	    XPUSHs(sv_2mortal(rv));
+	} else {
 	    XPUSHs(&sv_undef);
+	}
 	
 	XPUSHs(sv_2mortal(newSViv(srvmsg->msgnumber)));
 	XPUSHs(sv_2mortal(newSViv(srvmsg->severity)));
@@ -1624,7 +1633,7 @@ initialize()
     if((sv = perl_get_sv("Sybase::CTlib::Version", TRUE|GV_ADDMULTI)))
     {
 	char buff[256];
-	sprintf(buff, "This is sybperl, version %s\n\nSybase::CTlib version 1.31 12/30/97\n\nCopyright (c) 1995-1997 Michael Peppler\nPortions Copyright (c) 1995 Sybase, Inc.\n\n",
+	sprintf(buff, "This is sybperl, version %s\n\nSybase::CTlib version 1.32 03/05/98\n\nCopyright (c) 1995-1997 Michael Peppler\nPortions Copyright (c) 1995 Sybase, Inc.\n\n",
 		SYBPLVER);
 	sv_setnv(sv, atof(SYBPLVER));
 	sv_setpv(sv, buff);
@@ -5351,8 +5360,6 @@ ct_connect(package="Sybase::CTlib", user=NULL, pwd=NULL, server=NULL, appname=NU
 	}
     }
 
-    /* FIXME: should set the host name as well (CS_HOSTNAME) */
-
     if (retcode == CS_SUCCEED)
     {
 	len = (server == NULL || !*server) ? 0 : CS_NULLTERM;
@@ -5394,7 +5401,15 @@ ct_connect(package="Sybase::CTlib", user=NULL, pwd=NULL, server=NULL, appname=NU
 	    sv = newSViv((IV)info);
 	    hv_store(hv, (char *)cmd, sizeof(cmd), sv, 0);
 
-	    sv = newdbh(info, package, attr, NULL);
+	    if((retcode = ct_con_props(connection, CS_SET, CS_USERDATA,
+				       &info, CS_SIZEOF(info), NULL)) != CS_SUCCEED)
+	    {
+		warn("ct_con_props(CS_USERDATA) failed");
+		//return 0;
+	    }
+	    
+
+	    sv = newdbh(info, package, attr);
 
 	    if(debug_level & TRACE_CREATE)
 		warn("Created %s", neatsvpv(sv, 0));
@@ -5441,15 +5456,14 @@ ct_cmd_alloc(dbp)
 	info->datafmt = NULL;
 	info->type = CON_CMD;
 	++info->connection->refcount;
+	info->next = o_info;
+	info->connection->head = info;
 	
 	hv = perl_get_hv("Sybase::CTlib::_conInfo", TRUE);
 	sv = newSViv((IV)info);
 	hv_store(hv, (char *)cmd, sizeof(cmd), sv, 0);
 
-	/* FIXME
-	   This should copy the attributes from the existing
-	   connection! */
-	sv = newdbh(info, package, &sv_undef, dbp);
+	sv = newdbh(info, package, &sv_undef);
 
 	if(debug_level & TRACE_CREATE)
 	    warn("Created %s", neatsvpv(sv, 0));
@@ -5465,6 +5479,7 @@ DESTROY(dbp)
 CODE:
 {
     ConInfo *info = get_ConInfo(dbp);
+    ConInfo *o_info;
     RefCon *refCon;
     CS_RETCODE	retcode;
     CS_INT	close_option;
@@ -5472,7 +5487,7 @@ CODE:
     SV **svp;
      
     if(info) {
-	if(info->attr.pid != getpid()) {
+	if(info->connection->attr.pid != getpid()) {
 	    if(debug_level & TRACE_DESTROY)
 		warn("Skipping Destroying %s", neatsvpv(dbp, 0));
 	    XSRETURN_EMPTY;
@@ -5497,6 +5512,33 @@ CODE:
 	croak("No connection info available");
 
     refCon = info->connection;
+    /* If there are more than one handles that point to this connection
+       then we must make sure that the one stored in the CS_USERDATA
+       property of connection is not the one that gets destroyed.
+       Otherwise we're going to fail in servermsg_cb() */
+    if(refCon->refcount > 1) {
+	if((ct_con_props(refCon->connection, CS_GET, CS_USERDATA,
+			 &o_info, CS_SIZEOF(o_info), NULL)) != CS_SUCCEED)
+	    croak("Panic: DESTROY: Can't find handle from connection");
+
+	if(o_info == info) {
+	    ConInfo *head = refCon->head;
+	    if(head == info)
+		head = head->next;
+	    else {
+		if((ct_con_props(refCon->connection, CS_SET, CS_USERDATA,
+				 &head, CS_SIZEOF(head), NULL)) != CS_SUCCEED)
+		    croak("Panic: DESTROY: Can't store handle in connection");
+		while(head) {
+		    if(head->next == info) {
+			head->next = info->next;
+			break;
+		    }
+		    head = head->next;
+		}
+	    }
+	}
+    }
     
     if((hv = perl_get_hv("Sybase::CTlib::_conInfo", FALSE)))
 	hv_delete(hv, (char *)info->cmd, sizeof(info->cmd), 0);
@@ -5512,17 +5554,25 @@ CODE:
 
 	if((hv = perl_get_hv("Sybase::CTlib::_refCon", FALSE)))
 	    hv_delete(hv, (char *)refCon->connection, sizeof(refCon->connection), 0);
+	if(debug_level & TRACE_DESTROY)
+	    warn("[In DESTROY] Freeing refCon");
 	Safefree(refCon);
     }
     
     if(info->numCols)
     {
+	if(debug_level & TRACE_DESTROY)
+	    warn("[In DESTROY] Freeing coldata");
 	Safefree(info->coldata);
+	if(debug_level & TRACE_DESTROY)
+	    warn("[In DESTROY] Freeing datafmt");
 	Safefree(info->datafmt);
     }
-    hv_undef(info->attr.other);
+    hv_undef(info->connection->attr.other);
     hv_undef(info->hv);
     av_undef(info->av);
+    if(debug_level & TRACE_DESTROY)
+	warn("[In DESTROY] Freeing info");
     Safefree(info);    
 }
 
@@ -5610,7 +5660,7 @@ RETVAL
 int
 ct_results(dbp, restype)
 	SV *	dbp
-	int	restype
+	int	restype = NO_INIT
 CODE:
 {
     ConInfo *info = get_ConInfo(dbp);

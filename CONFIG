@@ -42,7 +42,7 @@ EXTRA_LIBS=-ltli
 # With Perl 5.002, none are normally needed, but you may wish to
 # use -DDO_TIE to get the benefit of stricter checking on the
 # Sybase::DBlib and Sybase::CTlib attributes.
-#EXTRA_DEFS=
+# Use -DNCR_BUG if you are on NCR 3.0 and OpenClient 10.0.x
 EXTRA_DEFS=-DDO_TIE
 
 

@@ -1,4 +1,4 @@
-# @(#)ctutil.pl	1.3	2/29/96
+# @(#)ctutil.pl	1.4	03/05/98
 #
 # Copyright (c) 1995
 #   Michael Peppler
@@ -13,7 +13,7 @@
 
 sub msg_cb
 {
-    my($layer, $origin, $severity, $number, $msg, $osmsg) = @_;
+    my($layer, $origin, $severity, $number, $msg, $osmsg, $dbh) = @_;
 
     print STDERR "\nOpen Client Message:\n";
     printf STDERR ("Message number: LAYER = (%ld) ORIGIN = (%ld) ",

@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# @(#)DBlib.pm	1.31	12/30/97
+# @(#)DBlib.pm	1.32	03/05/98
 
 # Copyright (c) 1991-1997
 #   Michael Peppler
@@ -387,6 +387,13 @@ sub nsql {
     my ($db,$sql,$type) = @_;
     my (@res,@data,%data);
 
+    if ( ref $type ) {
+	$type = ref $type;
+    }
+    elsif ( not defined $type ) {
+	$type = "";
+    }
+
     undef $DB_ERROR;
  
     unless ( $db->dbcmd($sql) ) {
@@ -431,7 +438,7 @@ sub nsql_error_handler {
     my ($db, $severity, $error, $os_error, $error_msg, $os_error_msg) = @_;
     # Check the error code to see if we should report this.
 
-    if ( $error != $db->SYBESMSG ) {
+    if ( $error != SYBESMSG ) {
       $DB_ERROR = "Sybase error: $error_msg\n";
       $DB_ERROR .= "OS Error: $os_error_msg\n" if defined $os_error_msg;
     }
@@ -450,8 +457,9 @@ sub nsql_message_handler {
       $DB_ERROR .= "Procedure: $procedure\n" if defined $procedure;
       $DB_ERROR .= "Line: $line\n" if defined $line;
       $DB_ERROR .= "Text: $text\n";
-
-      local ($lineno) = 1;
+      
+      my ($lineno) = 1;
+      my $row;
       foreach $row ( split(/\n/,$db->dbstrcpy) ) {
           $DB_ERROR .= sprintf ("%5d", $lineno ++) . "> $row\n";
       }

@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# @(#)ctlib.t	1.15	05/20/97
+# @(#)ctlib.t	1.17	03/05/98
 #
 # Small test script for Sybase::CTlib
 
@@ -38,9 +38,9 @@ $Sybase::CTlib::Att{UseDateTime} = CS_TRUE;
 $Sybase::CTlib::Att{UseMoney} = CS_TRUE;
 
 ct_callback(CS_CLIENTMSG_CB, \&msg_cb);
-ct_callback(CS_SERVERMSG_CB, "srv_cb");
+ct_callback(CS_SERVERMSG_CB, \&srv_cb);
 
-( $X = Sybase::CTlib->ct_connect($Uid, $Pwd, $Srv) )
+( $X = Sybase::CTlib->ct_connect($Uid, $Pwd, $Srv, '', {LastError => 0}) )
     and print("ok 2\n")
     or print "not ok 2
 -- The supplied login id/password combination may be invalid\n";
@@ -50,12 +50,14 @@ ct_callback(CS_SERVERMSG_CB, "srv_cb");
     and print "ok 3\n"
     or print "not ok 3\n";
 
+
 $res_type = 0;
 while(($rc = $X->ct_results($res_type)) == CS_SUCCEED)
 {
     print "$res_type\n";
 }
 
+($X->{LastError} == 5701) or warn "Wrong last error ($X->{LastError})";
 
 ($X->ct_execute("select * from sysusers") == CS_SUCCEED)
     and print("ok 4\n")
@@ -227,10 +229,15 @@ sub srv_cb
     my($cmd, $number, $severity, $state, $line, $server, $proc, $msg)
 	= @_;
 
+#    warn ("srv_cb: @_");
+    if(defined($cmd)) {
+	$cmd->{LastError} = $number;
+    }
+
     if($severity > 10)
     {
         printf STDERR "Message number: %ld, Severity %ld, ",
-	$number, $severity;
+	       $number, $severity;
 	printf STDERR "State %ld, Line %ld\n",
                $state, $line;
 	       

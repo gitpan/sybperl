@@ -1,4 +1,4 @@
-		     @(#)README.win32	1.1	11/07/97
+		     @(#)README.win32	1.2	03/06/98
 
 			   sybperl 2.0
 	
@@ -32,6 +32,25 @@ You should have a C compiler (Borland C++ 5.2 or Visual C++ 2.0 or
 later).
 
 You should have Sybase Open Client.
+
+Known problems:
+	The Sybase::CTlib does not work with OpenClient 11.1.1 (the one that 
+	comes with ASE 11.5). I don't know what the problem is, yet.
+	WinZip will convert a test file for the Sybase::BCP module which breaks
+	the test for that module. Daniel Durbin suggests this fix:
+
+	   Many people will get the archived "sybperl-2.09.tar.gz" and
+	   unpack it with Winzip 6.x. The program has a good feature
+	   of "fixing" UNIX linefeeds and making them Windows CR/LF
+	   line ends. This breaks the bcp sample data, so you unzip
+	   normally, then change the winzip menu item
+	   "Options/Configuration/TAR File Smart CR/LF Conversion" and
+	   uncheck that option. Then re-extract
+	   "sybperl-2.09\bcp\t\bcp.dat". Fixing the CR/LF is not
+	   necessary to my knowledge, but Windows text editors will
+	   display text files in a better format.
+
+
 
 To build sybperl on Win32:
 

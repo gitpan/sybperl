@@ -1,4 +1,4 @@
-<--@(#)sybperl.pod	1.28	12/30/97-->
+<--@(#)sybperl.pod	1.29	03/05/98-->
 
 =head1 NAME
 
@@ -744,6 +744,13 @@ following:
     Simple Array (if type eq ARRAY, and a single column is queried
     Boolean True/False value (if type ne ARRAY or HASH)
 
+Optionally, instead of the words "HASH" or "ARRAY" a reference of the
+same type can be passed as well.  This is, both of the following are
+equivalent:
+
+    $dbh->nsql("select col1,col2 from table","HASH");
+    $dbh->nsql("select col1,col2 from table",{});
+
 For example, the following code will return an array of hash
 references:
 
@@ -1222,7 +1229,8 @@ usefull for interleaving cursor operations (see ct_cursor() above, and
 the section on cursors in Chapter 2 of the
 I<Open Client Client-Library/C Reference manual>.
 
-The attributes values are copied from $dbh to $dbh2.
+The two handles also share attributes, so setting $dbh->{UseDataTime}
+(for example) will also set $dbh2->{UseDateTime}.
 
 =item $rc = $dbh->ct_cmd_realloc
 
@@ -1360,7 +1368,7 @@ Use like this:
     print "Error!\n" if($rc == CS_FAIL);
 
     sub msg_cb {
-        my($layer, $origin, $severity, $number, $msg, $osmsg) = @_;
+        my($layer, $origin, $severity, $number, $msg, $osmsg, $dbh) = @_;
 
 	printf STDERR "\nOpen Client Message: (In msg_cb)\n";
 	printf STDERR "Message number: LAYER = (%ld) ORIGIN = (%ld) ",
@@ -1375,8 +1383,12 @@ Use like this:
     }
 
     sub srv_cb {
-        my($cmd, $number, $severity, $state, $line, $server,
+        my($dbh, $number, $severity, $state, $line, $server,
 	   $proc, $msg) = @_;
+
+    # If $dbh is defined, then you can set or check attributes
+    # in the callback, which can be tested in the main body
+    # of the code.
 
 	printf STDERR "\nServer message: (In srv_cb)\n";
 	printf STDERR "Message number: %ld, Severity %ld, ",

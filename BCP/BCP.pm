@@ -1,4 +1,4 @@
-#	@(#)BCP.pm	1.14	12/30/97
+#	@(#)BCP.pm	1.15	03/05/98
 
 # Copyright (c) 1996-1997
 #   Michael Peppler
@@ -285,8 +285,8 @@ use vars qw(@ISA @EXPORT $VERSION $Version);
 
 use strict;
 
-$VERSION = '0.06';
-$Version = '1.14 12/30/97';
+$VERSION = '0.07';
+$Version = '1.15 03/05/98';
 
 my @g_keys = qw(INPUT OUTPUT ERRORS SEPARATOR FIELDS BATCH_SIZE
 	     NULL DATE REORDER CALLBACK TAB_INFO DIRECTION CONDITION
@@ -298,12 +298,12 @@ my %f_keys = map { $_ => 1 } @f_keys;
 my %date_fmt =
 (CTIME => \&_datectime,
  101 => \&_date101,
-# 102 => \&_date102, This one is probably automatic...
+ # 102 => \&_date102, This one is probably automatic...
  103 => \&_date103,
  104 => \&_date104,
  105 => \&_date105,
  106 => \&_date106,
-# 107 => \&_date107, This one's probably automatic...
+ # 107 => \&_date107, This one's probably automatic...
  110 => \&_date110,
  111 => \&_date111,
  112 => \&_date112);
@@ -312,23 +312,23 @@ my %date_fmt =
 sub new {
     my($package, $user, $passwd, $server, $appname) = @_;
     my($d);
-
+    
     BCP_SETL(TRUE);		# Turn BCP_IN on.
-
+    
     # Grumble... with warnings turned on, we get 'Use of unitialized...'
     $user = '' unless $user;
     $passwd = '' unless $passwd;
     $server = '' unless $server;
     $appname = '' unless $appname;
-
+    
     $d = new Sybase::DBlib $user,$passwd,$server,$appname,
-               {Global => {}, Cols => {}};
-    bless $d, $package if $d;
+{Global => {}, Cols => {}};
+bless $d, $package if $d;
 }
 
 sub DESTROY {
     my $self = shift;
-
+    
     # Make sure we close the Sybase::DBlib connection.
     $self->SUPER::DESTROY;
 }
@@ -357,7 +357,7 @@ sub config {
 sub describe {
     my($self, $colid, $ref) = @_;
     my($key, $errs);
-
+    
     foreach $key (keys(%$ref)) {
 	if(!defined($f_keys{$key})) {
 	    carp "$key is not a valid Sybase::BCP key";
@@ -371,16 +371,18 @@ sub describe {
 
 sub run {
     my $self = shift;
-
+    my $ret;
+    
     if($self->{Global}->{DIRECTION} eq 'OUT') {
-	$self->do_out(@_);
+	$ret = $self->do_out(@_);
     } else {
-	$self->do_in(@_);
+	$ret = $self->do_in(@_);
 	my $log_file = $self->{Global}->{ERRORS} || 'bcp.err';
 	if(-e $log_file && -z $log_file) {
 	    unlink($log_file);
 	}
     }
+    $ret;
 }
 
 sub do_out {
@@ -389,20 +391,20 @@ sub do_out {
 
 sub do_in {
     my $self = shift;
-    my $verbose = shift;   # not used....
-
-	
+    my $verbose = shift;	# not used....
+    
+    
     # Initialize:
     my $infile 	= $self->{Global}->{INPUT};
     my $table 	= $self->{Global}->{OUTPUT};
     my $logfile = $self->{Global}->{ERRORS};
     my $sep 	= $self->{Global}->{SEPARATOR};
-    local $\    = $self->{Global}->{RECORD_SEPARATOR} || "\n";
+    local $/    = $self->{Global}->{RECORD_SEPARATOR} || "\n";
     my $cols 	= $self->{Global}->{FIELDS};
     my $batch_size = $self->{Global}->{BATCH_SIZE};
     my $null_pattern = $self->{Global}->{'NULL'};
     my $date_fmt = $self->{Global}->{DATE};
-    my %cols 	= defined($self->{Cols}) ? %{$self->{Cols}} : undef;
+    my %cols 	= defined($self->{Cols}) ? %{$self->{Cols}} : ();
     my $g_cb 	= $self->{Global}->{CALLBACK};
     my $logger  = $self->{Global}->{LOGGER} || \&carp;
     my %reorder = %{$self->{Global}->{REORDER}} if(defined($self->{Global}->{REORDER}));
@@ -412,7 +414,7 @@ sub do_in {
     
     croak "You must define a table name!" if(!defined($table));
     croak "You must define an input file name!" if(!defined($infile));
-
+    
     # The user has defined a reordering pattern of columns:
     # If the target columns are entered as column names, we must
     # convert that back to column numbers...
@@ -421,134 +423,107 @@ sub do_in {
 	    if($reorder{$_} =~ /\D+/) {
 		for($i = 0; $i < @tabinfo; ++$i) {
 		    if(${$tabinfo[$i]}[0] eq $reorder{$_}) {
-			$reorder{$_} = $i+1;
-		    }
+		    $reorder{$_} = $i+1;
 		}
 	    }
 	}
     }
-    # If one of the target fields is a DATETIME field, then we
-    # check to see if the user has defined a default conversion:
-    if(defined($self->{Global}->{DATE})) {
-	for($i = 0; $i < @tabinfo; ++$i) {
-	    if(${$tabinfo[$i]}[1] =~ /datetim/ &&
-	       !defined($cols{$i}->{CALLBACK})) {
-	        $cols{$i}->{CALLBACK} = $date_fmt{$self->{Global}->{DATE}};
-	    }
-	}
+}
+# If one of the target fields is a DATETIME field, then we
+# check to see if the user has defined a default conversion:
+if(defined($self->{Global}->{DATE})) {
+    for($i = 0; $i < @tabinfo; ++$i) {
+	if(${$tabinfo[$i]}[1] =~ /datetim/ &&
+	    !defined($cols{$i}->{CALLBACK})) {
+	$cols{$i}->{CALLBACK} = $date_fmt{$self->{Global}->{DATE}};
     }
+}
+}
 
-    $logfile = 'bcp.err' unless $logfile;
-    $sep = "\t" unless $sep;
-    $batch_size = 100 unless $batch_size;
+$logfile = 'bcp.err' unless $logfile;
+$sep = "\t" unless $sep;
+$batch_size = 100 unless $batch_size;
 
-    if(!ref($infile)) {
-        open(IN, $infile) || croak "Can't open file $infile: $!";
-	binmode(IN);
-        $in_sub = \&_readln;
-    } elsif(ref($infile) eq 'CODE') {
-        $in_sub = $infile;
-    } else {
-        croak("INPUT parameter is a ref but not a CODE ref");
+if(!ref($infile)) {
+    open(IN, $infile) || croak "Can't open file $infile: $!";
+    binmode(IN);
+    $in_sub = \&_readln;
+} elsif(ref($infile) eq 'CODE') {
+    $in_sub = $infile;
+} else {
+    croak("INPUT parameter is a ref but not a CODE ref");
+}
+
+($self->bcp_init($table, '', '', DB_IN) == SUCCEED) ||
+    croak "bcp_init failed.";
+open(LOG, ">$logfile") || croak "Can't open file $logfile: $!";
+
+my $count = 0;
+my $t_rows = 0;
+my @data;
+my @t_data;
+my @rows;
+my $row;
+
+local $" = $sep;		# Set the output field separator."
+
+while(@data = &$in_sub($sep)) {
+    if(defined(%reorder)) {
+	foreach $i (keys(%reorder)) {
+	    $t_data[$reorder{$i}-1] = $data[$i-1];
+	}
+	@data = @t_data;
     }
     
-    ($self->bcp_init($table, '', '', DB_IN) == SUCCEED) ||
-	croak "bcp_init failed.";
-    open(LOG, ">$logfile") || croak "Can't open file $logfile: $!";
+    if(defined($g_cb)){
+	next unless &$g_cb(\@data);
+    }
+    # Here we use the number of columns found in the first row of data to
+    # define the COPY IN operation.
+    if($count == 0) {
+	# Get the number of fields from the first data row if
+	# we didn't get that info via config().
+	$cols = scalar(@data) unless $cols;
+	$self->bcp_meminit($cols); # This sets up the copy_in operation.
+    }
     
-    my $count = 0;
-    my $t_rows = 0;
-    my @data;
-    my @t_data;
-    my @rows;
-    my $row;
-
-    local $" = $sep;			# Set the output field separator."
-
-    while(@data = &$in_sub($sep)) {
-	if(defined(%reorder)) {
-	    foreach $i (keys(%reorder)) {
-		$t_data[$reorder{$i}-1] = $data[$i-1];
+    # If the row is short, push undef values onto the row:
+    while(scalar(@data) < $cols) {
+	push(@data, undef);
+    }
+    # Do any special data handling: set NULL fields, maybe convert dates,
+    # call the callbacks if they are defined.
+    if(defined($null_pattern) || defined(%cols)) {
+	for($i = 0; $i < $cols; ++$i) {
+	    if($cols{$i}->{SKIP} == TRUE) {
+		splice(@data, $i, 1);
+		next;
 	    }
-	    @data = @t_data;
-	}
-			
-	if(defined($g_cb)){
-	    next unless &$g_cb(\@data);
-	}
-	# Here we use the number of columns found in the first row of data to
-	# define the COPY IN operation.
-	if($count == 0) {
-	    # Get the number of fields from the first data row if
-	    # we didn't get that info via config().
-            $cols = scalar(@data) unless $cols;
-            $self->bcp_meminit($cols);	# This sets up the copy_in operation.
-        }
-	
-	# If the row is short, push undef values onto the row:
-	while(scalar(@data) < $cols) {
-	    push(@data, undef);
-	}
-	# Do any special data handling: set NULL fields, maybe convert dates,
-	# call the callbacks if they are defined.
-        if(defined($null_pattern) || defined(%cols)) {
-	    for($i = 0; $i < $cols; ++$i) {
-		if($cols{$i}->{SKIP} == TRUE) {
-		    splice(@data, $i, 1);
-		    next;
-		}
-		if(defined($cols{$i}->{CALLBACK})) {
-		    $data[$i] = &{$cols{$i}->{CALLBACK}}($data[$i]);
-		}
-		if($data[$i] =~ /\Q$null_pattern\E/o) {
-		    $data[$i] = undef;
-		}
+	    if(defined($cols{$i}->{CALLBACK})) {
+		$data[$i] = &{$cols{$i}->{CALLBACK}}($data[$i]);
 	    }
-	}
-        # Send the row to the server. A failure here indicates a
-        # conversion error of data from the @data array. The row has NOT been sent to
-        # the server. We log the row data and move on to the next row.
-        if($self->bcp_sendrow(\@data) == FAIL) {
-	    print LOG "@data\n";
-	    next;
-	}
-        # Remember this row until we are certain that this batch is OK.
-        push(@rows, [@data]);
-        #If we've sent $batch_size rows to the server, commit them.
-        if((++$count % $batch_size) == 0) {
-	    if($self->bcp_batch <= 0) {
-		my $r_count = 0;
-		&$logger("bcp_batch failed - redoing");
-		# The batch failed, so re-run it one row at a time.
-		foreach $row (@rows) {
-		    if($self->bcp_sendrow($row) == FAIL) {
-			print LOG "@$row\n";
-			next;
-		    }
-		    if($self->bcp_batch != 1) { # batch each row, so that we can find which is wrong...
-			print LOG "@$row\n";
-		    }
-		    else
-		    {
-			++$r_count;
-		    }
-		}
-		&$logger (sprintf("bcp sent %d rows to the server (%d failed)\n",
-			  $r_count, $batch_size - $r_count));
-		$t_rows += $r_count;
-	    }
-	    else
+	    if(defined($null_pattern) && length($null_pattern) > 0 &&
+	       $data[$i] =~ /\Q$null_pattern\E/o) 
 	    {
-		$t_rows += scalar(@rows);
-		&$logger("bcp sent $batch_size rows to the server...\n");
+		$data[$i] = undef;
 	    }
-	    @rows = ();		# The batch was successfull, flush the row cache.
 	}
     }
-    # Commit any outstanding rows.
-    if(scalar(@rows)) {
+    # Send the row to the server. A failure here indicates a
+    # conversion error of data from the @data array. The row has NOT been sent to
+    # the server. We log the row data and move on to the next row.
+    if($self->bcp_sendrow(\@data) == FAIL) {
+	print LOG "@data\n";
+	next;
+    }
+    # Remember this row until we are certain that this batch is OK.
+    push(@rows, [@data]);
+    #If we've sent $batch_size rows to the server, commit them.
+    if((++$count % $batch_size) == 0) {
 	if($self->bcp_batch <= 0) {
+	    my $r_count = 0;
 	    &$logger("bcp_batch failed - redoing");
+	    # The batch failed, so re-run it one row at a time.
 	    foreach $row (@rows) {
 		if($self->bcp_sendrow($row) == FAIL) {
 		    print LOG "@$row\n";
@@ -556,19 +531,48 @@ sub do_in {
 		}
 		if($self->bcp_batch != 1) { # batch each row, so that we can find which is wrong...
 		    print LOG "@$row\n";
-		} else {
-		    ++$t_rows;
+		}
+		else
+		{
+		    ++$r_count;
 		}
 	    }
-	} else {
-	    $t_rows += scalar(@rows);
+	    &$logger (sprintf("bcp sent %d rows to the server (%d failed)\n",
+			      $r_count, $batch_size - $r_count));
+	    $t_rows += $r_count;
 	}
+	else
+	{
+	    $t_rows += scalar(@rows);
+	    &$logger("bcp sent $batch_size rows to the server...\n");
+	}
+	@rows = ();		# The batch was successfull, flush the row cache.
     }
-    $self->bcp_done;
+}
+# Commit any outstanding rows.
+if(scalar(@rows)) {
+    if($self->bcp_batch <= 0) {
+	&$logger("bcp_batch failed - redoing");
+	foreach $row (@rows) {
+	    if($self->bcp_sendrow($row) == FAIL) {
+		print LOG "@$row\n";
+		next;
+	    }
+	    if($self->bcp_batch != 1) { # batch each row, so that we can find which is wrong...
+		print LOG "@$row\n";
+	    } else {
+		++$t_rows;
+	    }
+	}
+    } else {
+	$t_rows += scalar(@rows);
+    }
+}
+$self->bcp_done;
 
-    close(LOG);
-    close(IN);
-    $t_rows;			# number of rows actually sent to the server
+close(LOG);
+close(IN);
+$t_rows;			# number of rows actually sent to the server
 }
 
 # Default data read method
@@ -591,7 +595,7 @@ sub _gettabinfo {
     my $table = shift;
     my($db, $user, $tab);
     my $ref;
-
+    
     # Table name starts with #: it's a tempdb table.
     if($table =~ /\#/) {
 	$db = 'tempdb';
@@ -614,7 +618,7 @@ sub _gettabinfo {
     croak "Must specify the Sybase table as database.user.table"
 	if (!defined($tab));
     $user = 'dbo' if(!defined($user) || $user =~ /^$/);
-
+    
     $ref = $dbh->sql("
 select c.name, t.name
 from $db.dbo.syscolumns c, $db.dbo.systypes t
@@ -630,7 +634,7 @@ and   c.usertype *= t.usertype
 sub _datectime {
     my $date = shift;
     my @f;
-
+    
     @f = split(' ', $date);
     $date = "$f[1] $f[2] $f[4] $f[3]";
 }
@@ -638,48 +642,48 @@ sub _datectime {
 sub _date101 {
     my $date = shift;
     my @f;
-
+    
     @f = split(/\//, $date);
     $date = "$f[2]$f[0]$f[1]";
 }
 sub _date103 {
     my $date = shift;
     my @f;
-
+    
     @f = split(/\//, $date);
     $date = "$f[2]$f[1]$f[0]";
 }
 sub _date104 {
     my $date = shift;
     my @f;
-
+    
     @f = split(/\./, $date);
     $date = "$f[2]$f[1]$f[0]";
 }
 sub _date105 {
     my $date = shift;
     my @f;
-
+    
     @f = split(/\-/, $date);
     $date = "$f[2]$f[1]$f[0]";
 }
 sub _date106 {
     my $date = shift;
     my @f;
-
+    
     @f = split(' ', $date);
     $date = "$f[1] $f[0] $f[2]";
 }
 sub _date110 {
     my $date = shift;
     my @f;
-
+    
     @f = split(/\-/, $date);
     $date = "$f[2]$f[0]$f[1]";
 }
 sub _date111 {
     my $date = shift;
-
+    
     $date =~ s/\///g;
 }
 

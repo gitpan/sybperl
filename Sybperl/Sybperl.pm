@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# @(#)Sybperl.pm	1.25	06/27/97
+# %W%	%G%
 #
 # Copyright (c) 1994-1995
 #   Michael Peppler
@@ -92,7 +92,7 @@ tie $dbBin0x, Sybase::Sybperl::Attribs, 'dbBin0x', 0;
 	     dbmny4cmp dbmny4sub dbmny4mul dbmny4minus dbmny4divide
 	     dbmny4add sql
 	     dbrpcinit dbrpcparam dbrpcsend
-	     dbwritetext);
+	     dbwritetext dbreadtext dbmoretext dbpreptext);
 
 
 # Internal routine to check that a parameter passed as $dbproc to one
@@ -217,6 +217,20 @@ sub dbsqlexec
 	$dbproc = $default_db;
     }
     $ret = $dbproc->dbsqlexec;
+    $ret;
+}
+
+sub dbsqlok
+{
+    my($dbproc) = @_;
+    my($ret);
+
+    if(!defined($dbproc) || !$dbproc || !&isadb($dbproc))
+    {
+	croak("It doesn't make sense to call dbsqlok with an undefined \$dbproc") if(!defined($default_db));
+	$dbproc = $default_db;
+    }
+    $ret = $dbproc->dbsqlok;
     $ret;
 }
 
@@ -1123,6 +1137,37 @@ sub dbwritetext
 
     $dbproc->dbwritetext(@params);
 }
+
+sub dbreadtext
+{
+    my(@params) = @_;
+    my($dbproc);
+
+    $dbproc = shift(@params);
+
+    $dbproc->dbwritetext(@params);
+}
+
+sub dbmoretext
+{
+    my(@params) = @_;
+    my($dbproc);
+
+    $dbproc = shift(@params);
+
+    $dbproc->dbmoretext(@params);
+}
+
+sub dbpreptext
+{
+    my(@params) = @_;
+    my($dbproc);
+
+    $dbproc = shift(@params);
+
+    $dbproc->dbpreptext(@params);
+}
+
 
 1;
 

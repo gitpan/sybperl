@@ -1,5 +1,5 @@
 /* -*-C-*-
- *	@(#)DBlib.xs	1.40	12/30/97
+ *	@(#)DBlib.xs	1.41	03/05/98
  */	
 
 
@@ -92,6 +92,7 @@
 #define dbrecftos(s)		not_here("dbrecftos")
 #define dbsafestr(a,b,c,d,e,f)	not_here("dbsafestr")
 #define dbversion()		"4.00"
+#define dbdatecmp(a, b, c)	not_here("dbdatecmp");
 #ifndef DBDOUBLE
 #define DBDOUBLE	1
 #endif
@@ -514,13 +515,6 @@ get_ConInfo(dbp)
 {
     ConInfo *info;
     dTHR;
-
-#if 0
-#if defined(DO_TIE)
-    if(dirty)
-	return NULL;
-#endif
-#endif
     
     if(!SvROK(dbp))
 	croak("connection parameter is not a reference");
@@ -535,13 +529,6 @@ getDBPROC(dbp)
 {
     ConInfo *conInfo;
     dTHR;
-
-#if 0
-#if defined(DO_TIE)
-    if(dirty)
-	return NULL;
-#endif
-#endif
 
     conInfo = get_ConInfo(dbp);
     if(conInfo)
@@ -880,6 +867,31 @@ static int CS_PUBLIC msg_handler(db, msgno, msgstate, severity, msgtext, srvname
     return(0);
 }
 
+static void 
+setAppName(ptr)
+    LOGINREC *ptr;
+{
+    SV *sv;
+
+    if((sv = perl_get_sv("0", FALSE)))
+    {
+	char scriptname[256];
+	char *p;
+	strcpy(scriptname, SvPV(sv, na));
+	if((p = strrchr(scriptname, '/')))
+	    ++p;
+	else
+	    p = scriptname;
+	
+	/* The script name must not be longer than MAXNAME or DBSETLAPP */
+	/* fails */
+	if((int)strlen(p) > MAXNAME)
+	    p[MAXNAME] = 0;
+	
+	DBSETLAPP(ptr, p);
+    }
+}
+
 static void
 initialize()
 {
@@ -896,23 +908,8 @@ initialize()
 	dbmsghandle(msg_handler);
 	login = dblogin();
 
-	if((sv = perl_get_sv("0", FALSE)))
-	{
-	    char scriptname[256];
-	    char *p;
-	    strcpy(scriptname, SvPV(sv, na));
-	    if((p = strrchr(scriptname, '/')))
-		++p;
-	    else
-		p = scriptname;
+	setAppName(login);
 
-	    /* The script name must not be longer than MAXNAME or DBSETLAPP */
-	    /* fails */
-	    if((int)strlen(p) > MAXNAME)
-		p[MAXNAME] = 0;
-	    
-	    DBSETLAPP(login, p);
-	}
 	/* This is deprecated: use Sybase::DBlib::Version instead */
 	if((sv = perl_get_sv("main::SybperlVer", TRUE|GV_ADDMULTI)))
 	    sv_setpv(sv, SYBPLVER);
@@ -920,13 +917,13 @@ initialize()
 	if((sv = perl_get_sv("Sybase::DBlib::Version", TRUE|GV_ADDMULTI)))
 	{
 	    char buff[256];
-	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib version 1.40 12/30/97\n\nCopyright (c) 1991-1997 Michael Peppler\n\n",
+	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib version 1.41 03/05/98\n\nCopyright (c) 1991-1997 Michael Peppler\n\n",
 		    SYBPLVER);
 	    sv_setnv(sv, atof(SYBPLVER));
 	    sv_setpv(sv, buff);
 	    SvNOK_on(sv);
 	}
-	if((sv = perl_get_sv("Sybase::DBlib::VERSION", TRUE)))
+	if((sv = perl_get_sv("Sybase::DBlib::VERSION", TRUE|GV_ADDMULTI)))
 	    sv_setnv(sv, atof(SYBPLVER));
     }
 }
@@ -3131,8 +3128,13 @@ dblogin(package="Sybase::DBlib",user=NULL,pwd=NULL,server=NULL,appname=NULL,attr
 {
     DBPROCESS *dbproc;
     SV *sv;
-    
-    if(user && *user)
+#if defined(NCR_BUG)
+/* ugly hack to fix a bug with DBSETLUSER() on NCR & OC 10.x */
+    char *ptr = (char*)login->ltds_loginrec+31;
+    memset(ptr,0,30);
+#endif
+
+    if(user && *user) 
 	DBSETLUSER(login, user);
     else
 	DBSETLUSER(login, NULL);
@@ -3231,10 +3233,9 @@ CODE:
 	Safefree(info->bcp_data);
     }
 
-    if(!dirty) {
-	if(info->dbproc)
-	    dbclose(info->dbproc);
-    }
+    if(info->dbproc)
+	dbclose(info->dbproc);
+
     hv_undef(info->hv);
     hv_undef(info->attr.other);
     av_undef(info->av);
@@ -4235,13 +4236,15 @@ CODE:
 {
     DBPROCESS *dbproc = getDBPROC(dbp);
  
-    New(902, buf, size, char);
+    Newz(902, buf, size, char);
 
     RETVAL = dbreadtext(dbproc, buf, size);
 }
 OUTPUT:
 RETVAL
-buf
+buf sv_setpvn(ST(1), buf, RETVAL);
+CLEANUP:
+Safefree(buf);
 
 int
 dbmoretext(dbp, size, buf)

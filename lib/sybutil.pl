@@ -1,4 +1,4 @@
-# @(#)sybutil.pl	1.5	10/18/95
+# @(#)sybutil.pl	1.7	03/05/98
 #
 # Copyright (c) 1994
 #   Michael Peppler and ITF Management SA
@@ -32,6 +32,7 @@ sub message_handler
 	if(defined($db))
 	{
 	    my ($lineno, $cmdbuff) = (1, undef);
+	    my $row;
 
 	    $cmdbuff = &Sybase::DBlib::dbstrcpy($db);
 	       
@@ -61,7 +62,7 @@ sub error_handler {
     INT_CANCEL;
 }
 
-&dbmsghandle ("message_handler");
-&dberrhandle ("error_handler");
+&dbmsghandle (\&message_handler);
+&dberrhandle (\&error_handler);
 
 1;

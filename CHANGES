@@ -1,4 +1,26 @@
-	@(#)CHANGES	1.14	12/30/97
+	@(#)CHANGES	1.15	03/06/98
+
+
+2.09_01 Bug Fixes
+
+	This is a bug fix release. The only functional change is in the
+	handling of attributes in Sybase::CTlib when using the 
+	ct_cmd_alloc() call. If you use that call to open
+	multiple cursors on the same connection then you should
+	be aware that the attributes are shared between the handles
+	opened for this connection (ie the handle created with
+	ct_connect() and the handles created with ct_cmd_alloc().)
+
+	Other fixes:
+
+	218: length($buf) is incorrect after dbreadtext().
+	223: dbreadtext() leaves garbage at the end of $buf
+	224: dbreadtext() missing from Sybase::Sybperl
+	226: Changing $user in dblogin() fails on NCR
+	228: BCP RECORD_SEPARATOR error
+	229: BCP & null_pattern error
+	232: SEGV in ctutils.pl when inserting a duplicate row.
+	
 
 2.09	Performance Enhancements / Win32 portability release:
 
