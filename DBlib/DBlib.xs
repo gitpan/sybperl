@@ -1,5 +1,5 @@
 /* -*-C-*-
- *	@(#)DBlib.xs	1.29	03/22/96
+ *	@(#)DBlib.xs	1.30	11/14/96
  */	
 
 
@@ -101,13 +101,49 @@ typedef enum hash_key_id
     HV_use_datetime,
     HV_use_money,
     HV_max_rows,
+    HV_pid,
+    HV_conInfo
 } hash_key_id;
 
 static char *hash_keys[] = {
     "dbproc", "ComputeID", "DBstatus",
     "dbNullIsUndef", "dbKeepNumeric", "dbBin0x",
     "rpcInfo", "UseDateTime", "UseMoney", "MaxRows",
+    "__PID__", "__conInfo__"
 };
+
+#if 0
+typedef struct {
+    DBPROCESS *dbproc;
+    int ComputeID;
+    int DBstatus;
+    int dbNullIsUndef;
+    int dbKeepNumeric;
+    int dbBin0x;
+    struct RpcInfo *rpcInfo;
+    int UseDateTime;
+    int UseMoney;
+    int MaxRows;
+    int pid;
+    HV *rest;
+} ConInfo;
+
+static ConInfo Att_values =
+{
+    NULL,			/* dbproc */
+    0,				/* computeid */
+    0,				/* dbstatus */
+    1,				/* null is undef */
+    1,				/* keep numeric */
+    0,				/* bin0x */
+    NULL,			/* rpcinfo */
+    0,				/* use datetime */
+    0,				/* use money */
+    0,				/* max rows */
+    0,				/* pid */
+    NULL			/* rest */
+};
+#endif
 
 struct RpcInfo
 {
@@ -214,6 +250,39 @@ newdbh(dbproc, package, attr_ref)
     char *package;
     SV *attr_ref;
 {
+#if 0
+    HV *hv, *thv, *stash, *Att;
+    SV *rv, *sv, **svp;
+    ConInfo *conInfo;
+    
+    Newz(902, conInfo, 1, conInfo);
+
+    thv = (HV*)sv_2mortal((SV*)newHV());
+    if((attr_ref != &sv_undef)) {
+	if(!SvROK(attr_ref))
+	    warn("Attributes parameter is not a reference");
+	else
+	{
+	    char *key;
+	    I32 klen;
+	    hv = (HV*)SvRV(attr_ref);
+	    hv_iterinit(hv);
+	    while((sv = hv_iternextsv(hv, &key, &klen)))
+		hv_store(conInfo->rest, key, klen, newSVsv(sv), 0);
+	}
+    }
+    
+    conInfo->UseDateTime   = Att.UseDateTime;
+    conInfo->UseMoney      = Att.UseMoney;
+    conInfo->MaxRows       = Att.MaxRows;
+    conInfo->dbKeepNumeric = Att.dbKeepNumeric;
+    conInfo->dbNullIsUndef = Att.dbNullIsUndef;
+    conInfo->dbBin0x       = Att.dbBin0x
+    conInfo->dbproc        = dbproc;
+    conInfo->pid           = getpid();
+
+    my_hv_store(thv, HV_conInfo, newSViv(conInfo), 0);
+#else
     HV *hv, *thv, *stash, *Att;
     SV *rv, *sv, **svp;
     
@@ -272,6 +341,8 @@ newdbh(dbproc, package, attr_ref)
     my_hv_store(thv, HV_dbproc, newSViv((IV)dbproc), 0);
     my_hv_store(thv, HV_dbstatus, newSViv(0), 0);
     my_hv_store(thv, HV_compute_id, newSViv(0), 0);
+    my_hv_store(thv, HV_pid, newSViv(getpid()), 0);
+#endif
 
 #if defined(DO_TIE)
     /* FIXME
@@ -295,9 +366,47 @@ newdbh(dbproc, package, attr_ref)
     return sv;
 }
 
+#if 0
+static ConInfo *getConInfo(dbp)
+    SV *dbp;
+{
+    HV *hv;
+    SV **svp;
+    ConInfo *conInfo;
+
+#if defined(DO_TIE)
+    if(dirty)
+	return NULL;
+#endif
+    
+    if(!SvROK(dbp))
+	croak("dbproc parameter is not a reference");
+    hv = (HV *)SvRV(dbp);
+    if(!(svp = my_hv_fetch(hv, HV_conInfo, FALSE)))
+	croak("no conInfo key in hash");
+    conInfo = (void *)SvIV(*svp);
+
+    return conInfo;
+}
+#endif
+
 static DBPROCESS *getDBPROC(dbp)
     SV *dbp;
 {
+#if 0
+    ConInfo *conInfo;
+
+#if defined(DO_TIE)
+    if(dirty)
+	return NULL;
+#endif
+
+    conInfo = getConInfo(dbp);
+    if(conInfo)
+	return conInfo->dbproc;
+
+    return NULL;
+#else
     HV *hv;
     SV **svp;
     DBPROCESS *dbproc;
@@ -315,6 +424,7 @@ static DBPROCESS *getDBPROC(dbp)
     dbproc = (void *)SvIV(*svp);
 
     return dbproc;
+#endif
 }
 
 /* Borrowed/adapted from DBI.xs */
@@ -522,7 +632,7 @@ static int err_handler(db, severity, dberr, oserr, dberrstr, oserrstr)
 	SAVETMPS;
 	PUSHMARK(sp);
 	
-	if(db && !DBDEAD(db))
+	if(db && !DBDEAD(db))	/* FIXME */
 	{
 	    hv = (HV*)sv_2mortal((SV*)newHV());
 	    sv = newSViv((IV)db);
@@ -559,17 +669,12 @@ static int err_handler(db, severity, dberr, oserr, dberrstr, oserrstr)
 	return retval;
     }
     
-    if ((db == NULL) || (DBDEAD(db)))
-	return(INT_EXIT);
-    else 
-    {
-	fprintf(stderr,"DB-Library error:\n\t%s\n", dberrstr);
+    fprintf(stderr,"DB-Library error:\n\t%s\n", dberrstr);
 	
-	if (oserr != DBNOERR)
-	    fprintf(stderr,"Operating-system error:\n\t%s\n", oserrstr);
-	
-	return(INT_CANCEL);
-    }
+    if (oserr != DBNOERR)
+	fprintf(stderr,"Operating-system error:\n\t%s\n", oserrstr);
+    
+    return(INT_CANCEL);
 }
 
 static int msg_handler(db, msgno, msgstate, severity, msgtext, srvname, procname, line)
@@ -595,7 +700,7 @@ static int msg_handler(db, msgno, msgstate, severity, msgtext, srvname, procname
 	SAVETMPS;
 	PUSHMARK(sp);
 
-	if(db && !DBDEAD(db))
+	if(db && !DBDEAD(db))	/* FIXME */
 	{
 	    hv = (HV*)sv_2mortal((SV*)newHV());
 	    sv = newSViv((IV)db);
@@ -695,7 +800,7 @@ initialize()
 	if((sv = perl_get_sv("Sybase::DBlib::Version", TRUE)))
 	{
 	    char buff[256];
-	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib version 1.29 03/22/96\n\nCopyright (c) 1991-1996 Michael Peppler\n\n",
+	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib version 1.30 11/14/96\n\nCopyright (c) 1991-1996 Michael Peppler\n\n",
 		    SYBPLVER);
 	    sv_setnv(sv, atof(SYBPLVER));
 	    sv_setpv(sv, buff);
@@ -2970,7 +3075,18 @@ CODE:
 {
     DBPROCESS *dbproc = getDBPROC(dbp);
     BYTE **colPtr;
-
+    HV *hv;
+    SV **svp;
+    
+    hv = (HV *)SvRV(dbp);
+    if(!(svp = my_hv_fetch(hv, HV_pid, FALSE)))
+	croak("no pid key in hash");
+    if(SvIV(*svp) != getpid()) {
+	if(debug_level & TRACE_DESTROY)
+	    warn("Skipping Destroying %s", neatsvpv(dbp, 0));
+	XSRETURN_EMPTY;
+    }
+ 
     if(dirty && !dbproc)
     {
 	if(debug_level & TRACE_DESTROY)
@@ -3073,6 +3189,7 @@ CODE:
 }
  OUTPUT:
 RETVAL
+
 
 int
 dbcanquery(dbp)
@@ -3353,8 +3470,13 @@ PPCODE:
     }
     if(hv)			/* just to be on the safe side */
     {
-	my_hv_store(hv, HV_compute_id, (SV*)newSViv(ComputeId), 0);
-	my_hv_store(hv, HV_dbstatus, (SV*)newSViv(retval), 0);
+#if defined(DO_TIE)      
+	my_hv_store(hv, HV_compute_id, sv_2mortal(newSViv(ComputeId)), 0);
+	my_hv_store(hv, HV_dbstatus, sv_2mortal(newSViv(retval)), 0);
+#else
+	my_hv_store(hv, HV_compute_id, newSViv(ComputeId), 0);
+	my_hv_store(hv, HV_dbstatus, newSViv(retval), 0);
+#endif
     }
     for(col = 1, buff[0] = 0; col <= numcols; ++col)
     {
@@ -3415,7 +3537,7 @@ PPCODE:
 	      case SYBCHAR:
 	      case SYBTEXT:
 	      case SYBIMAGE:
-		sv = newSVpv(data, len);
+		sv = newSVpv((char*)data, len);
 		break;
 	      case SYBINT1:
 	      case SYBBIT: /* a bit is at least a byte long... */
@@ -3662,7 +3784,7 @@ PPCODE:
 	      case SYBCHAR:
 	      case SYBTEXT:
 	      case SYBIMAGE:
-		sv = newSVpv(data, len);
+		sv = newSVpv((char*)data, len);
 		break;
 	      case SYBINT1:
 	      case SYBBIT: /* a bit is at least a byte long... */
@@ -3995,6 +4117,12 @@ dbmsghandle(msg_handle)
 void
 dbsetifile(filename)
 	char *	filename
+  CODE:
+{
+    if(filename && !*filename)
+	filename = NULL;
+    dbsetifile(filename);
+}
 
 void
 dbrecftos(fname)
@@ -4143,7 +4271,7 @@ bcp_sendrow(dbp, ...)
 	    for(i = 0; i <= len; ++i)
 	    {
 		svp = av_fetch(av, i, 0);
-		colPtr[i] = SvPV(*svp, slen);
+		colPtr[i] = (BYTE*)SvPV(*svp, slen);
 		if(*svp == &sv_undef)
 		    bcp_collen(dbproc, 0, i+1);
 		else
@@ -4152,7 +4280,7 @@ bcp_sendrow(dbp, ...)
 	    }
 	    break;
 	}
-	colPtr[j-1] = SvPV(sv, slen);
+	colPtr[j-1] = (BYTE*)SvPV(sv, slen);
 	if(sv == &sv_undef)	/* it's a null data value */
 	    bcp_collen(dbproc, 0, j);
 	else
@@ -5108,6 +5236,7 @@ dbrpcparam(dbp, parname, status, type, maxlen, datalen, value)
 	ptr->value = &ptr->u.f;
 	break;
       case SYBCHAR:
+      case SYBVARCHAR:
       case SYBDATETIME:
       case SYBTEXT:
 #if DBLIBVS >= 420
@@ -5127,7 +5256,6 @@ dbrpcparam(dbp, parname, status, type, maxlen, datalen, value)
     head = ptr;
     sv = newSViv((IV)head);
     my_hv_store(hv, HV_rpcinfo, sv, 0);
-    
     
     RETVAL = dbrpcparam(dbproc, parname, status, ptr->type, maxlen, datalen, ptr->value);
 }
@@ -5584,3 +5712,6 @@ calc(valp1, valp2, op, ord = &sv_undef)
     ST(0) = sv_2mortal(newmoney(dbproc, &result));
 }
 
+
+
+    

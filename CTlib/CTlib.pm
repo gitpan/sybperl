@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# @(#)CTlib.pm	1.15	2/29/96
+# @(#)CTlib.pm	1.16	11/14/96
 
 # Copyright (c) 1995
 #   Michael Peppler
@@ -39,7 +39,7 @@ sub EXISTS{
 }
 
 sub STORE {
-    if(!defined($_[0]->{$_[1]})) {
+    if(!exists($_[0]->{$_[1]})) {
 	carp("'$_[1]' is not a valid Sybase::CTlib attribute");
 	return undef;
     }
@@ -81,7 +81,7 @@ sub EXISTS{
 }
 
 sub STORE {
-    croak("'$_[1]' is not a valid Sybase::CTlib attribute") if(!defined($_[0]->{$_[1]}));
+    croak("'$_[1]' is not a valid Sybase::CTlib attribute") if(!exists($_[0]->{$_[1]}));
     $_[0]->{$_[1]} = $_[2];
 }
 

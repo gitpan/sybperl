@@ -1,6 +1,6 @@
 		  SYBPERL Frequently Asked Questions
 
-		  @(#)FAQ	1.8	1/30/96
+		  @(#)FAQ	1.9	11/14/96
 
 
 Contents:
@@ -84,61 +84,16 @@ Contents:
    toolkits written in Sybperl that make it even simpler; my favorite
    among those is WDB.
 
-   Here are some URLs to check out:
-
-   http://www.sybase.com/WWW/sybase_www_faq.html
-   http://www.sybase.com/WWW/
-   http://www.sybase.com/WWW/sybase_www_tools.html
-   http://www.sybase.com/WWW/Sybperl/index.html
-   http://arch-http.hq.eso.org/bfrasmus/wdb/wdb.html
-   http://arch-http.hq.eso.org/bfrasmus/wdb/distribution/install.html
-   ftp://ftp.demon.co.uk/pub/perl/db/perl4/sybperl/
-   ftp://ftp.perl.com/
 
 1.2) Where can I get Sybperl?
 
    Sybperl is available from CPAN (the Comprehensive Perl Archive Network)
 
-   The CPAN master is at
-       ftp://ftp.funet.fi/pub/languages/perl/CPAN
+   The easiest way to get at CPAN is to go through Tom Christiansen's
+   CPAN multiplexer at perl.com. To get the latest Sybperl release you
+   can use this URL:
 
-   and Sybperl is archived in
-       "CPAN"/authors/id/MEWP/sybperl-2.0.tar.gz
-
-   CPAN is mirrored widely, please select the CPAN site nearest you to
-   keep the networks happy. At the moment the registered CPAN sites are:
-
-	Africa
-
-	ftp://ftp.is.co.za/programming/perl/CPAN/
-
-	Australasia
-
-	ftp://coombs.anu.edu.au/pub/perl/
-	ftp://ftp.mame.mu.oz.au/pub/perl/CPAN/
-
-	Europe
-
-	ftp://ftp.funet.fi/pub/languages/perl/CPAN/
-	ftp://ftp.sunet.se/pub/lang/perl/CPAN/
-	ftp://ftp.cs.ruu.nl/pub/PERL/CPAN/
-	ftp://ftp.demon.co.uk/pub/mirrors/perl/CPAN/
-	ftp://ftp.pasteur.fr/pub/computing/unix/perl/CPAN/
-	ftp://ftp.rz.ruhr-uni-bochum.de/pub/programming/languages/perl/CPAN/
-	ftp://ftp.switch.ch/mirror/CPAN/
-	ftp://orpheu.ci.uminho.pt/pub/lang/perl/
-
-	North America
-
-	ftp://ftp.cis.ufl.edu/pub/perl/CPAN/
-	ftp://uiarchive.cso.uiuc.edu/pub/lang/perl/CPAN/
-	ftp://ftp.delphi.com/pub/mirrors/packages/perl/CPAN/
-	ftp://ftp.sedl.org/pub/mirrors/CPAN/
-	ftp://ftp.sterling.com/programming/languages/perl/
-   
-   Version 2.x is also available on Sybase's Web page:
-   http://www.sybase.com/WWW/Sybperl/index.html. I try to make sure
-   that the Sybase Web page is up to date, but I don't control it...
+       http://www.perl.com/perl/CPAN/authors/id/MEWP
 
 1.3) Can I get Sybperl for Windows/NT?
 
@@ -147,11 +102,10 @@ Contents:
    to add modules to Perl are missing in the current version, which
    makes things difficult for us Sybperl users.
 
-   However, I *know* that it is possible to get Sybperl to work under
-   Windows/NT (I would venture to guess that most of the work is in
-   creating appropriate Makefiles).
-
-   Contact me if you are interested in attempting this.
+   There exists a port of the Sybase::DBlib module that is available
+   in source form from ftp://ftp.name.net/pub/sybperl. This port
+   requires VC++, and is based on Sybperl 2.03. I have *not* used this
+   version myself, and I know next to nothing about Windows NT...
    
 1.4) Can I get Sybperl for OS 'foo'?
 
@@ -170,6 +124,8 @@ Contents:
    
    Sybperl 1.x does *not* work with Perl 5, as the Perl extension mechanism
    was changed with Perl 5.
+
+   Perl 5.002 and higher require Sybperl 2.05 or higher.
 
    
 2) Building Sybperl
@@ -287,6 +243,12 @@ Contents:
    Alternatively, link the Sybase shared libraries to one of the
    'default' directories (such as /usr/lib').
 
+2.7) Sybperl won't build / run on Dec Unix / Alpha
+
+   Sybperl 2.05 had a bug in the Sybase::CTlib module that caused it
+   to fail on the Dec Alpha platform. There is a patch for Sybperl
+   2.05 that corrects this, and Sybperl 2.06 does not have this problem.
+
    
 3)   Sybperl 1.x vs Sybperl 2.x
 
@@ -347,6 +309,10 @@ Contents:
    OpenClient/C manual (I've got mine online via the Sybooks CD-ROM)
    and the Sybase Transact-SQL manual.
 
+   I recently saw a book from Sybase Press called 'Sybase on the Web'
+   that has a chapter on Sybperl (specifically on the Sybase::CTlib
+   module).
+
 4.2) Is there a sybperl FAQ?
 
    Yes - you're reading it :-)
@@ -373,19 +339,9 @@ Contents:
 
 5.1) Reporting bugs
 
-   I have a simple bug tracking database here at ITF. You can submit
-   bugs for sybperl either to myself, or directly into the bug
-   database by sending an e-mail message to bugtrack@itf.ch with the
-   following additional fields:
-
-   bug-category: sybperl
-   bug-priority: high [or medium, or low]
-   bug-type: bug [or feature, or change (for behavior change) or
-						      other]
-   bug-summary: One line description
-
-   The remainder of the message can be used to describe the bug or
-   feature request in detail, with examples, etc.
+   I no longer work at ITF, so my bug tracking database is not active
+   at the moment. However, you can still send me bug reports to
+   mpeppler@bix.com, and I will try to fix them as quickly as possible.
    
    
 5.2) Feature requests
@@ -397,8 +353,5 @@ Contents:
    
 Michael
 --
-Michael Peppler, ITF Management SA, Fontaine 13, CH-1204 Geneva
-mpeppler@itf.ch - Tel (4122) 818 3021 - Fax (4122) 312 1325
-GCS d+(-) s++: a C++ US++++$ P+++$ E++ W? N++ !w tv- b+++ G e+++ h---
-r+++ y?
+Michael Peppler, mpeppler@bix.com
 

@@ -1,4 +1,16 @@
-	@(#)CHANGES	1.7	03/22/96
+	@(#)CHANGES	1.8	11/14/96
+
+2.06	Bug Fixes
+
+	Fixed memory leak when the -DDO_TIE compile time option is
+	turned on.
+	Fixed 32/64 bit pointer problem that caused CTlib to fail on
+	the Dec Alpha.
+	DESTROY function now makes sure that it only closes
+	connections in the process that created them (ie a child
+	process started via fork() would sometimes close the
+	connections of the parent...)
+	New, fully re-written dbschema.pl (thanks to David Whitmarsh)
 
 2.05	Bug Fixes
 

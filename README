@@ -1,4 +1,4 @@
-		     @(#)README	1.22	2/29/96
+		     @(#)README	1.23	11/14/96
 
 			   sybperl 2.0
 	
@@ -233,7 +233,7 @@ In case of problems:
 
 First, read the FAQ file in the sybperl distribution.
 
-Second, fire off an e-mail to me (mpeppler@itf.ch) or to the Sybperl
+Second, fire off an e-mail to me (mpeppler@bix.com) or to the Sybperl
 mailing list (sybperl-l@trln.lib.unc.edu) with a *full* description of
 what doesn't work, including version numbers of Perl and sybperl, the
 hardware and OS version, and the Sybase Open Client version you are
@@ -255,7 +255,7 @@ in the body to subscribe to the list.
 Reporting Bugs:
 ===============
 
-I have set up a bug tracking database at ITF, to which bugs can be
+I have set up a bug tracking database to which bugs can be
 submitted via e-mail. If you have a comment, bug report or feature
 request you would like to make please use the template in the SPR file
 in this directory.
@@ -270,6 +270,6 @@ script in the Perl source directory.
 
 Comments, criticism, et.al. VERY welcome!
 
-Michael Peppler - mpeppler@itf.ch	Phone: +4122 818 3021
-ITF Management SA			Fax:   +4122 312 1322
+Michael Peppler - mpeppler@bix.com
+
 

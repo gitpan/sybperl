@@ -1,16 +1,14 @@
-@(#)README.dbschema	1.1	2/28/96
-I had started rewriting dbschema to work with the new System 10
-features, but that was several months ago, and I don't currently have
-a System 10 server running here.
-This version of dbschema probably works on a 4.9.2 server, but there
-may be problems against a 10.x server (the new
-numeric/identity/decimal datatypes and the referential integrity
-constraints, among others).
+@(#)README.dbschema	1.2	11/14/96
+dbschema.pl has been substantially re-written by David Whitmarsh and
+now includes very good support for System 10/11 features such as RI
+constraints, inline defaults, numeric/decimal datatypes, etc.
 
-The previous version of dbschema is available in dbschema.old
+There is another version of dbschema, by Dave Partridge, who has added
+disk init, create database, thresholds, etc to the old version. I have
+not had the time to integrate the two...
 
-In addition, Ashu Joglekar has hacked dbschema.old to add System 10
-stuff. His version is in dbschema.10.pl. See the comments at the top
-of that file for the changes he added.
+The original dbschema.pl is available in dbschema.old, but it will not
+work well at all against a System 10/11 database.
+
 
 Michael

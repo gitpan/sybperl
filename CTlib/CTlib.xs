@@ -1,5 +1,5 @@
 /* -*-C-*-
- *	@(#)CTlib.xs	1.19	2/29/96
+ *	@(#)CTlib.xs	1.20	11/14/96
  */
 
 
@@ -96,12 +96,13 @@ typedef enum hash_key_id
     HV_extended_error,
     HV_row_count,
     HV_rc,
+    HV_pid
 } hash_key_id;
 
 static char *hash_keys[] = {
     "__coninfo__", "UseDateTime", "UseMoney", "UseNumeric",
     "MaxRows", "ComputeId", "ExtendedError",
-    "ROW_COUNT", "RC",
+    "ROW_COUNT", "RC", "__PID__"
 };
 
 static CS_CONTEXT *context;
@@ -205,8 +206,10 @@ newdbh(info, package, attr_ref, dbp)
 	    I32 klen;
 	    hv = (HV*)SvRV(attr_ref);
 	    hv_iterinit(hv);
-	    while((sv = hv_iternextsv(hv, &key, &klen)))
-		hv_store(thv, key, klen, newSVsv(sv), 0);
+	    while((sv = hv_iternextsv(hv, &key, &klen))) {
+		if(strcmp(key, hash_keys[HV_coninfo]))
+		    hv_store(thv, key, klen, newSVsv(sv), 0);
+	    }
 	}
     }
     /* If this is a cmd_alloc, then copy the old attribute values
@@ -252,6 +255,7 @@ newdbh(info, package, attr_ref, dbp)
 	my_hv_store(thv, HV_rc, newSViv(0), 0);
 	my_hv_store(thv, HV_compute_id, newSViv(0), 0);
 	my_hv_store(thv, HV_extended_error, newSViv(0), 0);
+	my_hv_store(thv, HV_pid, newSViv(getpid()), 0);
     }
 
     my_hv_store(thv, HV_coninfo, newSViv((IV)info), 0);
@@ -285,7 +289,7 @@ get_ConInfo(dbp)
     HV *hv;
     SV **svp;
     ConInfo *info = NULL;
-    int i;
+    IV i;
 
 #if defined(DO_TIE)
     if(dirty)
@@ -1457,7 +1461,7 @@ initialize()
     if((sv = perl_get_sv("Sybase::CTlib::Version", TRUE)))
     {
 	char buff[256];
-	sprintf(buff, "This is sybperl, version %s\n\nSybase::CTlib version 1.19 2/29/96\tBeta\n\nCopyright (c) 1995-1996 Michael Peppler\nPortions Copyright (c) 1995 Sybase, Inc.\n\n",
+	sprintf(buff, "This is sybperl, version %s\n\nSybase::CTlib version 1.20 11/14/96\tBeta\n\nCopyright (c) 1995-1996 Michael Peppler\nPortions Copyright (c) 1995 Sybase, Inc.\n\n",
 		SYBPLVER);
 	sv_setnv(sv, atof(SYBPLVER));
 	sv_setpv(sv, buff);
@@ -5286,6 +5290,16 @@ CODE:
     CS_RETCODE	retcode;
     CS_INT	close_option;
     HV *hv;
+    SV **svp;
+     
+    hv = (HV *)SvRV(dbp);
+    if(!(svp = my_hv_fetch(hv, HV_pid, FALSE)))
+	croak("no pid key in hash");
+    if(SvIV(*svp) != getpid()) {
+	if(debug_level & TRACE_DESTROY)
+	    warn("Skipping Destroying %s", neatsvpv(dbp, 0));
+	XSRETURN_EMPTY;
+    }
 
     /* FIXME:
        must check for pending results, and maybe cancel those before

@@ -1,6 +1,6 @@
 #!./perl
 
-#	@(#)cursor.t	1.3	03/15/96
+#	@(#)cursor.t	1.4	11/14/96
 
 ######################### We start with some black magic to print on failure.
 
@@ -113,17 +113,23 @@ while($d2->ct_results($restype) == CS_SUCCEED) {}
     or print "not ok 17\n";
 
 $last = 1;
-while($d->ct_fetch(CS_TRUE)) {
-    %dat2 = $d2->ct_fetch(CS_TRUE) if($last);
-    $last = 0 unless(%dat2);
+while(@dat = $d->ct_fetch()) {
+    if($last) {
+	if(!(@dat2 = $d2->ct_fetch())) {
+	    $last = 0;
+	}
+	print "$dat[0] - $dat2[0]\n";
+    }
 }
 if($last) {
-    while($d2->ct_fetch()) {}
+    while(@dat2 = $d2->ct_fetch()) {
+	print "$dat2[0]\n";
+    }
 }
 print "ok 18\n";
 
-while($d->ct_results($restype)==CS_SUCCEED){}
-while($d2->ct_results($restype)==CS_SUCCEED){}
+while($d->ct_results($restype)==CS_SUCCEED){ print "1\n";}
+while($d2->ct_results($restype)==CS_SUCCEED){ print "2\n";}
 
 ($d->ct_cursor(CS_CURSOR_CLOSE, undef, undef, CS_DEALLOC) == CS_SUCCEED)
     and print "ok 19\n"

@@ -36,6 +36,7 @@ eg/GenRepDefs.pl
 eg/Login.pm
 eg/README
 eg/README.dbschema
+eg/TABLEop.pm
 eg/bcp.dat
 eg/bcp.pl
 eg/buffer.pl
@@ -43,9 +44,9 @@ eg/ct_cursor.pl
 eg/ct_param.pl
 eg/ct_sql.pl
 eg/ctlib.pl
-eg/dbschema.10.pl
 eg/dbschema.old
 eg/dbschema.pl
+eg/dbschema.disk.pl
 eg/dbtext.pl
 eg/proc.isql
 eg/rpc-example.pl

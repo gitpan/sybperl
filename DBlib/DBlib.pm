@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# @(#)DBlib.pm	1.24	03/22/96
+# @(#)DBlib.pm	1.25	11/14/96
 
 # Copyright (c) 1991-1996
 #   Michael Peppler
@@ -15,7 +15,7 @@ package Sybase::DBlib::_attribs;
 use Carp;
 
 
-sub FETCH { 
+sub FETCH {
     return $_[0]->{$_[1]} if (exists $_[0]->{$_[1]});
     carp("'$_[1]' is not a valid Sybase::DBlib attribute") if(!defined($_[0]->{$_[1]}));
     return undef;
@@ -30,11 +30,11 @@ sub NEXTKEY {
 }
 
 sub EXISTS{ 
-     exists($_[0]->{$_[1]});
+    exists($_[0]->{$_[1]});
 }
 
 sub STORE {
-    if(!defined($_[0]->{$_[1]})) {
+    if(!exists($_[0]->{$_[1]})) {
 	carp("'$_[1]' is not a valid Sybase::DBlib attribute");
 	return undef;
     }
@@ -82,7 +82,7 @@ sub EXISTS{
 }
 
 sub STORE {
-    croak("'$_[1]' is not a valid Sybase::DBlib attribute") if(!defined($_[0]->{$_[1]}));
+    croak("'$_[1]' is not a valid Sybase::DBlib attribute") if(!exists($_[0]->{$_[1]}));
     $_[0]->{$_[1]} = $_[2];
 }
 
@@ -384,10 +384,4 @@ sub r_sql {
             if (defined $sub) {
                 &$sub(@data);
             } else {
-                push(@res, [@data]);
-            }
-        }
-    }
-    @res;  # return the result array
-}
-
+     
