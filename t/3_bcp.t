@@ -1,5 +1,5 @@
 #!./perl
-# $Id: 3_bcp.t,v 1.2 2004/04/13 20:03:06 mpeppler Exp $
+# $Id: 3_bcp.t,v 1.3 2005/03/20 19:50:59 mpeppler Exp $
 #
 # From:
 #	@(#)bcp.t	1.2	03/22/96
@@ -39,11 +39,12 @@ if($version gt '11.9') {
     $lock = '';
 }
 
-($X->sql("create table #bcp(f1 char(5), f2 int, f3 text) $lock"))
+($X->sql("if object_id('$Db..bcp') != NULL drop table $Db..bcp"));
+($X->sql("create table $Db..bcp(f1 char(5), f2 int, f3 text) $lock"))
     and print "ok 3\n"
     or print "not ok 3\n";
 ($X->config(INPUT => 't/bcp.dat',
-	    OUTPUT => '#bcp',
+	    OUTPUT => "$Db..bcp",
 	    REORDER => {1 => 'f2',
 			2 => 'f3',
 			3 => 'f1'}))
@@ -53,7 +54,7 @@ if($version gt '11.9') {
     and print "ok 5\n"
     or print "not ok 5\n";
 
-(@rows = $X->sql("select * from #bcp"))
+(@rows = $X->sql("select * from $Db..bcp"))
     and print "ok 6\n"
     or print "not ok 6\n";
 (scalar(@rows) == 4)
@@ -66,3 +67,4 @@ if($version gt '11.9') {
     and print "ok 9\n"
     or print "not ok 9 (${$rows[2]}[2]\n";
 
+($X->sql("if object_id('$Db..bcp') != NULL drop table $Db..bcp"));

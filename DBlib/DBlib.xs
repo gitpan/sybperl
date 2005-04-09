@@ -1,5 +1,5 @@
 /* -*-C-*-
- * $Id: DBlib.xs,v 1.60 2004/08/03 14:14:00 mpeppler Exp $
+ * $Id: DBlib.xs,v 1.61 2005/03/20 19:50:59 mpeppler Exp $
  *
  * From
  *	@(#)DBlib.xs	1.47	03/26/99
@@ -946,7 +946,7 @@ initialize()
 	if((sv = perl_get_sv("Sybase::DBlib::Version", TRUE|GV_ADDMULTI)))
 	{
 	    char buff[2048];
-	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib $Revision: 1.60 $ $Date: 2004/08/03 14:14:00 $ \n\nCopyright (c) 1991-2001 Michael Peppler\n\nDB-Library version: %s\n",
+	    sprintf(buff, "This is sybperl, version %s\n\nSybase::DBlib $Revision: 1.61 $ $Date: 2005/03/20 19:50:59 $ \n\nCopyright (c) 1991-2001 Michael Peppler\n\nDB-Library version: %s\n",
 		    SYBPLVER, dbversion());
 	    sv_setnv(sv, atof(SYBPLVER));
 	    sv_setpv(sv, buff);
@@ -4382,7 +4382,7 @@ dbwritetext(dbp, colname, dbp2, colnum, text, log=0)
     ptr = SvPV(text, len);
 
     RETVAL = dbwritetext(dbproc, colname, dbtxptr(dbproc2, colnum),
-			 DBTXPLEN, dbtxtimestamp(dbproc2, colnum), (BOOL)log,
+			 DBTXPLEN, dbtxtimestamp(dbproc2, colnum), (DBBOOL)log,
 			 len, (BYTE *)ptr);
 }
  OUTPUT:
@@ -4402,7 +4402,7 @@ dbpreptext(dbp, colname, dbp2, colnum, size, log=0)
     DBPROCESS *dbproc2 = getDBPROC(dbp2);
 
     RETVAL = dbwritetext(dbproc, colname, dbtxptr(dbproc2, colnum),
-			 DBTXPLEN, dbtxtimestamp(dbproc2, colnum), (BOOL)log,
+			 DBTXPLEN, dbtxtimestamp(dbproc2, colnum), (DBBOOL)log,
 			 size, NULL);
 }
  OUTPUT:

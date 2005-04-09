@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# $Id: Makefile.PL,v 1.35 2004/09/23 09:28:45 mpeppler Exp $
+# $Id: Makefile.PL,v 1.36 2004/11/19 10:38:21 mpeppler Exp $
 # @(#)Makefile.PL	1.19	03/26/99
 
 
@@ -59,12 +59,6 @@ if($^O eq 'MSWin32') {
     $def_string = "-DCTLIBVS=$CTLIBVS -DSYBPLVER='\"\${VERSION}\"' $$sattr{EXTRA_DEFS}";
     $lib_string = "-L$SYBASE/lib -lct -lcs -ltcl -lcomn -lintl -lblk";
 
-    # Linux uses libsybtcl instead of libtcl to avoid conflicts with tcl/tk
-    if(-e "$SYBASE/lib/libsybtcl$Config{lib_ext}" || 
-       -e "$SYBASE/lib/libsybtcl$Config{so}") {
-	$lib_string =~ s/-ltcl/-lsybtcl/;
-    }
-
     $lib_string =~ s/-l/-lsyb_/g if $^O eq 'VMS';
     $lib_string .= " $$sattr{EXTRA_LIBS} -lm";
 
@@ -73,9 +67,9 @@ if($^O eq 'MSWin32') {
 	foreach (qw(ct cs tcl comn intl blk)) {
 	    $lib_string =~ s/-l$_/-lsyb$_/;
 	}
+    }  elsif($^O =~ /linux|freebsd/i) {
+	$lib_string =~ s/-ltcl/-lsybtcl/;
     }
-
-
 
 
     # Logic to replace normal libs with _r (re-entrant) libs if
@@ -115,7 +109,8 @@ if($^O eq 'MSWin32') {
     # If we are building for a 64 bit platform that also supports 32 bit
     # (i.e. Solaris 8, HP-UX11, etc) then we need to make some adjustments
     if( $Config{use64bitall} ) {
-	$def_string .= ' -DSYB_LP64';
+	# Tru64/DEC OSF fails if SYB_LP64 is set.
+	$def_string .= ' -DSYB_LP64' unless $^O eq 'dec_osf';
 
 	print "Running in 64bit mode - looking for '64' libraries...\n";
 	opendir(SYBLIB,"$SYBASE/lib")

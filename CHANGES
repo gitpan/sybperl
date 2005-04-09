@@ -1,4 +1,14 @@
-	$Id: CHANGES,v 1.20 2004/06/23 14:02:17 mpeppler Exp $
+	$Id: CHANGES,v 1.22 2005/03/20 19:50:59 mpeppler Exp $
+
+2.18    Bug Fixes
+
+        Various BLK fixes.
+        Fixed Sybase::BCP and Sybase::BLK tests which failed against
+        12.5.3 servers (changes on the Server side).
+
+	Bugs Fixed:
+
+	577 - perl Makefile.PL fails if umask is 0.
 
 2.17    Kerberos Network login
 

@@ -1,6 +1,6 @@
 /* -*-C-*-
  *
- * $Id: CTlib.xs,v 1.68 2004/08/03 14:14:00 mpeppler Exp $
+ * $Id: CTlib.xs,v 1.71 2005/04/09 09:27:57 mpeppler Exp $
  *	@(#)CTlib.xs	1.37	03/26/99
  */
 
@@ -48,29 +48,8 @@
 #define CS_LONGBINARY_TYPE CS_CHAR_TYPE
 #endif
 
-#if defined(CS_VERSION_125)
-#define CTLIB_VERSION   CS_VERSION_125
-#else 
-#if defined(CS_VERSION_120)
-#define CTLIB_VERSION   CS_VERSION_120
-#else 
-#if defined(CS_VERSION_110)
-#define CTLIB_VERSION   CS_VERSION_110
-#else
-#define CTLIB_VERSION	CS_VERSION_100
-#endif
-#endif
-#endif
 
-#if defined(BLK_VERSION_125)
-#define BLK_VERSION BLK_VERSION_125
-#elif defined(BLK_VERSION_120)
-#define BLK_VERSION BLK_VERSION_120
-#elif defined(BLK_VERSION_110)
-#define BLK_VERSION BLK_VERSION_110
-#else
-#define BLK_VERSION BLK_VERSION_100
-#endif
+static CS_INT BLK_VERSION;
 
 
 #ifndef MAX
@@ -706,6 +685,8 @@ static void * alloc_datatype(CS_INT datatype, int *len)
 #endif
   default: warn("alloc_datatype: unkown type: %d", datatype); return NULL;
   }
+
+  *len = bytes;
 
   Newz(902, ptr, bytes, char);
 
@@ -2224,22 +2205,31 @@ initialize()
     CS_INT      boolean = CS_FALSE;
     dTHR;
 
+#if defined(CS_VERSION_150)
+    if(retcode != CS_SUCCEED) {
+	cs_ver = CS_VERSION_150;
+	retcode = cs_ctx_alloc(cs_ver, &context);
+    }
+#endif
 #if defined(CS_VERSION_125)
-    cs_ver = CS_VERSION_125;
-    retcode = cs_ctx_alloc(cs_ver, &context);
+    if(retcode != CS_SUCCEED) {
+	cs_ver = CS_VERSION_125;
+	retcode = cs_ctx_alloc(cs_ver, &context);
+    }
+#endif
 #if defined(CS_VERSION_120)
     if(retcode != CS_SUCCEED) {
 	cs_ver = CS_VERSION_120;
 	retcode = cs_ctx_alloc(cs_ver, &context);
     }
+#endif
 #if defined(CS_VERSION_110)
     if(retcode != CS_SUCCEED) {
 	cs_ver = CS_VERSION_110;
 	retcode = cs_ctx_alloc(cs_ver, &context);
     }
 #endif
-#endif
-#endif
+
     if(retcode != CS_SUCCEED) {
 	cs_ver = CS_VERSION_100;
 	retcode = cs_ctx_alloc(cs_ver, &context);
@@ -2247,6 +2237,25 @@ initialize()
 
     if(retcode != CS_SUCCEED)
 	croak("Sybase::CTlib initialize: cs_ctx_alloc(%d) failed", cs_ver);
+
+#if defined(CS_VERSION_150)
+    if(cs_ver == CS_VERSION_150)
+	BLK_VERSION = BLK_VERSION_150;
+#endif
+#if defined(CS_VERSION_125)
+    if(cs_ver == CS_VERSION_125)
+	BLK_VERSION = BLK_VERSION_125;
+#endif
+#if defined(CS_VERSION_120)
+    if(cs_ver == CS_VERSION_120)
+	BLK_VERSION = BLK_VERSION_120;
+#endif
+#if defined(CS_VERSION_110)
+    if(cs_ver == CS_VERSION_110)
+	BLK_VERSION = BLK_VERSION_110;
+#endif
+    if(cs_ver == CS_VERSION_100)
+	BLK_VERSION = BLK_VERSION_100;
 
 /*    warn("context version: %d", cs_ver); */
 
@@ -2311,7 +2320,7 @@ initialize()
 	if((p = strchr(ocVersion, '\n')))
 	    *p = 0;
 	
-	sprintf(buff, "This is sybperl, version %s\n\nSybase::CTlib $Revision: 1.68 $ $Date: 2004/08/03 14:14:00 $\n\nCopyright (c) 1995-2004 Michael Peppler\nPortions Copyright (c) 1995 Sybase, Inc.\n\nOpenClient version: %s\n",
+	sprintf(buff, "This is sybperl, version %s\n\nSybase::CTlib $Revision: 1.71 $ $Date: 2005/04/09 09:27:57 $\n\nCopyright (c) 1995-2004 Michael Peppler\nPortions Copyright (c) 1995 Sybase, Inc.\n\nOpenClient version: %s\n",
 		SYBPLVER, ocVersion);
 	sv_setnv(sv, atof(SYBPLVER));
 	sv_setpv(sv, buff);
@@ -6126,7 +6135,7 @@ ALIAS:
 
     }
 
-    if((p = strchr(server, ':'))) {
+    if(server && (p = strchr(server, ':'))) {
 #if defined(CS_SERVERADDR)
 	if(*p)
 	    *p = ' '; 
@@ -7796,7 +7805,7 @@ CODE:
 		     row! */
 #if !defined(USE_CSLIB_CB)
 		  sprintf(msg, 
-			  "cs_convert failed:column %d: (_convert(%s, %d))", 
+			  "cs_convert failed:column %d: (_convert(%.100s, %d))", 
 			  i + 1, info->coldata[i].ptr, 
 			  info->datafmt[i].datatype);
 		  ret = get_cs_msg(context, info->connection->connection, msg);

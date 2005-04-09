@@ -1,4 +1,4 @@
-# $Id: BLK.pm,v 1.10 2003/12/31 19:43:22 mpeppler Exp $
+# $Id: BLK.pm,v 1.11 2005/03/20 19:50:59 mpeppler Exp $
 #
 # Shamelessly copied 2001 from Sybase::BCP and transformed magically
 # into Sybase::BLK by Scott Zetlan
@@ -320,8 +320,8 @@ use vars qw(@ISA @EXPORT $VERSION $Version);
 
 use strict;
 
-$VERSION = substr(q$Revision: 1.10 $, 10);
-$Version = q|$Id: BLK.pm,v 1.10 2003/12/31 19:43:22 mpeppler Exp $|;
+$VERSION = substr(q$Revision: 1.11 $, 10);
+$Version = q|$Id: BLK.pm,v 1.11 2005/03/20 19:50:59 mpeppler Exp $|;
 
 my @g_keys = qw(INPUT OUTPUT ERRORS SEPARATOR FIELDS BATCH_SIZE
 		NULL DATE REORDER CALLBACK TAB_INFO DIRECTION CONDITION
@@ -456,10 +456,13 @@ sub do_in {
     # The user has defined a reordering pattern of columns:
     # If the target columns are entered as column names, we must
     # convert that back to column numbers...
+
     foreach (keys(%reorder)) {
 	if ($reorder{$_} =~ /\D+/) {
 	    for ($i = 0; $i < @tabinfo; ++$i) {
-		$tabinfo[$i]->[0] eq $reorder{$_} and $reorder{$_} = $i+1;
+		if($tabinfo[$i]->[0] eq $reorder{$_}) {
+		    $reorder{$_} = $i+1;
+		}
 	    }
 	}
     }
@@ -667,7 +670,7 @@ from $db.dbo.syscolumns c, $db.dbo.systypes t
 where c.id = object_id('$db.$user.$table')
 and   c.usertype *= t.usertype
 ", "ARRAY");
-    
+
     return [ @arr ];
 }
 

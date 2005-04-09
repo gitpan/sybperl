@@ -1,5 +1,5 @@
 # -*-Perl-*-
-#	$Id: Makefile.PL,v 1.13 2004/09/23 09:33:57 mpeppler Exp $
+#	$Id: Makefile.PL,v 1.14 2004/11/19 10:35:37 mpeppler Exp $
 require 5.002;
 use ExtUtils::MakeMaker;
 use Config;
@@ -97,11 +97,11 @@ sub configPwd {
     my $old_umask;
     unless($^O =~ /MSWin32/) {
 	$old_umask = umask(077);
-	die "cannot umask(): $!" unless $old_umask;
+	warn "cannot umask(): $!" unless defined($old_umask);
     }
     open(OUT, ">$written_pwd_file") || die "Can't open $written_pwd_file: $!";
     unless($^O =~ /MSWin32/) {
-	umask($old_umask) != 077 && die "strange return from umask()";
+	umask($old_umask) != 077 && warn "strange return from umask()";
     }
     print OUT <<EOF;
 # This file contains optional login id, passwd and server info for the test

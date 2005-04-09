@@ -1,5 +1,5 @@
 # -*-Perl-*-
-#	$Id: config.pl,v 1.14 2004/09/23 09:28:45 mpeppler Exp $
+#	$Id: config.pl,v 1.15 2004/11/19 10:38:21 mpeppler Exp $
 #
 # Extract relevant info from the CONFIG files.
 
@@ -55,23 +55,27 @@ sub config
     # CONFIG appears invalid
     my $sybase_dir = $ENV{SYBASE};
 
+    print "$sybase_dir\n";
+
     if(!$sybase_dir) {
 	eval q{
 	    $sybase_dir = (getpwnam('sybase'))[7];
 	};
     }
 
-    if($sattr{SYBASE} && -d $sattr{SYBASE}) {
-	$SYBASE = $sattr{SYBASE};
-    } else {
+    if(-d $sybase_dir) {
 	$SYBASE = $sybase_dir;
+    } else {
+	if($sattr{SYBASE} && -d $sattr{SYBASE}) {
+	    $SYBASE = $sattr{SYBASE};
+	}
     }
-
-    $SYBASE = VMS::Filespec::unixify($SYBASE) if $^O eq 'VMS';
 
     if(!$SYBASE || $SYBASE =~ /^\s*$/) {
 	die "Please set SYBASE in CONFIG, or set the \$SYBASE environment variable";
     }
+
+    $SYBASE = VMS::Filespec::unixify($SYBASE) if $^O eq 'VMS';
 
     # System 12.0 has a different directory structure...
     if(defined($ENV{SYBASE_OCS})) {

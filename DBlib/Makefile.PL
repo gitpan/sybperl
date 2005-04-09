@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# $Id: Makefile.PL,v 1.29 2004/09/23 09:28:45 mpeppler Exp $
+# $Id: Makefile.PL,v 1.30 2004/11/19 10:38:21 mpeppler Exp $
 #	@(#)Makefile.PL	1.19	03/26/99
 
 require 5.002;
@@ -56,7 +56,8 @@ if($^O eq 'MSWin32') {
     # If we are building for a 64 bit platform that also supports 32 bit
     # (i.e. Solaris 8, HP-UX11, etc) then we need to make some adjustments
     if( $Config{use64bitall} ) {
-	$def_string .= ' -DSYB_LP64';
+	# Tru64 fails if SYB_LP64 is defined.
+	$def_string .= ' -DSYB_LP64' unless $^O eq 'dec_osf';
 
 	print "Running in 64bit mode - looking for '64' libraries...\n";
 	opendir(SYBLIB,"$SYBASE/lib")
