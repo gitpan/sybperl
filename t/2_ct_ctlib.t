@@ -1,5 +1,5 @@
 # -*-Perl-*-
-# $Id: 2_ct_ctlib.t,v 1.2 2004/04/13 20:03:05 mpeppler Exp $
+# $Id: 2_ct_ctlib.t,v 1.3 2010/03/28 11:15:30 mpeppler Exp $
 #
 # From
 # @(#)ctlib.t	1.17	03/05/98
@@ -194,6 +194,42 @@ $num = $X->newnumeric(1.111);
 ($money > $num)
     and print "ok 30\n"
     or print "not ok 30\n";
+
+# Add some tests to handle ASE 15 and later datatypes:
+
+my $version = get_version();
+print "Running against version $version\n";
+if($version >= 15) {
+	$X->ct_sql('select power(convert(bigint, 2), 45)');
+	$X->ct_sql('select convert(time, getdate())');
+	
+	if($version >= 15.5)  {
+		my @d = $X->ct_sql('select current_bigdatetime()');
+		foreach (@d) {
+			print "@$_\n";
+		}
+		cs_dt_info(CS_SET, CS_DT_CONVFMT, CS_UNUSED, CS_DATES_LONGUSA_YYYY);
+        @d = $X->ct_sql('select current_bigdatetime()');
+        foreach (@d) {
+            print "@$_\n";
+        }
+	}
+}
+
+sub get_version {
+    my @dat = $X->ct_sql('select @@version');
+    my $version;
+    
+    $dat[0][0] =~ /\/([\d.]+)\//;
+    $version = $1;
+    #warn "$version";
+    $version =~ s/\./,/;
+    $version =~ s/\.//g;
+    $version =~ s/,/\./;
+    
+    return $version;
+}
+
 
 sub msg_cb
 {

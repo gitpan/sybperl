@@ -1,4 +1,15 @@
-	$Id: CHANGES,v 1.22 2005/03/20 19:50:59 mpeppler Exp $
+	$Id: CHANGES,v 1.23 2010/03/28 11:23:45 mpeppler Exp $
+	
+2.19    Bug Fixes
+
+        Fixed incorrect handling of various "new" datatypes (date,
+        time, bigint, bigdatetime).
+        
+        Other Bug Fixes:
+        
+        640 -   Sybase::BLK fails due to system table ordering issues 
+                consequence of row level locking on system tables in
+                15.0.2 and later.
 
 2.18    Bug Fixes
 

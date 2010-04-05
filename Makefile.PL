@@ -1,5 +1,5 @@
 # -*-Perl-*-
-#	$Id: Makefile.PL,v 1.14 2004/11/19 10:35:37 mpeppler Exp $
+#	$Id: Makefile.PL,v 1.15 2010/03/28 08:15:42 mpeppler Exp $
 require 5.002;
 use ExtUtils::MakeMaker;
 use Config;
@@ -64,7 +64,7 @@ WriteMakefile('DISTNAME' => "sybperl",
 sub MY::libscan
 {
     my($self, $path) = @_;
-    return '' if $path =~ m:/SCCS/:;
+    return '' if $path =~ m:/SCCS|CVS|RCS|.svn/:;
     $path;
 }
 
